@@ -1,10 +1,21 @@
 // tests/unit/sala_voz_presenca.test.mjs — node --test
 //
-// Trava os quatro consertos de 11/08/2026 na sala de voz da Comunidade:
+// A sala de voz da Comunidade NÃO usa a presence do Realtime. Foi medido em
+// 11/08/2026 com dois clientes reais do @supabase/supabase-js (anon+JWT do
+// usuário e service key) contra este projeto: os dois ficam SUBSCRIBED, o
+// track() devolve 'ok' e nenhum evento 'sync'/'join'/'leave' chega — nem entre
+// dois clientes no mesmo canal. Broadcast entrega normalmente nos dois casos.
+// Em produção isso apareceu como o dono entrando pelo celular e pelo
+// computador e cada aparelho vendo uma sala só com ele mesmo.
 //
-//  1. BUG "0 pessoas · 1 falando" sem nenhum card. Quem preenchia S.presentes
-//     era só o evento 'presence sync' do Realtime — que não chega quando a sala
-//     está vazia. A pessoa entrava de verdade, mas nunca se via.
+// Quem está na sala passou a ser o BATIMENTO por broadcast. Este arquivo trava:
+//
+//  0. A presença por batimento: chegada, batimento perdido que NÃO derruba,
+//     ausência sustentada que derruba, 'tchau' na hora, resposta imediata ao
+//     "cheguei", prazo longo pra quem bloqueia a tela, e as guardas contra
+//     tempestade / lista envenenada.
+//  1. BUG "0 pessoas · 1 falando" sem nenhum card: a pessoa SEMPRE se vê e
+//     SEMPRE é contada, venha da rede o que vier.
 //  2. Coerência do rodapé: falando NUNCA pode passar de pessoas.
 //  3. Timbres de entrada/saída (som-notificacao.js) com teto anti-rajada.
 //  4. Confirmação antes de sair, dispensável por Esc e clique fora.
@@ -135,7 +146,7 @@ function carregarSala() {
 }
 
 // Coloca a pessoa "dentro da sala", exatamente como entrar() faz depois do
-// track() dar 'ok' — sem microfone, sem socket, sem WebRTC.
+// "cheguei" sair com 'ok' — sem microfone, sem socket, sem WebRTC.
 function entrarNaSala(S, I) {
   S.cfg = {
     ticket: 'TICKET-DONO', expira_em: Date.now() + 3600000, canal: 'x', max: 10,
@@ -147,6 +158,255 @@ function entrarNaSala(S, I) {
   I.registrarMinhaIdentidade();
   I.garantirEuNaLista();
 }
+
+// Canal de mentira que ANOTA o que foi mandado. É o que sobrou de "simular
+// rede": a sala só fala broadcast agora, então gravar send() cobre presença,
+// saída e sinalização de uma vez.
+function canalFalso() {
+  const enviados = [];
+  return {
+    enviados,
+    send: ({ event, payload }) => { enviados.push({ event, payload }); return 'ok'; },
+    eventos: (nome) => enviados.filter((m) => m.event === nome),
+  };
+}
+
+// Canal de pé, sem censo em curso: é o estado em que a varredura pode agir.
+function canalDePe(S) {
+  const c = canalFalso();
+  S.canal = c;
+  S.sub = 'on';
+  S.censoAte = 0;
+  return c;
+}
+
+// Um batimento chegando de outra pessoa.
+function batimento(chave, extra = {}) {
+  return Object.assign({ k: chave, t: 'T-' + chave, m: 0, j: Date.now(), z: 0, novo: 0 }, extra);
+}
+
+const esperar = (ms) => new Promise((r) => setTimeout(r, ms));
+
+// ═══ 0 — PRESENÇA POR BATIMENTO ══════════════════════════════════════════
+
+test('batimento de alguém novo põe a pessoa na sala', () => {
+  const { S, I } = carregarSala();
+  entrarNaSala(S, I);
+  canalDePe(S);
+  S.ids.set('T-u2~zz', { id: 'u2', nome: 'Ana', avatar: null, plano: 'full' });
+  I.aoBatimento(batimento('u2~zz'));
+  assert.equal(I.contarPresentes(), 2, 'era exatamente o que a presence não entregava');
+  assert.equal(S.presentes.get('u2~zz').ticket, 'T-u2~zz');
+});
+
+test('batimento PERDIDO não derruba ninguém — só a ausência sustentada', () => {
+  const { S, I } = carregarSala();
+  entrarNaSala(S, I);
+  canalDePe(S);
+  S.ids.set('T-u2~zz', { id: 'u2', nome: 'Ana', avatar: null, plano: 'full' });
+  I.aoBatimento(batimento('u2~zz'));
+
+  // Broadcast é fire-and-forget: três batimentos seguidos podem sumir.
+  S.presentes.get('u2~zz').visto = Date.now() - 12000;
+  I.varrer();
+  assert.equal(I.contarPresentes(), 2, 'perder pacote não pode expulsar quem está falando');
+
+  // Ausência sustentada (além do prazo) sim.
+  S.presentes.get('u2~zz').visto = Date.now() - 15000;
+  I.varrer();
+  assert.equal(I.contarPresentes(), 1, 'quem parou de bater tem que sair da lista');
+});
+
+test('quem bloqueia a tela avisa e ganha prazo longo (não é expulso)', () => {
+  const { S, I } = carregarSala();
+  entrarNaSala(S, I);
+  canalDePe(S);
+  I.aoBatimento(batimento('u2~zz', { z: 1 }));
+  // Aba de fundo no Chrome bate 1x por MINUTO: com o prazo normal (14s) a
+  // pessoa cairia da sala só por guardar o celular no bolso.
+  S.presentes.get('u2~zz').visto = Date.now() - 65000;
+  I.varrer();
+  assert.equal(S.presentes.has('u2~zz'), true, 'tela apagada não é sair da sala');
+  S.presentes.get('u2~zz').visto = Date.now() - 101000;
+  I.varrer();
+  assert.equal(S.presentes.has('u2~zz'), false, 'mas o prazo longo é prazo, não licença eterna');
+});
+
+test('eu mesmo NUNCA expiro da minha lista', () => {
+  const { S, I } = carregarSala();
+  entrarNaSala(S, I);
+  canalDePe(S);
+  S.presentes.get(S.sessao).visto = Date.now() - 600000;
+  I.varrer();
+  assert.equal(I.contarPresentes(), 1, 'quem está com o microfone aberto não some do próprio painel');
+});
+
+test('lista CONGELA com o canal fora do ar (socket caído ≠ sala vazia)', () => {
+  const { S, I } = carregarSala();
+  entrarNaSala(S, I);
+  canalDePe(S);
+  I.aoBatimento(batimento('u2~zz'));
+  S.presentes.get('u2~zz').visto = Date.now() - 60000;
+  S.sub = 'erro';
+  I.varrer();
+  assert.equal(S.presentes.has('u2~zz'), true, 'sem canal não chega batimento de ninguém: apagar a sala seria mentir');
+  assert.equal(I.listaConfiavel(), false, 'e o mesh não pode podar peer nenhum nesse estado');
+  S.sub = 'on';
+  I.varrer();
+  assert.equal(S.presentes.has('u2~zz'), false);
+});
+
+test('durante o censo ninguém expira (é a volta da tela bloqueada)', () => {
+  const { S, I } = carregarSala();
+  entrarNaSala(S, I);
+  canalDePe(S);
+  I.aoBatimento(batimento('u2~zz'));
+  S.presentes.get('u2~zz').visto = Date.now() - 60000;   // ninguém bateu enquanto congelado
+  S.censoAte = Date.now() + 1500;                        // acabei de perguntar
+  I.varrer();
+  assert.equal(S.presentes.has('u2~zz'), true, 'a sala inteira sumiria antes da primeira resposta chegar');
+  assert.equal(I.listaConfiavel(), false);
+});
+
+test("'tchau' tira a pessoa na hora, sem esperar prazo", () => {
+  const { S, I } = carregarSala();
+  entrarNaSala(S, I);
+  canalDePe(S);
+  I.aoBatimento(batimento('u2~zz'));
+  assert.equal(I.contarPresentes(), 2);
+  I.aoTchau({ k: 'u2~zz' });
+  assert.equal(I.contarPresentes(), 1, 'saída limpa não pode deixar fantasma por 14s');
+});
+
+test('"cheguei" faz os outros responderem NA HORA (e uma vez só)', async () => {
+  const { S, I } = carregarSala();
+  entrarNaSala(S, I);
+  const c = canalDePe(S);
+  // Dez chegadas no mesmo instante: se cada uma virasse uma resposta, uma sala
+  // cheia entrando junto viraria tempestade.
+  for (let i = 0; i < 10; i++) I.aoBatimento(batimento('u' + i + '~zz', { novo: 1 }));
+  await esperar(600);
+  const bats = c.eventos('bat');
+  assert.equal(bats.length, 1, 'resposta ao censo tem jitter e throttle');
+  assert.equal(bats[0].payload.k, S.sessao);
+  assert.equal(bats[0].payload.t, 'TICKET-DONO', 'a resposta é um batimento de verdade, com ticket');
+});
+
+test('observador não bate — só escuta e pergunta', async () => {
+  const { S, I } = carregarSala();
+  const c = canalDePe(S);
+  S.cfg = { ticket: 'T', canal: 'x', max: 10, me: { id: 'u9', nome: 'X' }, expira_em: Date.now() + 3600000 };
+  S.sessao = 'u9~ob';
+  S.entrei = false;
+  I.aoBatimento(batimento('u2~zz', { novo: 1 }));
+  await esperar(600);
+  assert.equal(c.eventos('bat').length, 0, 'quem não entrou não pode aparecer pra ninguém');
+  I.pedirCenso();
+  const ois = c.eventos('oi');
+  assert.equal(ois.length, 1, 'mas ele PERGUNTA: é assim que o contador da entrada nasce cheio');
+  assert.equal(ois[0].payload.k, '', 'sem chave e sem ticket: pergunta, não presença');
+});
+
+test('mutar manda batimento, não "cheguei", e não reescreve a hora de entrada', () => {
+  const { SV, S, I } = carregarSala();
+  entrarNaSala(S, I);
+  const c = canalDePe(S);
+  const entrouEm = S.entrouEm;
+  S.stream = { getAudioTracks: () => [{ enabled: true }], getTracks: () => [] };
+  SV.mudo();
+  const bats = c.eventos('bat');
+  assert.equal(c.eventos('oi').length, 0, 'clicar em Mudo não pode fazer a sala inteira responder');
+  assert.equal(bats.length, 1);
+  assert.equal(bats[0].payload.m, 1);
+  assert.equal(bats[0].payload.j, entrouEm,
+    'mutar reescrevendo a hora de entrada faria quem muta ser o expulso da sala cheia');
+  assert.equal(S.presentes.get(S.sessao).entrou, entrouEm);
+});
+
+test('a hora de entrada de um par não é reescrita por batimento posterior', () => {
+  const { S, I } = carregarSala();
+  entrarNaSala(S, I);
+  canalDePe(S);
+  I.aoBatimento(batimento('u2~zz', { j: 1000 }));
+  I.aoBatimento(batimento('u2~zz', { j: 9999999999999 }));
+  assert.equal(S.presentes.get('u2~zz').entrou, 1000, 'a ordem de chegada é o desempate da sala cheia');
+});
+
+test('batimento com a MINHA chave é ignorado (ninguém me reescreve)', () => {
+  const { S, I } = carregarSala();
+  entrarNaSala(S, I);
+  canalDePe(S);
+  I.aoBatimento({ k: S.sessao, t: 'TICKET-FORJADO', m: 1, j: 1 });
+  assert.equal(S.presentes.get(S.sessao).ticket, 'TICKET-DONO');
+  assert.equal(S.presentes.get(S.sessao).mudo, false);
+  I.aoTchau({ k: S.sessao });
+  assert.equal(I.contarPresentes(), 1, 'nem um "tchau" forjado me tira da minha própria sala');
+});
+
+test('a lista tem teto: canal aberto não vira despejo de chaves inventadas', () => {
+  const { S, I } = carregarSala();
+  entrarNaSala(S, I);
+  canalDePe(S);
+  for (let i = 0; i < 200; i++) I.aoBatimento(batimento('lixo' + i + '~x'));
+  assert.ok(S.presentes.size <= 16, `lista sem teto (${S.presentes.size} registros)`);
+  assert.ok(S.presentes.has(S.sessao), 'e o meu registro não pode ser empurrado pra fora por lixo');
+});
+
+test('batimento sem ticket não entra na lista', () => {
+  const { S, I } = carregarSala();
+  entrarNaSala(S, I);
+  canalDePe(S);
+  I.aoBatimento({ k: 'u2~zz', m: 0, j: Date.now() });
+  I.aoBatimento({ k: 'u3~zz', t: '', m: 0, j: Date.now() });
+  assert.equal(I.contarPresentes(), 1, 'sem ticket não há como o servidor dizer quem é: não é participante');
+});
+
+test("sair manda 'tchau' com o canal ainda vivo", () => {
+  const { SV, S, I, document } = carregarSala();
+  registrarConfirmacao(document);
+  entrarNaSala(S, I);
+  const c = canalDePe(S);
+  SV.sair('');
+  const tchaus = c.eventos('tchau');
+  assert.equal(tchaus.length, 1, 'sem tchau a pessoa fica fantasma até expirar na sala que deixou');
+  assert.equal(tchaus[0].payload.k, 'u-dono~ab12', 'e tem que sair ANTES de a sessão ser zerada');
+  assert.equal(S.entrei, false);
+});
+
+// O teto de 10 continua valendo, mas quem me EXPULSA da conversa tem que ser
+// gente verificada. Com presença por broadcast qualquer um despeja batimento
+// com ticket desconhecido — sem esse cuidado, encher o canal de lixo tiraria
+// pessoas de verdade da sala.
+test('enxurrada de batimentos desconhecidos NÃO me expulsa da sala', () => {
+  const { S, I } = carregarSala();
+  entrarNaSala(S, I);
+  canalDePe(S);
+  for (let i = 0; i < 14; i++) I.aoBatimento(batimento('lixo' + i + '~x', { j: 1 }));
+  assert.equal(S.entrei, true, 'sair por causa de tickets que ninguém confirmou seria expulsão por spam');
+  assert.ok(S.presentes.has(S.sessao));
+});
+
+test('mas o teto de 10 continua valendo entre gente verificada', () => {
+  const { S, I } = carregarSala();
+  entrarNaSala(S, I);
+  canalDePe(S);
+  // 10 verificados que entraram ANTES de mim: eu sou o 11º e me retiro sozinho.
+  for (let i = 0; i < 10; i++) {
+    S.ids.set('T-v' + i + '~x', { id: 'v' + i, nome: 'V' + i, avatar: null, plano: 'full' });
+    I.aoBatimento(batimento('v' + i + '~x', { j: 1000 + i }));
+  }
+  assert.equal(S.entrei, false, 'sala cheia: quem chegou por último se retira, em vez de furar o limite');
+});
+
+test('bloquear a tela manda o último batimento marcado', () => {
+  const { S, I } = carregarSala();
+  entrarNaSala(S, I);
+  const c = canalDePe(S);
+  I.suspender();
+  const bats = c.eventos('bat');
+  assert.equal(bats.length, 1, "'freeze'/'visibilitychange' disparam antes do congelamento: dá tempo de avisar");
+  assert.equal(bats[0].payload.z, 1, 'sem esse aviso os outros me expulsam em 14s por sumiço');
+});
 
 // ═══ BUG 1 — a pessoa TEM que se ver e ser contada ═══════════════════════
 
@@ -162,69 +422,72 @@ test('sala vazia: o dono entra, se conta e ganha o próprio card', () => {
   assert.doesNotMatch(card, /não verificado/, 'eu nunca sou fantasma pra mim mesmo');
 });
 
-test('o "sync" que nunca chega não pode apagar quem está na sala', () => {
+test('sala silenciosa não apaga quem está nela', () => {
   const { S, I } = carregarSala();
   entrarNaSala(S, I);
-  // presenceState vazio é EXATAMENTE o cenário do bug: sala com uma pessoa só,
-  // o Realtime não tem diferença de estado pra mandar.
-  S.canal = { presenceState: () => ({}), track: () => 'ok', send: () => 'ok' };
-  I.sincronizar();
+  // Sala de uma pessoa só: NADA chega pelo canal, nunca. Era exatamente aqui
+  // que a presence deixava a pessoa com "0 pessoas · 1 falando".
+  canalDePe(S);
+  I.varrer();
   assert.equal(I.contarPresentes(), 1, 'zerou a contagem de quem está com o mic aberto');
   assert.ok(S.presentes.has(S.sessao));
 });
 
-test('sync com os outros mas sem mim: eu continuo na lista', () => {
+test('sala com os outros: eu continuo na lista junto com eles', () => {
   const { S, I } = carregarSala();
   entrarNaSala(S, I);
-  S.ids.set('T-OUTRO', { id: 'u2', nome: 'Ana', avatar: null, plano: 'full' });
-  S.canal = {
-    presenceState: () => ({ 'u2~zz': [{ t: 'T-OUTRO', m: 0, j: Date.now() }] }),
-    track: () => 'ok', send: () => 'ok',
-  };
-  I.sincronizar();
-  assert.equal(I.contarPresentes(), 2, 'meu track sumiu do servidor, mas eu não sumi da sala');
-  assert.ok(S.presentes.has(S.sessao));
+  canalDePe(S);
+  S.ids.set('T-u2~zz', { id: 'u2', nome: 'Ana', avatar: null, plano: 'full' });
+  I.aoBatimento(batimento('u2~zz'));
+  I.varrer();
+  assert.equal(I.contarPresentes(), 2);
+  assert.ok(S.presentes.has(S.sessao), 'a lista dos outros não pode me apagar da minha');
 });
 
-// ═══ BUG 1c — o conserto não pode cegar a poda do mesh ═══════════════════
-// Armadilha achada na revisão: o mesh decide se PODE derrubar peers olhando
-// "o estado me incluía?" — e isso era lido de S.presentes.has(S.sessao). Como
-// agora eu me insiro em S.presentes SEMPRE, essa pergunta passaria a responder
-// "sim" até no meio de um socket flap, e a poda derrubaria o áudio de quem não
-// saiu (exatamente o que a carência existe pra evitar). O sinal foi movido pra
-// S.euNoServidor, lido ANTES do remendo local.
+// ═══ BUG 1c — a lista congelada não pode cegar a poda do mesh ════════════
+// O mesh derruba peer de quem saiu da lista. Se ele podasse com a lista
+// CONGELADA (socket caído, censo em curso), uma oscilação de rede derrubaria o
+// áudio de quem não saiu — exatamente o que a carência sempre existiu pra
+// evitar. O sinal é o listaConfiavel(), e ele é conservador de propósito.
 
-test('estado do servidor sem mim NÃO pode virar "confiável" pro mesh', () => {
+test('mesh NÃO poda peer enquanto a lista está congelada', () => {
   const { S, I } = carregarSala();
   entrarNaSala(S, I);
-  S.canal = {
-    presenceState: () => ({ 'u2~zz': [{ t: 'T-OUTRO', m: 0, j: Date.now() }] }),
-    track: () => 'ok', send: () => 'ok',
-  };
-  I.sincronizar();
-  assert.ok(S.presentes.has(S.sessao), 'eu continuo visível pra mim mesmo');
-  assert.equal(S.euNoServidor, false, 'o servidor não me viu: o mesh não pode podar ninguém');
+  canalDePe(S);
+  const peer = { pc: { close: () => {}, connectionState: 'connected' }, audio: null, g: 1, desde: Date.now(), tDesc: null };
+  S.peers.set('u2~zz', peer);          // par que já não está mais na lista
+  S.sumido.set('u2~zz', Date.now() - 60000);   // carência já vencida
+  S.sub = 'erro';                              // socket piscou
+  I.mesh();
+  assert.equal(S.peers.has('u2~zz'), true, 'derrubar áudio por oscilação de rede é o defeito, não o conserto');
+  assert.equal(I.listaConfiavel(), false);
+  // Com a lista confiável de novo, o par que realmente saiu tem que cair.
+  S.sub = 'on';
+  I.mesh();
+  assert.equal(S.peers.has('u2~zz'), false, 'peer de quem saiu não pode ficar pendurado pra sempre');
 });
 
-test('estado do servidor COM mim volta a liberar a poda', () => {
+test('lista confiável é canal de pé E fora de censo', () => {
   const { S, I } = carregarSala();
   entrarNaSala(S, I);
-  S.canal = {
-    presenceState: () => ({ [S.sessao]: [{ t: 'TICKET-DONO', m: 0, j: S.entrouEm }] }),
-    track: () => 'ok', send: () => 'ok',
-  };
-  I.sincronizar();
-  assert.equal(S.euNoServidor, true, 'estado íntegro: a limpeza de peers tem que voltar a rodar');
+  canalDePe(S);
+  assert.equal(I.listaConfiavel(), true);
+  S.censoAte = Date.now() + 1000;
+  assert.equal(I.listaConfiavel(), false, 'durante o censo a lista ainda está se formando');
+  S.censoAte = 0; S.sub = 'off';
+  assert.equal(I.listaConfiavel(), false);
 });
 
-test('presence vazia deixa o mesh em modo "não poda nada"', () => {
+test('entrar recoloca a lista em quarentena (nada expira antes de responder)', () => {
   const { S, I } = carregarSala();
   entrarNaSala(S, I);
-  S.euNoServidor = true;                       // herdado de um sync anterior bom
-  S.canal = { presenceState: () => ({}), track: () => 'ok', send: () => 'ok' };
-  I.sincronizar();
-  assert.equal(S.euNoServidor, false, 'socket piscou: segura a poda até o estado voltar');
-  assert.equal(I.contarPresentes(), 1, 'e mesmo assim eu não sumo do painel');
+  const c = canalDePe(S);
+  I.anunciar();
+  assert.ok(S.censoAte > Date.now(), 'sem quarentena, a volta da tela bloqueada apagaria a sala');
+  assert.equal(I.listaConfiavel(), false);
+  assert.equal(c.eventos('oi').length, 1, 'anunciar é o "cheguei": pergunta e se apresenta na mesma mensagem');
+  assert.equal(c.eventos('oi')[0].payload.novo, 1, 'sem o pedido, os outros só apareceriam no próximo ciclo');
+  I.pararBatimento();   // o relógio do batimento seguraria o processo de teste
 });
 
 test('falha no `verificar` não me transforma em fantasma', () => {
@@ -501,13 +764,9 @@ test('a entrada continua sendo pintada com a legenda invisível', () => {
   entrada.querySelector = () => ({ textContent: '' });
   ctx.document.querySelectorAll = (sel) => (sel === '.svz-entrada' ? [entrada] : []);
   entrarNaSala(S, I);
-  S.sub = 'on';
-  S.ids.set('T-OUTRO', { id: 'u2', nome: 'Ana', avatar: null, plano: 'full' });
-  S.canal = {
-    presenceState: () => ({ 'u2~zz': [{ t: 'T-OUTRO', m: 0, j: Date.now() }] }),
-    track: () => 'ok', send: () => 'ok',
-  };
-  I.sincronizar();
+  canalDePe(S);
+  S.ids.set('T-u2~zz', { id: 'u2', nome: 'Ana', avatar: null, plano: 'full' });
+  I.aoBatimento(batimento('u2~zz'));
   assert.match(entrada.title || '', /^Sala de voz ao vivo — /);
   assert.match(rotulo || '', /você está na sala/, 'o aria-label carrega o estado, não um rótulo fixo');
 });
@@ -532,13 +791,13 @@ test('link interno pergunta ANTES de navegar, no painel (não no confirm())', ()
 test('confirmar sai da sala DIREITO e só então navega', () => {
   const { SV, S, I, document, ctx } = carregarSala();
   registrarConfirmacao(document);
-  let untrack = 0; let micParado = 0;
+  let micParado = 0;
   entrarNaSala(S, I);
-  S.canal = { untrack: () => { untrack++; }, presenceState: () => ({}), send: () => 'ok' };
+  const c = canalDePe(S);
   S.stream = { getTracks: () => [{ stop: () => { micParado++; } }], getAudioTracks: () => [] };
   I.abrirConfirmacaoNavegacao('https://bluetubeviral.com/blue');
   SV.sair('');                       // é o que o botão de confirmar chama
-  assert.equal(untrack, 1, 'sem untrack a pessoa vira fantasma na sala que deixou');
+  assert.equal(c.eventos('tchau').length, 1, "sem 'tchau' a pessoa vira fantasma na sala que deixou");
   assert.equal(micParado, 1, 'o microfone tem que ser solto antes da página trocar');
   assert.equal(S.entrei, false);
   assert.equal(ctx.window.location.href, 'https://bluetubeviral.com/blue', 'e aí sim navega');
@@ -560,11 +819,10 @@ test('desistir da pergunta esquece o link (não navega depois, do nada)', () => 
 
 test('sem a caixa de pergunta, navegar não trava — só sai da sala e vai', () => {
   const { S, I, ctx } = carregarSala();   // de propósito: NADA registrado
-  let untrack = 0;
   entrarNaSala(S, I);
-  S.canal = { untrack: () => { untrack++; }, presenceState: () => ({}), send: () => 'ok' };
+  const c = canalDePe(S);
   I.abrirConfirmacaoNavegacao('https://bluetubeviral.com/blue');
-  assert.equal(untrack, 1, 'saiu da sala direito mesmo sem ter onde perguntar');
+  assert.equal(c.eventos('tchau').length, 1, 'saiu da sala direito mesmo sem ter onde perguntar');
   assert.equal(S.entrei, false);
   assert.equal(ctx.window.location.href, 'https://bluetubeviral.com/blue',
     'uma página que não deixa a pessoa sair seria pior que o defeito original');

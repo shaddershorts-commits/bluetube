@@ -4,10 +4,21 @@
 // Realtime broadcast, aparelho↔aparelho, exatamente como já acontece nas
 // chamadas 1:1 do app (bluetube-app/src/screens/CallScreen.js) — padrão já
 // validado em produção. Aqui não tem banco, não tem tabela, não tem estado:
-// quem está na sala é a PRESENCE do Realtime, que morre junto com o socket.
-// Sala vazia = zero linhas em qualquer lugar. Foi de propósito: o campo
-// `participantes jsonb` do blue_calls está lá desde 2026-07 e nunca ninguém
-// leu — tabela que ninguém consulta é dívida, não é feature.
+// quem está na sala é o BATIMENTO periódico que cada navegador emite por
+// broadcast (ver public/sala-voz.js, bloco "presença por batimento"), e ele
+// morre junto com a aba. Sala vazia = zero linhas em qualquer lugar. Foi de
+// propósito: o campo `participantes jsonb` do blue_calls está lá desde 2026-07
+// e nunca ninguém leu — tabela que ninguém consulta é dívida, não é feature.
+//
+// ⚠️ Por que batimento e não a PRESENCE do Realtime, que seria o caminho óbvio:
+// ela não entrega evento nenhum neste projeto. Medido em 11/08 com dois
+// clientes reais do @supabase/supabase-js, anon+JWT do usuário e service key:
+// os dois ficam SUBSCRIBED, o track() devolve 'ok' e nem 'sync' nem 'join'
+// chegam — nem entre dois clientes no mesmo canal. Broadcast entrega nos dois
+// casos. Em produção isso apareceu como duas pessoas na mesma sala, cada uma
+// vendo só a si mesma. Este endpoint não muda por causa disso (ele nunca soube
+// quem estava na sala), mas quem mexer aqui precisa saber por que a presence
+// não é uma opção antes de "simplificar" o front.
 //
 // O que este endpoint FAZ, e é o motivo dele existir:
 //
@@ -179,9 +190,16 @@ module.exports = async function handler(req, res) {
 
     // ── VERIFICAR: quem é o dono destes tickets? ────────────────────────────
     // Em lote de propósito: numa sala de 10, cada entrada resolveria 9 tickets.
-    // Uma chamada por sincronização em vez de nove.
+    // Uma chamada por censo em vez de nove.
+    //
+    // A folga (+6) ESPELHA o teto da lista do front (tetoLista() = MAX + 6):
+    // ele guarda alguns registros além do limite pra que ticket vencido/forjado
+    // apareça MARCADO como não verificado em vez de sumir sem explicação. Se
+    // este corte fosse menor que o de lá, os tickets do fim da fila voltariam
+    // nem em `pessoas` nem em `invalidos` — e o front, sem sinal de recusa,
+    // perguntaria por eles pra sempre.
     if (action === 'verificar') {
-      const lista = Array.isArray(b.tickets) ? b.tickets.slice(0, MAX_PESSOAS + 4) : [];
+      const lista = Array.isArray(b.tickets) ? b.tickets.slice(0, MAX_PESSOAS + 6) : [];
       const pessoas = {};
       // `invalidos` é explícito de propósito: antes o front tinha que DEDUZIR
       // a recusa pela ausência na resposta, e ausência também é o que acontece

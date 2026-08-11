@@ -14,17 +14,22 @@
  *    barra de abas some no desktop (≥900px) e a lateral some no mobile. Uma
  *    âncora só deixaria metade dos aparelhos sem a sala.
  *
- * 3) Quem está na sala é a PRESENCE do Realtime, não uma tabela. Fechou a aba,
- *    caiu o socket, sumiu da sala — sem cron de faxina, sem contador fantasma.
- *    O untrack() imediato só sai quando a saída é CONFIRMADA (beforeunload);
- *    'pagehide' sozinho não vale, porque o iPhone dispara ele ao apagar a tela
- *    e ninguém pode ser expulso da conversa por bloquear o celular. Nos casos
- *    ambíguos quem limpa é o timeout do socket — o cinto de segurança.
+ * 3) Quem está na sala é o BATIMENTO por broadcast, não a presence do Realtime
+ *    e não uma tabela. A presence foi medida em 11/08 com dois clientes reais
+ *    (anon+JWT do usuário e service key) contra ESTE projeto: os dois ficam
+ *    SUBSCRIBED, o track() devolve 'ok' e NENHUM evento 'sync'/'join'/'leave'
+ *    chega — nem entre dois clientes no mesmo canal. Broadcast entrega
+ *    normalmente nos dois casos. Em produção isso apareceu assim: o dono entrou
+ *    pelo celular e pelo computador e cada aparelho viu uma sala só com ele.
+ *    Então a lista de quem está na sala é montada localmente a partir dos
+ *    batimentos que chegam (ver o bloco "presença por batimento"). Fechou a
+ *    aba, o 'tchau' avisa na hora; caiu a rede, a ausência sustentada resolve.
  *
  * 4) O contador aparece ANTES de entrar porque a gente assina o canal em modo
- *    OBSERVADOR: subscribe sem track(). Quem só observa recebe os eventos de
- *    presença mas não aparece pra ninguém — e, principalmente, não pede
- *    microfone. Permissão de mic só depois que a pessoa confirma no modal.
+ *    OBSERVADOR: subscribe sem bater. Quem só observa RECEBE batimento e pede
+ *    censo, mas não emite batimento nenhum — não aparece pra ninguém e,
+ *    principalmente, não pede microfone. Permissão de mic só depois que a
+ *    pessoa confirma no modal.
  *
  * 5) Identidade NUNCA vem do payload do outro navegador. Canal broadcast é
  *    aberto: dá pra forjar. Cada participante anuncia só um TICKET assinado
@@ -73,9 +78,44 @@
   var MAX_OPAS = 6;
   // Uma reconstrução/cutucada por par a cada 12s, no máximo.
   var THROTTLE_PAR = 12000;
-  // Sumiu da presence? Espera antes de matar o peer — reconexão de socket
-  // devolve presence vazia por um instante (ver mesh()).
+  // Sumiu da lista? Espera antes de matar o peer — segunda camada, porque a
+  // saída da lista já exige ausência sustentada ou 'tchau' (ver mesh()).
   var CARENCIA_SUMICO = 10000;
+
+  // ── os números da presença por batimento ──────────────────────────────────
+  // São ELES que decidem se a sala mente. Contas feitas pra sala cheia (10):
+  //
+  // BATIMENTO 4s — cada pessoa emite 1 mensagem a cada 4s. Sala cheia = 10
+  //   mensagens a cada 4s no canal (2,5 msg/s) e cada aparelho RECEBE as 9 dos
+  //   outros por ciclo (~2,25 msg/s, algumas centenas de bytes cada: ~1 KB/s).
+  //   Cabe folgado no eventsPerSecond:30 configurado no cliente e não chega
+  //   perto de tempestade. Baixar pra 1s quadruplicaria isso sem ganhar nada:
+  //   a saída limpa já é instantânea pelo 'tchau'.
+  var BATIMENTO_MS = 4000;
+  // EXPIRA 14s = 3,5 batimentos. Broadcast é fire-and-forget: TRÊS batimentos
+  //   seguidos podem se perder sem derrubar ninguém — só a ausência SUSTENTADA
+  //   tira da lista. Com 8s (2 batimentos) um engasgo de Wi-Fi expulsaria quem
+  //   está falando; com 30s o notebook fechado ficaria meio minuto de fantasma.
+  var EXPIRA_MS = 14000;
+  // Tela bloqueada é o caso em que o prazo normal seria uma armadilha: aparelho
+  //   congelado não roda setInterval, e o Chrome afrouxa timer de aba de fundo
+  //   pra 1 por MINUTO. Quem vai congelar avisa (z:1) no último batimento e
+  //   ganha 100s — mais que a batida de 1/min da aba de fundo, e ainda assim
+  //   um prazo, não uma licença eterna de fantasma.
+  var EXPIRA_DORMINDO_MS = 100000;
+  // Janela do censo: o tempo que a gente dá pras respostas do "quem está aí?"
+  //   chegarem. Jitter (até 400ms) + ida e volta do socket cabem com folga em
+  //   1,5s, e é o que a pessoa espera ao clicar em Entrar — o antigo portão
+  //   esperava até 3,5s por um evento que nunca vinha.
+  var JANELA_CENSO = 1500;
+  // Nove respostas no mesmo milissegundo são uma tempestade: cada um responde
+  //   com um atraso aleatório curto e, se já respondeu há menos de 1,5s, não
+  //   responde de novo (aquele batimento acabou de dizer a mesma coisa).
+  var JITTER_OI = 400;
+  var THROTTLE_OI = 1500;
+  // Chegada não faz "blim" durante o censo de entrada: quem já estava na sala
+  //   não acabou de chegar.
+  var SILENCIO_CENSO = 2600;
   // 'disconnected' costuma voltar sozinho. Espera antes de mexer.
   var ESPERA_DISCONNECTED = 6000;
   // Os dois textos da MESMA caixa de confirmação (ver montarDock).
@@ -93,14 +133,14 @@
   // ── estado ────────────────────────────────────────────────────────────────
   var S = {
     cfg: null, sb: null, canal: null, sub: 'off',   // off | ligando | on | erro
-    sessao: null,          // chave desta ABA na presence (userId~aleatorio)
+    sessao: null,          // chave desta ABA na sala (userId~aleatorio)
     entrei: false, mudo: false, entrando: false, dormindo: false,
     stream: null,
     entrouEm: 0,           // hora de entrada IMUTÁVEL enquanto a pessoa está na sala
     suspenso: false,       // aba congelada (tela do celular apagada) — NÃO é sair
     saindoDeVerdade: false,// beforeunload avisou que é navegação/fechamento real
     peers: new Map(),      // chave -> { pc, audio, g, desde, tDesc }
-    presentes: new Map(),  // chave -> { ticket, mudo, entrou }
+    presentes: new Map(),  // chave -> { ticket, mudo, entrou, visto, suspenso }
     ids: new Map(),        // ticket -> { id, nome, avatar, plano }  (verificado)
     ruins: new Map(),      // ticket -> quando falhou (não fica batendo na API)
     ofertasPend: new Map(),// offer que chegou antes da identidade
@@ -116,17 +156,19 @@
     audioCtx: null, medidores: new Map(), timerFala: null, falando: new Set(),
     tIdle: null, tVigia: null, tTicket: null,
     promessaConfig: null, promessaConexao: null, resolvendo: false,
-    sincronizou: false, aguardandoSync: [],
-    // Primeira sincronização depois de entrar não toca som: quem já estava na
-    // sala não "acabou de chegar", e sem isto entrar numa sala com 6 pessoas
-    // dispara 6 bipes de uma vez.
-    silenciarDiff: true,
-    // O ESTADO DO SERVIDOR me incluía na última sincronização? É diferente de
-    // "eu estou em S.presentes": desde o conserto do "0 pessoas", eu me insiro
-    // na lista local sempre, então S.presentes.has(S.sessao) virou constante e
-    // parou de servir como sinal. Quem poda o mesh precisa do sinal ORIGINAL
-    // (ver mesh()). Começa false = na dúvida, não poda ninguém.
-    euNoServidor: false,
+    // ── presença por batimento ──
+    tBat: null,            // timer que bate e varre a lista
+    tOi: null,             // resposta ao censo, agendada com jitter
+    ultimaResposta: 0,     // quando respondi um censo pela última vez
+    canalPronto: [],       // quem espera o SUBSCRIBED
+    // Até quando a lista está em QUARENTENA: ninguém expira enquanto um censo
+    // está em curso (entrada, reconexão, volta da tela bloqueada). Sem isto,
+    // voltar de 5min com a tela apagada apagaria a sala inteira antes de o
+    // primeiro batimento novo chegar.
+    censoAte: 0,
+    // Censo de entrada não toca "blim": quem já estava na sala não acabou de
+    // chegar, e sem isto entrar numa sala com 6 pessoas dispararia 6 bipes.
+    silenciarAte: 0,
   };
 
   // ── utilidades ────────────────────────────────────────────────────────────
@@ -385,44 +427,41 @@
           realtime: { params: { eventsPerSecond: 30 } },
         });
       }
-      // Chave da presence = usuário + aleatório. Se fosse só o user_id, duas
+      // Chave desta aba = usuário + aleatório. Se fosse só o user_id, duas
       // abas da mesma pessoa colidiriam e a sinalização iria pro lugar errado.
       if (!S.sessao) S.sessao = cfg.me.id + '~' + Math.random().toString(36).slice(2, 8);
 
-      var ch = S.sb.channel(cfg.canal, {
-        config: { broadcast: { self: false }, presence: { key: S.sessao } },
-      });
-      ch.on('presence', { event: 'sync' }, sincronizar);
+      // Sem `presence` na config de propósito: ela não entrega evento nenhum
+      // neste projeto (medição no cabeçalho do arquivo). Tudo — inclusive quem
+      // está na sala — anda por broadcast, que entrega.
+      var ch = S.sb.channel(cfg.canal, { config: { broadcast: { self: false } } });
+      ch.on('broadcast', { event: 'bat' }, function (m) { aoBatimento(m.payload); });
+      ch.on('broadcast', { event: 'oi' }, function (m) { aoBatimento(m.payload); });
+      ch.on('broadcast', { event: 'tchau' }, function (m) { aoTchau(m.payload); });
       ch.on('broadcast', { event: 'sdp' }, function (m) { aoSdp(m.payload); });
       ch.on('broadcast', { event: 'ice' }, function (m) { aoIce(m.payload); });
       ch.on('broadcast', { event: 'opa' }, function (m) { aoOpa(m.payload); });
       ch.subscribe(function (status) {
         if (status === 'SUBSCRIBED') {
           S.sub = 'on';
+          S.dormindo = false;
+          // O relógio da varredura só corre com o canal de pé.
+          ligarBatimento();
           // Reconexão: o socket voltou, mas a gente já estava na sala. Re-anuncia
           // presença, senão a pessoa fica ouvindo e ninguém a enxerga.
           // O ticket pode ter vencido enquanto o socket estava fora do ar —
           // por isso passa pelo garantirConfig antes de se anunciar de novo.
+          // Quem só observa também pede o censo: é assim que o contador da
+          // entrada nasce preenchido em vez de esperar 4s pelo próximo ciclo.
           if (S.entrei) garantirConfig().then(function () { anunciar(); });
-          // NÃO chama sincronizar() aqui: logo depois do subscribe o
-          // presenceState ainda vem vazio e isso zerava o contador e (antes da
-          // carência do mesh) matava todos os peers. O evento 'sync' chega
-          // sozinho em seguida, com o estado de verdade.
-          //
-          // MAS: numa sala VAZIA o 'sync' pode nunca chegar — não há estado de
-          // presença pra sincronizar. Como entrar() esperava esse evento antes
-          // de liberar, a PRIMEIRA pessoa nunca conseguia entrar, e a sala
-          // ficava vazia pra sempre (impasse de origem, achado em 11/08).
-          //
-          // Estar SUBSCRIBED já é resposta suficiente: o estado do canal é
-          // autoritativo a partir daqui, e "vazio" é um estado válido. Isso
-          // libera o portão sem chamar sincronizar(), que continua sendo
-          // trabalho do evento 'sync' quando ele existir.
-          if (!S.sincronizou) {
-            S.sincronizou = true;
-            var fila = S.aguardandoSync.splice(0);
-            for (var i = 0; i < fila.length; i++) { try { fila[i](); } catch (e) {} }
-          }
+          else pedirCenso();
+          // A lista fica em quarentena durante a janela do censo: enquanto as
+          // respostas não chegam, ninguém expira. Era aqui que morava o antigo
+          // impasse da sala vazia — o portão esperava um 'sync' que não existe.
+          // Agora não se espera evento nenhum: pergunta-se, e o silêncio ao fim
+          // da janela é uma resposta legítima ("a sala está vazia").
+          var fila = S.canalPronto.splice(0);
+          for (var i = 0; i < fila.length; i++) { try { fila[i](); } catch (e) {} }
         } else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
           S.sub = 'erro'; pintar();
         } else if (status === 'CLOSED') {
@@ -447,7 +486,9 @@
   function limparCanal() {
     try { if (S.sb && S.canal) S.sb.removeChannel(S.canal); } catch (e) {}
     S.canal = null; S.sub = 'off';
-    S.sincronizou = false; S.aguardandoSync.length = 0;
+    S.canalPronto.length = 0;
+    S.censoAte = 0;
+    pararBatimento();
   }
 
   function desconectarObservador() {
@@ -460,24 +501,7 @@
     pintar();
   }
 
-  // Anúncio de presença: SEMPRE por aqui. `j` é a hora de entrada e é
-  // IMUTÁVEL — antes cada track() (inclusive o de mutar) mandava Date.now(),
-  // então quem mutava virava "o mais novo da sala" e era o primeiro escolhido
-  // pelo desempate de sala cheia. Mutar não pode te expulsar.
-  function anunciar() {
-    if (!S.canal || !S.cfg || !S.cfg.ticket) return Promise.resolve(false);
-    if (!S.entrouEm) S.entrouEm = Date.now();
-    registrarMinhaIdentidade();
-    var r;
-    try {
-      r = S.canal.track({ t: S.cfg.ticket, m: S.mudo ? 1 : 0, j: S.entrouEm });
-    } catch (e) { return Promise.resolve(false); }
-    // track() NÃO rejeita: devolve 'ok' | 'timed out' | 'error'. Por isso o
-    // catch sozinho era código morto (dava pra "entrar" sem estar na presence).
-    return Promise.resolve(r).then(function (res) { return res === 'ok'; }, function () { return false; });
-  }
-
-  // send() também devolve status em vez de rejeitar. O resultado era jogado
+  // send() devolve status em vez de rejeitar. O resultado era jogado
   // fora: broadcast é fire-and-forget e um pacote perdido deixava os dois
   // lados calados. Agora dá pra saber e reenviar.
   function enviar(evento, payload) {
@@ -501,7 +525,26 @@
     })();
   }
 
-  // ── presença ──────────────────────────────────────────────────────────────
+  // ── presença por batimento ────────────────────────────────────────────────
+  // A presence do Realtime NÃO funciona neste projeto (medição no cabeçalho:
+  // SUBSCRIBED sim, track() 'ok' sim, evento 'sync'/'join'/'leave' nunca). Como
+  // broadcast entrega — é ele que carrega toda a sinalização de áudio há
+  // semanas —, a lista de quem está na sala passa a ser montada AQUI, de três
+  // mensagens:
+  //
+  //   'oi'    "cheguei / quem está aí?" — é um batimento com um pedido junto.
+  //           Quem recebe já me põe na lista E responde na hora com o batimento
+  //           dele, pra quem entrou não esperar um ciclo inteiro pra ver a sala.
+  //   'bat'   batimento periódico: "continuo aqui, mudo assim, entrei tal hora".
+  //   'tchau' saída explícita: some da lista na hora, sem esperar prazo nenhum.
+  //
+  // Quem para de bater sai por AUSÊNCIA SUSTENTADA (EXPIRA_MS), nunca por um
+  // batimento perdido — broadcast é fire-and-forget e perder pacote é normal.
+  //
+  // Sobre confiança: o payload é forjável (canal aberto), exatamente como o da
+  // presence era. Nada muda na defesa — nome, foto e plano continuam vindo do
+  // /api/sala-voz?action=verificar sobre o TICKET assinado, e sem ticket
+  // verificado ninguém entra no mesh nem é contado como pessoa.
 
   // Meu próprio registro na sala. Não depende de nada que venha da rede: o
   // ticket é o meu (assinado pelo servidor pra mim), o mudo é o meu botão e a
@@ -511,30 +554,219 @@
       ticket: (S.cfg && S.cfg.ticket) || '',
       mudo: !!S.mudo,
       entrou: S.entrouEm || Date.now(),
+      visto: Date.now(),
+      suspenso: !!S.suspenso,
     };
   }
 
-  // ⚠️ BUG DE PRODUÇÃO (11/08): o dono entrou na sala e o painel mostrou
-  // "0 pessoas · 1 falando", sem card nenhum — nem o dele.
+  // O que eu mando na rede. `j` é a hora de entrada e é IMUTÁVEL enquanto eu
+  // estiver na sala — antes cada track() (inclusive o de mutar) mandava
+  // Date.now(), então quem mutava virava "o mais novo da sala" e era o primeiro
+  // escolhido pelo desempate de sala cheia. Mutar não pode te expulsar.
+  function meuBatimento(pedirResposta) {
+    return {
+      k: S.sessao,
+      t: (S.cfg && S.cfg.ticket) || '',
+      m: S.mudo ? 1 : 0,
+      j: S.entrouEm || Date.now(),
+      z: S.suspenso ? 1 : 0,       // tela bloqueada: me dê o prazo longo
+      novo: pedirResposta ? 1 : 0, // responda AGORA, não no próximo ciclo
+    };
+  }
+
+  // Teto da lista. Broadcast é aberto: sem isto, alguém despejando chaves
+  // inventadas encheria a memória do navegador de todo mundo. Fantasma não
+  // conta como pessoa (contarPresentes ignora), mas ocupa lugar aqui — a folga
+  // existe pra ele APARECER marcado, não pra ser ilimitado.
+  function tetoLista() { return MAX + 6; }
+
+  // Batimento é só de quem está NA sala. Observador escuta e pede censo, mas
+  // não bate: ele não está na conversa e não pode aparecer pra ninguém.
+  function bater() {
+    if (!S.entrei || !S.canal || !S.sessao) return Promise.resolve(false);
+    return enviar('bat', meuBatimento(false));
+  }
+
+  // "Quem está aí?" — e, se eu estiver na sala, o pedido vai junto com o meu
+  // próprio batimento (o "cheguei"). Enquanto a janela de respostas corre, a
+  // lista fica em quarentena: ninguém expira antes de ter tido a chance de
+  // responder. É o que impede a volta de uma tela bloqueada de apagar a sala.
+  function pedirCenso() {
+    if (!S.canal) return Promise.resolve(false);
+    S.censoAte = Date.now() + JANELA_CENSO;
+    if (S.entrei && S.cfg && S.cfg.ticket && S.sessao) return enviar('oi', meuBatimento(true));
+    return enviar('oi', { k: '', novo: 1 });   // observador: só pergunta
+  }
+
+  // Anúncio de entrada/re-entrada: SEMPRE por aqui. Serve pra entrar, pra
+  // reassinar depois de queda de socket, pra voltar da tela bloqueada e pra
+  // re-anunciar com ticket renovado.
+  function anunciar() {
+    if (!S.canal || !S.cfg || !S.cfg.ticket || !S.sessao) return Promise.resolve(false);
+    if (!S.entrouEm) S.entrouEm = Date.now();
+    registrarMinhaIdentidade();
+    garantirEuNaLista();
+    ligarBatimento();
+    S.censoAte = Date.now() + JANELA_CENSO;
+    return enviar('oi', meuBatimento(true));
+  }
+
+  function ligarBatimento() {
+    if (S.tBat) return;
+    S.tBat = setInterval(function () {
+      bater();     // só sai se eu estiver na sala
+      varrer();    // observador também varre: o contador da entrada é dele
+      // Nova tentativa de identificar quem ainda está como "…". Antes quem
+      // repetia isso era o 'sync', que chegava a toda hora; com batimento, uma
+      // falha de rede no `verificar` deixaria a pessoa sem nome pra sempre (e,
+      // sem identidade, ninguém abre áudio com ela). O próprio resolver já sai
+      // na hora quando não falta ninguém, então isto não custa chamada.
+      resolverIdentidades();
+    }, BATIMENTO_MS);
+  }
+
+  function pararBatimento() {
+    if (S.tBat) { clearInterval(S.tBat); S.tBat = null; }
+    if (S.tOi) { clearTimeout(S.tOi); S.tOi = null; }
+  }
+
+  // Chegou batimento (de 'bat' ou de 'oi'). Um caminho só pros dois: 'oi' é um
+  // batimento com pedido de resposta, e tratar diferente seria abrir espaço pra
+  // divergirem.
+  function aoBatimento(p) {
+    if (!p || typeof p !== 'object') return;
+    var agora = Date.now();
+    var k = typeof p.k === 'string' ? p.k : '';
+    // Chave vazia = observador só perguntando quem está aí (não entra na lista).
+    // Chave igual à minha = ruído ou tentativa de me reescrever: o meu registro
+    // é local e não se negocia (eu sempre me vejo).
+    if (k && k !== S.sessao && k.length <= 80 && typeof p.t === 'string' && p.t && p.t.length <= 1200) {
+      var antes = S.presentes.get(k);
+      if (antes || S.presentes.size < tetoLista()) {
+        var reg = {
+          ticket: String(p.t),
+          mudo: !!p.m,
+          // A hora de entrada é a do PRIMEIRO batimento que a gente viu daquela
+          // chave e não muda mais. O dono já a mantém imutável (mutar manda
+          // batimento e não pode promover ninguém a recém-chegado, que é
+          // justamente quem o desempate de sala cheia expulsa) — aqui a gente
+          // não depende disso: quem sai e volta ganha chave nova, então chave
+          // com hora nova seria mensagem torta, não entrada nova.
+          entrou: (antes && antes.entrou) || Number(p.j) || agora,
+          visto: agora,
+          suspenso: !!p.z,
+        };
+        S.presentes.set(k, reg);
+        if (!antes) chegou(k);
+        else if (antes.mudo !== reg.mudo || antes.ticket !== reg.ticket) {
+          if (antes.ticket !== reg.ticket) resolverIdentidades();
+          pintar();
+        }
+      }
+    }
+    if (p.novo) responderCenso();
+  }
+
+  // Alguém entrou (ou voltou) e pediu o censo. Responder é obrigatório — sem
+  // isso quem entra espera até um ciclo inteiro pra ver a sala. Mas 9 respostas
+  // no mesmo milissegundo são uma tempestade: cada um responde com um atraso
+  // aleatório curto e quem já respondeu há menos de THROTTLE_OI não responde de
+  // novo (aquele batimento acabou de contar a mesma coisa pra todo mundo).
+  function responderCenso() {
+    if (!S.entrei || !S.canal || S.tOi) return;
+    var agora = Date.now();
+    if (agora - S.ultimaResposta < THROTTLE_OI) return;
+    S.ultimaResposta = agora;
+    S.tOi = setTimeout(function () { S.tOi = null; bater(); }, Math.floor(Math.random() * JITTER_OI));
+  }
+
+  function aoTchau(p) {
+    var k = p && typeof p.k === 'string' ? p.k : '';
+    if (!k || k === S.sessao || !S.presentes.has(k)) return;
+    tirarDaLista(k);
+  }
+
+  function chegou(chave) {
+    resolverIdentidades();
+    if (S.entrei) {
+      if (Date.now() > S.silenciarAte) som('entrou');
+      checarLotacao();
+      mesh();
+    }
+    pintar();
+  }
+
+  function tirarDaLista(chave) {
+    var pres = S.presentes.get(chave);
+    S.presentes.delete(chave);
+    destruirPeer(chave);
+    esquecerPar(chave);
+    if (S.entrei && Date.now() > S.silenciarAte && !fantasma(pres, chave)) som('saiu');
+    pintar();
+  }
+
+  // A varredura é o único jeito de alguém sair sem avisar. Ela é conservadora
+  // de propósito: com o canal fora do ar a lista CONGELA (um socket caído não é
+  // prova de que a sala esvaziou), e durante um censo ninguém expira.
+  function varrer() {
+    if (S.sub !== 'on') return;
+    var agora = Date.now();
+    if (agora < S.censoAte) return;
+    Array.from(S.presentes.keys()).forEach(function (k) {
+      if (k === S.sessao) return;               // eu não expiro de mim mesmo
+      var p = S.presentes.get(k);
+      if (!p) return;
+      var prazo = p.suspenso ? EXPIRA_DORMINDO_MS : EXPIRA_MS;
+      if (agora - (p.visto || 0) < prazo) return;
+      tirarDaLista(k);
+    });
+  }
+
+  // Espera o canal ficar de pé (não é "esperar evento de presença": é esperar
+  // o socket). Devolve false no prazo pra quem chamou poder avisar em vez de
+  // travar a interface.
+  function esperarCanal(ms) {
+    if (S.sub === 'on') return Promise.resolve(true);
+    return new Promise(function (res) {
+      var t = setTimeout(function () { res(S.sub === 'on'); }, ms || 4000);
+      S.canalPronto.push(function () { clearTimeout(t); res(true); });
+    });
+  }
+
+  // CENSO: pergunta quem está na sala e escuta a janela de respostas. É o
+  // substituto honesto do antigo primeiro 'sync' — e o único jeito de os
+  // portões da entrada (sala cheia / você já está em outra aba) decidirem em
+  // cima de dados de verdade. Silêncio ao fim da janela é resposta válida: a
+  // sala está vazia mesmo.
+  function censar(ms) {
+    var janela = ms || JANELA_CENSO;
+    return esperarCanal(4000).then(function (ok) {
+      if (!ok) return false;
+      pedirCenso();
+      return new Promise(function (res) { setTimeout(function () { res(true); }, janela); });
+    });
+  }
+
+  // A lista só autoriza PODA de peers quando ela é confiável: canal de pé e
+  // fora da janela de censo. Congelada (socket caído, censo em curso) ela não é
+  // prova de que alguém saiu — podar ali derrubaria o áudio de quem ficou.
+  function listaConfiavel() { return S.sub === 'on' && Date.now() >= S.censoAte; }
+
+  // Minha presença eu conheço sem perguntar: o ticket é o que o servidor
+  // assinou pra mim, o mudo é o meu botão e a hora de entrada é a que eu marquei
+  // em entrar(). Ninguém da rede escreve neste registro — nem um batimento com
+  // a minha chave (aoBatimento ignora k === S.sessao).
   //
-  // Causa: quem preenchia S.presentes era SÓ o evento 'presence sync' do
-  // Realtime. Na sala vazia esse evento não chega (não existe diferença de
-  // estado pra sincronizar — é o mesmo impasse já anotado no subscribe, lá
-  // resolvido só pro portão de entrada). Resultado: a pessoa fazia track(),
-  // entrava de verdade, mas o mapa local continuava vazio pra sempre. Zero
-  // cards, zero na contagem — e o medidor de fala, que roda em cima do
-  // microfone e não da presence, dizia "1 falando".
-  //
-  // Conserto: minha presença eu conheço sem perguntar. Registro localmente e
-  // deixo o 'sync' só confirmar/atualizar quando (e se) chegar. Regra do
-  // pedido: a pessoa SEMPRE se vê e SEMPRE é contada.
+  // Isto nasceu do bug "0 pessoas · 1 falando" (11/08), quando a lista dependia
+  // do 'sync' do Realtime pra existir. Hoje a lista inteira é local, mas a regra
+  // continua sendo o alicerce: a pessoa SEMPRE se vê e SEMPRE é contada.
   function garantirEuNaLista() {
     if (!S.entrei || !S.sessao) return false;
     var atual = S.presentes.get(S.sessao);
     var novo = euPresenca();
-    if (atual && atual.ticket === novo.ticket && atual.mudo === novo.mudo && atual.entrou === novo.entrou) return false;
+    var igual = !!(atual && atual.ticket === novo.ticket && atual.mudo === novo.mudo && atual.entrou === novo.entrou);
     S.presentes.set(S.sessao, novo);
-    return true;
+    return !igual;
   }
 
   // Minha identidade também já está comigo: veio assinada em
@@ -552,81 +784,6 @@
     });
     S.ruins.delete(S.cfg.ticket);
     return true;
-  }
-
-  function sincronizar() {
-    if (!S.canal) return;
-    var st = {};
-    try { st = S.canal.presenceState() || {}; } catch (e) { return; }
-    var novos = new Map();
-    Object.keys(st).forEach(function (k) {
-      var m = (st[k] || [])[0];
-      if (!m || !m.t) return;
-      novos.set(k, { ticket: String(m.t), mudo: !!m.m, entrou: Number(m.j) || 0 });
-    });
-    // ⚠️ Lido AQUI, antes de qualquer remendo local. Depois do garantirEuNaLista()
-    // esta pergunta não tem mais resposta honesta — eu sempre estarei lá.
-    var euNoEstado = novos.has(S.sessao);
-    if (S.entrei && !euNoEstado) {
-      // Estou na sala e o estado não me inclui. Vazio = estado ainda não
-      // chegou (acontece a cada reconexão de socket): ignora o estado, senão o
-      // mesh começa a derrubar áudio de gente que não saiu. Mas AINDA ASSIM me
-      // garanto na lista — o contador não pode zerar quem está com o microfone
-      // aberto (era exatamente o "0 pessoas").
-      if (!novos.size) { S.euNoServidor = false; if (garantirEuNaLista()) pintar(); return; }
-      // Não-vazio sem mim = meu track sumiu de verdade (socket caiu e voltou).
-      anunciar();
-    }
-    S.euNoServidor = euNoEstado;
-    var antes = S.presentes;
-    S.presentes = novos;
-    garantirEuNaLista();
-    S.dormindo = false;
-    anunciarChegadasESaidas(antes);
-    marcarSincronizado();
-    resolverIdentidades();
-    pintar();
-    if (S.entrei) { checarLotacao(); mesh(); }
-  }
-
-  // Som de sala viva: alguém chegou / alguém saiu. Só dentro da sala — quem
-  // está só olhando a entrada da Comunidade não pode ouvir bipe de uma sala em
-  // que não entrou. O teto anti-rajada mora no som-notificacao.js, mas aqui
-  // também vale só UM bipe por sincronização: 4 pessoas entrando no mesmo
-  // 'sync' é um evento ("chegou gente"), não quatro.
-  function anunciarChegadasESaidas(antes) {
-    if (!S.entrei) { S.silenciarDiff = true; return; }
-    if (S.silenciarDiff) { S.silenciarDiff = false; return; }
-    var entrou = false, saiu = false;
-    S.presentes.forEach(function (p, k) {
-      if (k === S.sessao || antes.has(k)) return;
-      if (!fantasma(p, k)) entrou = true;
-    });
-    antes.forEach(function (p, k) {
-      if (k === S.sessao || S.presentes.has(k)) return;
-      if (!fantasma(p, k)) saiu = true;
-    });
-    if (entrou) som('entrou');
-    if (saiu) som('saiu');
-  }
-
-  function marcarSincronizado() {
-    S.sincronizou = true;
-    var fila = S.aguardandoSync.slice();
-    S.aguardandoSync.length = 0;
-    fila.forEach(function (f) { try { f(); } catch (e) {} });
-  }
-
-  // Espera o primeiro 'sync' antes de decidir qualquer coisa que dependa de
-  // quem está na sala. Os dois portões da entrada (sala cheia / você já está
-  // em outra aba) rodavam contra uma presence ainda VAZIA: davam sempre
-  // "pode entrar", e o limite só era descoberto depois, expulsando alguém.
-  function presencaPronta(ms) {
-    if (S.sincronizou) return Promise.resolve(true);
-    return new Promise(function (res) {
-      var t = setTimeout(function () { res(false); }, ms || 3500);
-      S.aguardandoSync.push(function () { clearTimeout(t); res(true); });
-    });
   }
 
   // Ticket que o servidor recusou (vencido ou forjado). Não é participante:
@@ -664,7 +821,9 @@
   }
 
   // Resolve no servidor quem é dono de cada ticket. Em lote: numa sala de 10
-  // seriam 9 chamadas por sincronização; assim é uma só.
+  // seriam 9 chamadas por censo; assim é uma só. Chegada nova cai aqui uma vez
+  // e o resultado fica em S.ids — batimento repetido do mesmo ticket não gera
+  // chamada nenhuma.
   function resolverIdentidades() {
     if (S.resolvendo) return;
     var agora = Date.now();
@@ -672,7 +831,7 @@
     S.presentes.forEach(function (p) {
       if (!p.ticket || S.ids.has(p.ticket)) return;
       // Ticket que já voltou inválido (vencido/forjado) espera 60s pra ser
-      // perguntado de novo — senão vira uma chamada por sincronização, pra
+      // perguntado de novo — senão vira uma chamada por batimento dele, pra
       // sempre, por causa de um único participante estranho.
       var falhou = S.ruins.get(p.ticket);
       if (falhou && agora - falhou < 60000) return;
@@ -702,11 +861,20 @@
   // Sala cheia com corrida: todo mundo ordena igual (entrou, depois chave) e
   // quem ficou além do teto se retira sozinho. Sem isso, dois entrando no mesmo
   // segundo furariam o limite — e o certo é recusar, nunca deixar entrar e travar.
+  //
+  // A AUTO-EXPULSÃO só conta gente VERIFICADA (mais eu, sempre). É a única
+  // decisão desta tela que tira alguém da conversa, e com presença por
+  // broadcast qualquer um pode despejar batimentos com tickets desconhecidos:
+  // sem este filtro, encher o canal de lixo empurraria pessoas de verdade pra
+  // fora da sala. O contador e o portão de entrada seguem contando os não
+  // verificados de propósito — lá o erro seguro é NÃO entrar; aqui é FICAR.
   function checarLotacao() {
-    if (!S.entrei || contarPresentes() <= MAX) return;
-    var ordem = Array.from(S.presentes.entries()).filter(function (e) {
-      return !fantasma(e[1], e[0]);
-    }).sort(function (a, b) {
+    if (!S.entrei) return;
+    var confirmados = Array.from(S.presentes.entries()).filter(function (e) {
+      return e[0] === S.sessao || (!fantasma(e[1], e[0]) && S.ids.has(e[1].ticket));
+    });
+    if (confirmados.length <= MAX) return;
+    var ordem = confirmados.sort(function (a, b) {
       return (a[1].entrou - b[1].entrou) || (a[0] < b[0] ? -1 : 1);
     }).map(function (e) { return e[0]; });
     if (ordem.indexOf(S.sessao) >= MAX) {
@@ -734,15 +902,12 @@
       if (pres && S.ids.get(pres.ticket)) { S.ofertasPend.delete(k); aoSdp(m); }
       else if (!pres) S.ofertasPend.delete(k);
     });
-    // Quem saiu da presença sai do mesh — mas COM CARÊNCIA. Toda reconexão de
-    // socket entrega presence vazia por um instante; sem carência isso
-    // derrubava o áudio de TODO MUNDO a cada oscilação de rede, e a
-    // reconstrução seguinte zerava os contadores de tentativa.
-    // O sinal é "o SERVIDOR me viu", não "eu estou na minha própria lista".
-    // Desde o conserto do "0 pessoas" eu me insiro em S.presentes sempre, então
-    // ler daqui daria confiável=true até durante um socket flap — e a poda
-    // derrubaria o áudio de quem não saiu, exatamente o que a carência evita.
-    var confiavel = S.euNoServidor;
+    // Quem saiu da lista sai do mesh — mas COM CARÊNCIA, e só com a lista
+    // confiável (canal de pé, fora de censo). O caminho normal de saída já
+    // desfaz o peer na hora (tirarDaLista); esta varredura é a segunda camada,
+    // pro par que sumiu por algum caminho que não passou por lá. Sem a guarda
+    // de confiança, uma oscilação de socket derrubaria o áudio de todo mundo.
+    var confiavel = listaConfiavel();
     var agora = Date.now();
     Array.from(S.peers.keys()).forEach(function (k) {
       if (S.presentes.has(k)) { S.sumido.delete(k); return; }
@@ -1213,11 +1378,12 @@
       return;
     }
 
-    // Espera o primeiro 'sync' antes dos portões: sem isso os dois rodavam
-    // contra uma presence vazia e liberavam sempre — o limite só aparecia
-    // depois, expulsando alguém que já tinha entrado.
-    await presencaPronta(3500);
-    if (!S.sincronizou) {
+    // CENSO antes dos portões: sem saber quem está na sala, os dois (sala cheia
+    // e "você já está em outra aba") liberavam sempre, e o limite só aparecia
+    // depois, expulsando alguém que já tinha entrado. Pergunta e escuta — não
+    // espera evento de presença, que neste projeto não chega.
+    var viu = await censar();
+    if (!viu) {
       S.entrando = false;
       erroModal('Não consegui ver quem está na sala agora. Tenta de novo em instantes.');
       pintarModal();
@@ -1266,11 +1432,14 @@
     S.stream.getAudioTracks().forEach(function (t) { t.enabled = !S.mudo; });
     S.entrouEm = Date.now();      // a partir daqui é imutável (ver anunciar())
 
-    // Antes isto era `try { await track() } catch`: como track() devolve
-    // 'error' em vez de rejeitar, o catch era código morto e dava pra "entrar"
-    // na sala sem estar na presence — microfone aberto, ninguém te vendo.
+    // O "cheguei" tem que SAIR pelo socket antes de a gente se considerar
+    // dentro: send() devolve 'ok' | 'timed out' | 'error' e não rejeita.
     // `S.entrei` só vira true DEPOIS do 'ok': enquanto o anúncio não fecha, a
     // gente ainda é observador e não abre áudio com ninguém.
+    // A partir daqui o batimento periódico é quem me mantém na sala dos outros.
+    // A janela de silêncio começa AGORA: as respostas ao meu "cheguei" são a
+    // foto de quem já estava aqui, não uma rajada de chegadas.
+    S.silenciarAte = Date.now() + SILENCIO_CENSO;
     var ok = await anunciar();
     S.entrando = false;
     if (!ok) {
@@ -1281,17 +1450,10 @@
       return;
     }
     S.entrei = true;
-    // Entro na lista AQUI, não quando o Realtime resolver me contar. Era este o
-    // buraco do "0 pessoas · 1 falando": na sala vazia o 'sync' nunca chega e a
-    // pessoa nunca aparecia pra si mesma.
+    // Entro na lista AQUI: a minha presença é local, não depende de nada da
+    // rede me confirmar. Era este o buraco do "0 pessoas · 1 falando".
     registrarMinhaIdentidade();
     garantirEuNaLista();
-    // A próxima sincronização é a foto de quem JÁ estava aqui: não é chegada.
-    S.silenciarDiff = true;
-    // Ainda não houve sync NESTA sessão: o servidor não me confirmou. Sem
-    // zerar, um "confiável" herdado da sessão anterior deixaria o mesh podar
-    // com base num estado que não é mais deste ingresso.
-    S.euNoServidor = false;
     medirLocal();
     ligarVigia();
     ligarRenovacaoTicket();
@@ -1346,38 +1508,35 @@
     var destino = destinoPendente;
     destinoPendente = null;
     if (S.entrei) {
+      // 'tchau' ANTES de qualquer desligamento: é o que faz a pessoa sumir da
+      // sala dos outros na hora, sem ninguém esperar prazo de expiração. Sai
+      // com S.entrei ainda true e com o canal ainda de pé, senão não sai.
+      enviar('tchau', { k: S.sessao });
       S.entrei = false;
       S.entrouEm = 0;
-      try { S.canal && S.canal.untrack(); } catch (e) {}
       Array.from(S.peers.keys()).forEach(destruirPeer);
       S.ofertasPend.clear(); S.iceP.clear();
       pararVigia();
       pararRenovacaoTicket();
       pararMicrofone();
       pararMedidores();
-      // Saí: some da minha própria lista na hora. Se ficasse esperando o
-      // 'sync', a entrada continuaria dizendo "você está na sala".
+      // Saí: some da minha própria lista na hora, senão a entrada continuaria
+      // dizendo "você está na sala".
       S.presentes.delete(S.sessao);
       som('saiu');
-      // A chave de presença MORRE junto com a sessão. Ela era criada uma vez
-      // e reusada pra sempre — então, ao entrar de novo, a pessoa tentava se
-      // anunciar com uma chave que o servidor ainda tinha registrada da vez
-      // anterior, e o track() falhava com "Falhou ao anunciar sua entrada".
-      // Batia com o sintoma: as primeiras entradas passavam, e depois de
-      // algumas idas e vindas parava de funcionar (achado em 11/08).
-      // Zerar aqui faz a próxima entrada nascer com chave nova e limpa.
+      // A chave da sessão MORRE junto com ela: a próxima entrada nasce com
+      // chave nova e limpa, sem herdar nada da conversa anterior.
       S.sessao = null;
       limparCanal();
     }
     S.mudo = false;
     S.suspenso = false;
-    S.silenciarDiff = true;
-    S.euNoServidor = false;
+    S.silenciarAte = 0;
     fecharConfirmacaoSaida();
     fecharDock();
     pintar();
     if (motivo) aviso(motivo);
-    // Só agora, com o untrack feito e o microfone solto, a página troca. Nesta
+    // Só agora, com o 'tchau' enviado e o microfone solto, a página troca. Nesta
     // altura S.entrei já é false, então o beforeunload lá embaixo não pergunta
     // de novo — a pessoa responde UMA vez.
     if (destino) navegarPara(destino);
@@ -1387,22 +1546,23 @@
     if (!S.entrei || !S.stream) return;
     S.mudo = !S.mudo;
     S.stream.getAudioTracks().forEach(function (t) { t.enabled = !S.mudo; });
-    // Avisa os outros pelo próprio presence (é o canal natural do estado).
-    // Vai por anunciar() de propósito: aqui o track() mandava `j: Date.now()`,
-    // ou seja, mutar reescrevia a hora de entrada. Quem mutava virava o mais
-    // recente da sala e era exatamente quem o desempate de sala cheia expulsa.
-    anunciar();
-    if (S.mudo) S.falando.delete(S.sessao);
+    // Avisa os outros por um BATIMENTO, não por um "cheguei": mudar o microfone
+    // não é chegar, e pedir censo por causa de um clique no Mudo faria a sala
+    // inteira responder à toa. O batimento leva o mudo novo e a MESMA hora de
+    // entrada — mutar não pode te promover a recém-chegado (e recém-chegado é
+    // justamente quem o desempate de sala cheia expulsa).
     garantirEuNaLista();   // meu registro local carrega o mudo novo
+    bater();
+    if (S.mudo) S.falando.delete(S.sessao);
     pintar();
   }
 
   // ── despedida x suspensão ─────────────────────────────────────────────────
-  // Saiu de verdade (fechou/navegou): untrack imediato + microfone solto. O
-  // timeout do socket resolveria sozinho, mas demora — e contador fantasma faz
-  // a sala parecer cheia quando está vazia (e vazia quando está cheia).
+  // Saiu de verdade (fechou/navegou): 'tchau' imediato + microfone solto. A
+  // expiração resolveria sozinha em 14s, mas contador fantasma faz a sala
+  // parecer cheia quando está vazia (e vazia quando está cheia).
   function despedir() {
-    try { if (S.entrei && S.canal) S.canal.untrack(); } catch (e) {}
+    try { if (S.entrei && S.canal && S.sessao) enviar('tchau', { k: S.sessao }); } catch (e) {}
     pararMicrofone();
     try { if (S.sb && S.canal) S.sb.removeChannel(S.canal); } catch (e) {}
   }
@@ -1412,10 +1572,19 @@
   // ligado direto nele, bastava a tela apagar (ou o telefone tocar, ou trocar
   // de app) pra pessoa cair da conversa. Numa sala de voz isso é o uso normal:
   // ninguém fica olhando a tela enquanto conversa. Aqui a gente só marca o
-  // estado; nada de untrack, nada de soltar o microfone.
+  // estado; nada de 'tchau', nada de soltar o microfone.
+  //
+  // Com presença por batimento apareceu um dever novo: aparelho congelado não
+  // roda setInterval, então parar de bater seria indistinguível de ter sumido.
+  // O último batimento antes de congelar sai marcado (z:1) e pede aos outros o
+  // prazo longo — é isso que impede a sala de expulsar quem só bloqueou a tela.
+  // 'visibilitychange'/'freeze' disparam ANTES do congelamento, então esta
+  // mensagem ainda pega o socket vivo.
   function suspender() {
     if (S.suspenso) return;
     S.suspenso = true;
+    garantirEuNaLista();
+    bater();
   }
 
   // Voltou (destravou a tela, 'resume', bfcache, troca de aba). O socket pode
@@ -1425,7 +1594,11 @@
   async function retomar() {
     S.suspenso = false;
     if (!S.entrei) {
+      // Observador voltando: o canal pode ter ficado de pé, mas os batimentos
+      // que chegaram com a aba congelada se perderam. Pergunta de novo em vez
+      // de mostrar no contador uma sala de minutos atrás.
       if (!S.canal && S.cfg) conectar();
+      else if (S.canal) pedirCenso();
       pintar();
       return;
     }
@@ -1439,10 +1612,13 @@
       // estaria na lista dos outros sem que ninguém abrisse áudio com ela.
       if (!ticketVivo(0)) { sair('Sua sessão expirou enquanto o aparelho estava bloqueado. Entre na sala de novo.'); return; }
       if (!(await garantirMicrofone())) { sair('O microfone foi liberado enquanto a tela estava apagada. Entre na sala de novo.'); return; }
-      // Re-anúncio que não passou é transitório: quem conserta é o próximo
-      // 'sync' (ele re-anuncia quem não se vê no estado). Derrubar aqui seria
-      // repetir o defeito que este conserto existe pra matar — expulsar quem
-      // só desbloqueou a tela.
+      // Anúncio que não passou é transitório: o próximo batimento (4s) faz o
+      // mesmo trabalho. Derrubar aqui seria repetir o defeito que este conserto
+      // existe pra matar — expulsar quem só desbloqueou a tela.
+      //
+      // O anunciar() também recoloca a lista em quarentena: enquanto a tela
+      // estava apagada nenhum batimento chegou, e sem a janela de censo a
+      // varredura apagaria a sala inteira no primeiro tique depois da volta.
       if (!(await anunciar())) aviso('Reconectando você na sala…');
       pintar();
     } finally { retomando = false; }
@@ -1547,7 +1723,11 @@
     limparErroModal();
     $('svzDlg').classList.add('on');
     pintarModal();
-    conectar();   // se estava dormindo (aba escondida por muito tempo), acorda
+    // conectar(): se estava dormindo (aba escondida por muito tempo), acorda.
+    // pedirCenso(): esta é exatamente a tela em que a sala mentiu — "quem está
+    // lá" tem que ser perguntado na hora da abertura, não herdado do último
+    // ciclo. Custa uma mensagem.
+    Promise.resolve(conectar()).then(function () { pedirCenso(); });
   }
 
   function fecharModal() {
@@ -1681,14 +1861,14 @@
   }
 
   // Clicou num link que sai da página. Mesmo vidro, outra pergunta — e um
-  // destino guardado: quem confirma cai no sair() de sempre (untrack, microfone
+  // destino guardado: quem confirma cai no sair() de sempre ('tchau', microfone
   // solto, dock fechado) e só DEPOIS a página troca.
   function abrirConfirmacaoNavegacao(destino) {
     destinoPendente = destino;
     var c = $('svzConf');
     // Sem painel (dock de um cache antigo) a navegação NÃO pode ficar refém: o
     // pior defeito possível aqui seria uma página que não deixa a pessoa sair.
-    // Vai pelo sair() de sempre, que já sabe navegar no fim — assim o untrack
+    // Vai pelo sair() de sempre, que já sabe navegar no fim — assim o 'tchau'
     // e o microfone acontecem mesmo sem pergunta nenhuma.
     if (!c) { sair(''); return; }
     mostrarConfirmacao(PERGUNTA_NAVEGAR);
@@ -1985,7 +2165,18 @@
       fantasma: fantasma,
       garantirEuNaLista: garantirEuNaLista,
       registrarMinhaIdentidade: registrarMinhaIdentidade,
-      sincronizar: sincronizar,
+      // presença por batimento
+      aoBatimento: aoBatimento,
+      aoTchau: aoTchau,
+      varrer: varrer,
+      bater: bater,
+      pedirCenso: pedirCenso,
+      anunciar: anunciar,
+      pararBatimento: pararBatimento,
+      meuBatimento: meuBatimento,
+      listaConfiavel: listaConfiavel,
+      suspender: suspender,
+      mesh: mesh,
       cardHTML: cardHTML,
       saiDaPagina: saiDaPagina,
       abrirConfirmacaoNavegacao: abrirConfirmacaoNavegacao,
