@@ -2211,8 +2211,13 @@ function igMkCard(v, rank){
   const temViews = medida(v.views_count);
   const temLikes = medida(v.likes_count);
   const fmt = (x) => medido ? igFmtBr(x) : tkFmt(x);
-  // "medido em" só acompanha número que foi REALMENTE medido.
-  const seloMedido = medido ? `<span class="ig-medido"> · medido em ${medido}</span>` : '';
+  // A data de medição saiu do card (decisão do dono, 11/08): são vídeos que
+  // JÁ explodiram, então o número exato de hoje não muda nada — e a data só
+  // chamava atenção pra uma precisão que ninguém precisa aqui.
+  // `medido` continua vivo e é usado logo abaixo: em réplica ele é o sinal de
+  // que 0 significa "não medido" (Reel viral com zero view é dado ausente,
+  // não zero de verdade). Tirar o selo não pode ressuscitar o "▶ 0".
+  const seloMedido = '';
   // Selo do topo da capa: views se houver; senão likes; se não houver nenhuma,
   // o selo não aparece (não inventamos número).
   const seloCapa = temViews ? `▶ ${fmt(v.views_count)}${seloMedido}`

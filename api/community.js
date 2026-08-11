@@ -7,6 +7,7 @@
 // vídeo passa pelo transcode do Railway (faststart + thumb).
 
 const { checkBan } = require('./_helpers/checkBan');
+const AM = require('./_helpers/amizade'); // regras puras das amizades (uma linha por par)
 
 const BLOCKED_WORDS = ['porn','xxx','nude','nudes','onlyfans','xvideos','pornhub','hentai','gore','suicidio'];
 const MIME = {
@@ -82,6 +83,116 @@ module.exports = async function handler(req, res) {
   // Mídia: UID como PRIMEIRA pasta (política de storage do bucket) — de quebra
   // amarra a mídia ao dono: só dá pra postar arquivo do próprio prefixo.
   const isMediaUrl = (u) => typeof u === 'string' && u.startsWith(`${SU}/storage/v1/object/public/blue-videos/${userId}/community/`) && !u.includes('..');
+
+  // ── AMIZADES: acesso ao banco (as REGRAS ficam em _helpers/amizade.js) ─────
+  const FCOLS = 'user_a,user_b,requested_by,status,strikes_a,strikes_b,cooldown_a,cooldown_b,removed_by,requested_at,responded_at,rejected_at,removed_at,created_at,updated_at';
+  const meId = String(userId).toLowerCase();
+
+  // Linhas do par entre EU e cada um dos uids. São DUAS queries porque eu tanto
+  // posso ser o lado A quanto o B — um filtro só cobriria metade dos pares.
+  const linhasComigo = async (uids) => {
+    const lista = [...new Set((uids || []).map((u) => String(u || '').toLowerCase()))]
+      .filter((u) => AM.ehUuid(u) && u !== meId);
+    if (!lista.length) return {};
+    const inList = `(${lista.join(',')})`;
+    const [ra, rb] = await Promise.all([
+      fetch(`${SU}/rest/v1/community_friendships?user_a=eq.${meId}&user_b=in.${inList}&select=${FCOLS}`, { headers: H }),
+      fetch(`${SU}/rest/v1/community_friendships?user_b=eq.${meId}&user_a=in.${inList}&select=${FCOLS}`, { headers: H }),
+    ]);
+    const rows = [...(ra.ok ? await ra.json() : []), ...(rb.ok ? await rb.json() : [])];
+    const map = {};
+    for (const r of rows) { const o = AM.outroDoPar(r, meId); if (o) map[String(o).toLowerCase()] = r; }
+    return map;
+  };
+
+  const linhaDoPar = async (alvoId) => {
+    const par = AM.parCanonico(meId, alvoId);
+    if (!par) return null;
+    const r = await fetch(`${SU}/rest/v1/community_friendships?user_a=eq.${par.user_a}&user_b=eq.${par.user_b}&select=${FCOLS}`, { headers: H });
+    return r.ok ? ((await r.json())[0] || null) : null;
+  };
+
+  // O alvo é identificado pelo display_name (que é UNIQUE) — assim a UI nunca
+  // precisa receber o uuid de ninguém. author_id segue exclusivo do moderador.
+  const acharPorNome = async (name) => {
+    const n = String(name == null ? '' : name).trim().slice(0, 40);
+    if (!n) return null;
+    const r = await fetch(`${SU}/rest/v1/community_profiles?display_name=eq.${encodeURIComponent(n)}&select=user_id,display_name,avatar_url,is_moderator,plan,banned`, { headers: H });
+    return r.ok ? ((await r.json())[0] || null) : null;
+  };
+
+  const perfisPorIds = async (ids) => {
+    const lista = [...new Set((ids || []).map((u) => String(u || '').toLowerCase()))].filter(AM.ehUuid);
+    if (!lista.length) return {};
+    const r = await fetch(`${SU}/rest/v1/community_profiles?user_id=in.(${lista.join(',')})&select=user_id,display_name,avatar_url,is_moderator,plan`, { headers: H });
+    const rows = r.ok ? await r.json() : [];
+    return Object.fromEntries(rows.map((p) => [String(p.user_id).toLowerCase(), p]));
+  };
+
+  const pubPerfil = (p) => (p
+    ? { name: p.display_name, avatar: p.avatar_url || null, mod: !!p.is_moderator, plan: p.plan || null }
+    : { name: 'Usuário', avatar: null, mod: false, plan: null });
+
+  // Notificação de amizade. AWAIT obrigatório: em serverless, promise não
+  // aguardada antes do res é DESCARTADA (foi o bug dos 28 follows → 0 avisos).
+  // Dedupe de 24h impede que cancelar/pedir em loop vire metralhadora de sino.
+  const notificarAmizade = async (kind, paraId) => {
+    try {
+      const n = AM.notificacao(kind, { deId: meId, deNome: profile?.display_name, paraId: String(paraId).toLowerCase() });
+      if (!n) return;
+      const since = new Date(Date.now() - AM.NOTIF_JANELA_HORAS * 3600000).toISOString();
+      let ultima = null;
+      try {
+        const rr = await fetch(`${SU}/rest/v1/blue_notificacoes?user_id=eq.${n.user_id}&tipo=eq.amizade&created_at=gt.${encodeURIComponent(since)}&dados->>from_user_id=eq.${meId}&dados->>kind=eq.${kind}&select=created_at&order=created_at.desc&limit=1`, { headers: H });
+        if (rr.ok) ultima = (await rr.json())[0]?.created_at || null;
+      } catch (e) {}
+      if (!AM.deveNotificar(ultima)) return;
+      await fetch(`${SU}/rest/v1/blue_notificacoes`, {
+        method: 'POST', headers: { ...H, Prefer: 'return=minimal' }, body: JSON.stringify(n),
+      }).catch(() => null);
+      try {
+        const { sendPushToUser } = require('./_helpers/push.js');
+        await sendPushToUser(n.user_id, {
+          title: n.titulo, body: n.mensagem,
+          data: { tipo: 'amizade', kind, from_user_id: meId, url: AM.URL_AMIGOS },
+        }).catch(() => null);
+      } catch (e) {}
+    } catch (e) { /* notificação nunca derruba a ação principal */ }
+  };
+
+  // Executa a decisão. O PATCH carrega `status=eq.<status lido>` como guarda de
+  // corrida: se alguém mexeu no par no meio do caminho, 0 linhas são afetadas
+  // e quem chamou relê e decide de novo em vez de sobrescrever às cegas.
+  const aplicarDecisao = async (dec, par, statusLido) => {
+    if (dec.acao === 'nenhuma') return { ok: true };
+    if (dec.acao === 'criar') {
+      const ins = await fetch(`${SU}/rest/v1/community_friendships`, {
+        method: 'POST', headers: { ...H, Prefer: 'return=minimal' }, body: JSON.stringify(dec.linha),
+      });
+      return { ok: ins.ok, conflito: ins.status === 409 };
+    }
+    const r = await fetch(`${SU}/rest/v1/community_friendships?user_a=eq.${par.user_a}&user_b=eq.${par.user_b}&status=eq.${statusLido}`, {
+      method: 'PATCH', headers: { ...H, Prefer: 'return=representation' }, body: JSON.stringify(dec.patch),
+    });
+    const rows = r.ok ? await r.json() : [];
+    return { ok: r.ok && rows.length > 0, conflito: r.ok && rows.length === 0 };
+  };
+
+  // Pedir/aceitar/recusar/cancelar/desfazer: lê → decide → aplica, com 1
+  // retentativa se o par mudou embaixo (corrida de pedidos cruzados).
+  const executarAmizade = async (decisor, alvoId) => {
+    const par = AM.parCanonico(meId, alvoId);
+    if (!par) return { ok: false, http: 400, erro: 'Você não pode pedir amizade pra si mesmo.' };
+    for (let tentativa = 0; tentativa < 2; tentativa++) {
+      const linha = await linhaDoPar(alvoId);
+      const dec = decisor(linha);
+      if (!dec.ok) return dec;
+      const res = await aplicarDecisao(dec, par, linha?.status);
+      if (res.ok) return dec;
+      if (!res.conflito) return { ok: false, http: 500, erro: 'Não deu pra salvar agora. Tente de novo.' };
+    }
+    return { ok: false, http: 409, erro: 'Esse pedido acabou de mudar. Recarregue e tente de novo.' };
+  };
 
   try {
     // ── ME: estado do usuário (perfil, moderador, sino de novidades) ────────
@@ -189,6 +300,8 @@ module.exports = async function handler(req, res) {
       if (fr?.ok) profiles = await fr.json();
       if (lr?.ok) myLikes = (await lr.json()).map((l) => l.post_id);
       const pmap = Object.fromEntries(profiles.map((p) => [p.user_id, p]));
+      // Estado de amizade com cada autor do lote (1 par de queries pro feed todo)
+      const fmap = await linhasComigo(uids).catch(() => ({}));
       const out = posts.map((p) => ({
         id: p.id, tab: p.tab, content: p.content, media: p.media || [], pinned: p.pinned,
         likes_count: p.likes_count, comments_count: p.comments_count,
@@ -196,6 +309,7 @@ module.exports = async function handler(req, res) {
         mine: p.user_id === userId, liked: myLikes.includes(p.id),
         author: pmap[p.user_id] ? { name: pmap[p.user_id].display_name, avatar: pmap[p.user_id].avatar_url, mod: pmap[p.user_id].is_moderator, plan: pmap[p.user_id].plan || null } : { name: 'Usuário', avatar: null, mod: false, plan: null },
         author_id: isMod ? p.user_id : undefined,
+        amizade: p.user_id === userId ? null : AM.estadoParaMim(fmap[String(p.user_id).toLowerCase()] || null, meId),
       }));
       // Cursor = último post NÃO fixado (fixado tem created_at antigo e pularia posts)
       const lastNonPinned = [...posts].reverse().find((p) => !p.pinned);
@@ -218,19 +332,59 @@ module.exports = async function handler(req, res) {
       if (fr?.ok) profiles = await fr.json();
       if (lr?.ok) myLikes = (await lr.json()).map((l) => l.comment_id);
       const pmap = Object.fromEntries(profiles.map((p) => [p.user_id, p]));
+      const fmap = await linhasComigo(uids).catch(() => ({}));
       return res.status(200).json({
         comments: comments.map((c) => ({
           id: c.id, content: c.content, created_at: c.created_at, edited_at: c.edited_at, mine: c.user_id === userId,
           parent_id: c.parent_id || null, likes_count: c.likes_count || 0, liked: myLikes.includes(c.id), pinned: !!c.pinned,
           author: pmap[c.user_id] ? { name: pmap[c.user_id].display_name, avatar: pmap[c.user_id].avatar_url, mod: pmap[c.user_id].is_moderator, plan: pmap[c.user_id].plan || null } : { name: 'Usuário', avatar: null, mod: false, plan: null },
           author_id: isMod ? c.user_id : undefined,
+          amizade: c.user_id === userId ? null : AM.estadoParaMim(fmap[String(c.user_id).toLowerCase()] || null, meId),
         })),
         is_moderator: isMod,
       });
     }
 
+    // ── AMIZADES (leitura): minhas listas ────────────────────────────────────
+    // Uma linha por par, então "amigos" é só status=accepted em qualquer lado.
+    if (action === 'amizades') {
+      const r = await fetch(`${SU}/rest/v1/community_friendships?or=(user_a.eq.${meId},user_b.eq.${meId})&status=in.(${AM.STATUS.ACEITO},${AM.STATUS.PENDENTE})&order=updated_at.desc&limit=500&select=${FCOLS}`, { headers: H });
+      const rows = r.ok ? await r.json() : [];
+      const outros = rows.map((l) => AM.outroDoPar(l, meId)).filter(Boolean);
+      const perfis = await perfisPorIds(outros);
+      const item = (l) => {
+        const outro = String(AM.outroDoPar(l, meId) || '').toLowerCase();
+        return {
+          user: pubPerfil(perfis[outro]),
+          estado: AM.estadoParaMim(l, meId),
+          desde: l.status === AM.STATUS.ACEITO ? (l.responded_at || l.updated_at) : (l.requested_at || l.created_at),
+        };
+      };
+      const amigos = [], recebidos = [], enviados = [];
+      for (const l of rows) {
+        if (!AM.outroDoPar(l, meId)) continue;
+        const it = item(l);
+        if (it.estado.estado === 'amigos') amigos.push(it);
+        else if (it.estado.estado === 'pendente_recebido') recebidos.push(it);
+        else if (it.estado.estado === 'pendente_enviado') enviados.push(it);
+      }
+      return res.status(200).json({ amigos, recebidos, enviados, is_moderator: isMod });
+    }
+
+    // ── AMIZADES (leitura): estado com UMA pessoa ────────────────────────────
+    if (action === 'amizade-estado') {
+      const alvo = await acharPorNome(q.name || b.name);
+      if (!alvo) return res.status(404).json({ error: 'Usuário não encontrado.' });
+      if (String(alvo.user_id).toLowerCase() === meId) {
+        return res.status(200).json({ user: pubPerfil(alvo), estado: { estado: 'eu', pode_pedir: false, bloqueado: false, espera_ate: null, dias_espera: 0 } });
+      }
+      const linha = await linhaDoPar(alvo.user_id);
+      return res.status(200).json({ user: pubPerfil(alvo), estado: AM.estadoParaMim(linha, meId) });
+    }
+
     // Daqui pra baixo é escrita — exige perfil com nome + respeita ban global do Blue
-    const WRITE = ['post-create', 'post-edit', 'post-delete', 'comment-create', 'comment-edit', 'comment-delete', 'comment-like-toggle', 'comment-pin-toggle', 'like-toggle', 'pin-toggle', 'ban-user', 'get-upload-url', 'transcode'];
+    const AMIZADE_WRITE = ['amizade-pedir', 'amizade-aceitar', 'amizade-recusar', 'amizade-cancelar', 'amizade-desfazer'];
+    const WRITE = ['post-create', 'post-edit', 'post-delete', 'comment-create', 'comment-edit', 'comment-delete', 'comment-like-toggle', 'comment-pin-toggle', 'like-toggle', 'pin-toggle', 'ban-user', 'get-upload-url', 'transcode', ...AMIZADE_WRITE];
     if (WRITE.includes(action)) {
       if (req.method !== 'POST') return res.status(405).json({ error: 'POST only' });
       if (!profile?.display_name) return res.status(428).json({ error: 'Escolha seu nome antes de participar.', needs_profile: true });
@@ -238,6 +392,42 @@ module.exports = async function handler(req, res) {
         const ban = await checkBan(userId, SU, H);
         if (ban) return res.status(403).json({ error: 'Conta suspensa na plataforma.', banned: true });
       }
+    }
+
+    // ── AMIZADES (escrita) ───────────────────────────────────────────────────
+    // Já passaram pelo portão Full/Master lá em cima (:75), pelo ban da
+    // Comunidade (:76) e pelo ban global (acima). O alvo é resolvido pelo
+    // display_name, então nenhum uuid de usuário sai daqui.
+    if (AMIZADE_WRITE.includes(action)) {
+      const alvo = await acharPorNome(b.name);
+      if (!alvo) return res.status(404).json({ error: 'Usuário não encontrado.' });
+      const alvoId = String(alvo.user_id).toLowerCase();
+      if (alvoId === meId) return res.status(400).json({ error: 'Você não pode pedir amizade pra si mesmo.' });
+      if (alvo.banned) return res.status(403).json({ error: 'Esse usuário não está mais na Comunidade.' });
+
+      const agora = new Date();
+      const decisor = {
+        'amizade-pedir': (linha) => AM.decidirPedido({ eu: meId, alvo: alvoId, linha, agora }),
+        'amizade-aceitar': (linha) => AM.decidirAceite({ eu: meId, linha, agora }),
+        'amizade-recusar': (linha) => AM.decidirRecusa({ eu: meId, linha, agora }),
+        'amizade-cancelar': (linha) => AM.decidirCancelamento({ eu: meId, linha, agora }),
+        'amizade-desfazer': (linha) => AM.decidirDesfazer({ eu: meId, linha, agora }),
+      }[action];
+
+      const dec = await executarAmizade(decisor, alvoId);
+      if (!dec.ok) {
+        return res.status(dec.http || 400).json({
+          error: dec.erro, estado: dec.estado || null,
+          bloqueado: dec.bloqueado || undefined, espera_ate: dec.espera_ate || undefined,
+          dias_espera: dec.dias_espera || undefined,
+        });
+      }
+      // Notifica só quando algo REALMENTE mudou (acao 'nenhuma' = idempotente)
+      if (dec.notificar && dec.acao !== 'nenhuma' && dec.para) await notificarAmizade(dec.notificar, dec.para);
+      return res.status(200).json({
+        ok: true, estado: dec.estado, ja_existia: !!dec.ja_existia, cruzado: !!dec.cruzado,
+        user: pubPerfil(alvo),
+      });
     }
 
     // ── GET-UPLOAD-URL: destino pra upload direto com o JWT do usuário ──────

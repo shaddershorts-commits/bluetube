@@ -39,9 +39,12 @@
     return d === 1 ? 'ontem' : d + 'd';
   }
 
+  // As chaves têm que bater com o `tipo` que o BACKEND grava em
+  // blue_notificacoes — o que não estiver aqui cai no 🔔 genérico.
   var ICONES = {
     bluescore: '📊', mensagem: '💬', comentario: '💭',
     curtida: '❤️', seguidor: '👤', verificacao: '✓', assinatura: '⚡',
+    amizade: '🤝', // pedido de amizade / pedido aceito na Comunidade
   };
 
   function estilo() {

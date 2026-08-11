@@ -70,7 +70,11 @@ const REPLICA_BASE = {
 test('DEFEITO 4: réplica sem views (0 no banco) NÃO publica "▶ 0 · medido em"', () => {
   const html = montarCard({ ...REPLICA_BASE, views_count: 0, likes_count: 184000, comments_count: 2310 });
   assert.equal(/▶\s*0\b/.test(html), false, 'o card publicou "▶ 0" — zero que ninguém mediu');
+  // A data saiu do card em 11/08, então este padrão não pode mais aparecer de
+  // jeito nenhum. O que a asserção abaixo protege é o essencial: o "▶ 0" não
+  // pode voltar. Remover o selo NÃO podia ressuscitar o zero.
   assert.equal(/0\s*·\s*medido em/.test(html), false, 'afirmou que zero foi medido');
+  assert.equal(/medido em/.test(html), false, 'a data de medição saiu do card');
   // Sobra a métrica que EXISTE: likes.
   assert.match(html, /❤\s*184 mil/, 'perdeu os likes, que foram medidos de verdade');
   assert.match(html, /medido em 11\/08/, 'likes medido perdeu a data da medição');
