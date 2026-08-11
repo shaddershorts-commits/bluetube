@@ -19,8 +19,8 @@
       "destination": "/api/sitemap"
     },
     {
-      "source": "/:nome([A-Za-z0-9._-]{2,40})",
-      "destination": "/perfil.html"
+      "source": "/:nome([a-zA-Z0-9_.-]+)",
+      "destination": "/perfil"
     }
   ],
   "functions": {
