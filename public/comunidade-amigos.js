@@ -91,10 +91,20 @@
     '.cba-vazio{text-align:center;color:#5f7590;font-family:var(--font-mono,monospace);font-size:11.5px;padding:34px 16px;line-height:1.9}',
   ].join('');
 
-  function montar() {
-    if (document.getElementById('cbaOv')) return;
+  // ⚠️ O ESTILO NÃO PODE DEPENDER DO PAINEL. Ele morava dentro do montar(),
+  // que só roda quando a pessoa ABRE o painel de amigos — mas a pílula
+  // "+ Amigo" é pintada no feed assim que a página carrega. O que se via na
+  // tela era uma caixa branca crua no cabeçalho do post, sem borda nem cor,
+  // até alguém por acaso abrir o painel. Quem pinta garante o estilo.
+  function garantirEstilo() {
+    if (document.getElementById('cbaStyle')) return;
     var st = document.createElement('style'); st.id = 'cbaStyle'; st.textContent = CSS;
-    document.head.appendChild(st);
+    (document.head || document.documentElement).appendChild(st);
+  }
+
+  function montar() {
+    garantirEstilo();
+    if (document.getElementById('cbaOv')) return;
     var ov = document.createElement('div');
     ov.className = 'cba-ov'; ov.id = 'cbaOv';
     ov.innerHTML =
@@ -360,6 +370,10 @@
       else if (++tentativas > 40) clearInterval(t);
     }, 250);
   }
+
+  // O estilo entra junto com o módulo, não com o painel: qualquer caminho que
+  // pinte pílula (feed, comentários, prefetch) já encontra o CSS no lugar.
+  garantirEstilo();
 
   window.ComunidadeAmigos = {
     botao: botao, abrir: abrir, fechar: fechar, recarregar: carregar,

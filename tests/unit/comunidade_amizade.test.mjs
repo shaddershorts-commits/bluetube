@@ -732,3 +732,43 @@ test('FRONT: o editProfile() inexistente não é mais chamado (ReferenceError mo
     'comunidade.js ainda chama editProfile(), função que não existe no arquivo');
   assert.match(COMUN, /needs_profile\) return toast\(/, 'o 428 voltou a ficar sem feedback nenhum');
 });
+
+// ═══════════════════════════════════════════════════════════════════════════
+// O ESTILO NÃO PODE DEPENDER DO PAINEL
+// Visto na tela (11/08): a pílula "+ Amigo" saiu no cabeçalho do post como uma
+// caixa branca crua. O CSS morava dentro do montar(), que só roda quando a
+// pessoa ABRE o painel de amigos — mas a pílula é pintada no feed no load.
+// ═══════════════════════════════════════════════════════════════════════════
+const AMIGOSJS = readFileSync(new URL('../../public/comunidade-amigos.js', import.meta.url), 'utf8');
+
+test('ESTILO: a injeção do CSS é função própria, não parte do montar()', () => {
+  assert.match(AMIGOSJS, /function garantirEstilo\(\)/,
+    'o CSS voltou pra dentro do montar() — a pílula nasce sem estilo de novo');
+  assert.match(AMIGOSJS, /if \(document\.getElementById\('cbaStyle'\)\) return;/,
+    'sem a guarda, abrir o painel várias vezes empilha <style> repetido');
+});
+
+test('ESTILO: o CSS entra no arranque do módulo, antes de qualquer pílula', () => {
+  // A chamada solta (fora de função) tem que existir: é ela que garante estilo
+  // pra quem só passa pelo feed e nunca abre o painel.
+  const i = AMIGOSJS.indexOf('window.ComunidadeAmigos = {');
+  assert.notEqual(i, -1);
+  assert.match(AMIGOSJS.slice(Math.max(0, i - 400), i), /\n\s*garantirEstilo\(\);/,
+    'ninguém garante o estilo no load — quem só lê o feed vê a caixa crua');
+});
+
+test('ESTILO: o montar() continua garantindo (o painel também precisa)', () => {
+  const i = AMIGOSJS.indexOf('function montar()');
+  assert.match(AMIGOSJS.slice(i, i + 160), /garantirEstilo\(\)/);
+});
+
+test('ESTILO: a regra da pílula tem cor e forma, não só posição', () => {
+  assert.match(AMIGOSJS, /\.cba-btn\{[^}]*border-radius:100px/);
+  assert.match(AMIGOSJS, /color:#00c4ff/, 'a pílula perdeu a cor — voltaria a parecer caixa branca');
+});
+
+test('ESTILO: o ?v= subiu junto (cache de 4h da Vercel)', () => {
+  const m = HTML.match(/comunidade-amigos\.js\?v=(\d+)/);
+  assert.ok(m, 'sem ?v=');
+  assert.ok(Number(m[1]) >= 3, 'o arquivo mudou e o ?v= não subiu — o conserto não chega em quem já visitou');
+});
