@@ -48,6 +48,21 @@ create table if not exists community_friendships (
   primary key (user_a, user_b)
 );
 
+-- ⚠️ A RLS LIGA AQUI, colada no create table — e não no fim do arquivo, que era
+-- onde ela estava. Entre a criação e a linha 104 havia ~70 comandos: durante
+-- todos eles a tabela existia ABERTA pro papel anon (a chave que qualquer
+-- visitante do site carrega no navegador). E se a execução parasse no meio —
+-- o arquivo é colado à mão no painel do Supabase — ela ficaria aberta pra
+-- sempre, sem ninguém notar. Este projeto já teve 34 tabelas expostas assim.
+--
+-- Política igual à do resto da Comunidade: RLS ligada e SEM policy nenhuma.
+-- Isso derruba anon/authenticated no PostgREST; todo acesso passa pela service
+-- key dentro de api/community.js, que é quem aplica o portão Full/Master.
+alter table community_friendships enable row level security;
+-- Reforço explícito: RLS não vale pro dono da tabela por padrão.
+alter table community_friendships force row level security;
+
+
 -- Colunas novas em bases que já tinham a tabela (idempotência de verdade)
 alter table community_friendships add column if not exists strikes_a    int not null default 0;
 alter table community_friendships add column if not exists strikes_b    int not null default 0;
@@ -95,16 +110,7 @@ create index if not exists idx_cfriend_b on community_friendships (user_b, statu
 -- Caixa de "pedidos recebidos": pendentes que NÃO fui eu quem mandei.
 create index if not exists idx_cfriend_pend on community_friendships (status, requested_by);
 
--- ── RLS ─────────────────────────────────────────────────────────────────────
--- Mesma política do resto da Comunidade: RLS ligada e SEM policy nenhuma.
--- Isso derruba anon/authenticated no PostgREST; todo acesso passa pela
--- service key dentro de api/community.js, que é quem aplica o portão
--- Full/Master. Sem isso, qualquer um com a anon key listaria as amizades
--- de todo mundo.
-alter table community_friendships enable row level security;
-
--- Reforço explícito (RLS não vale pro dono da tabela por padrão).
-alter table community_friendships force row level security;
+-- (A RLS foi movida pro TOPO, logo depois do create table — veja lá o porquê.)
 
 -- ── Sanidade: sobrou alguma linha fora da ordem canônica? ───────────────────
 -- Deve devolver 0. Se devolver mais, algo escreveu por fora da API.
