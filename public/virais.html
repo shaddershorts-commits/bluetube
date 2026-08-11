@@ -2226,9 +2226,10 @@ function igMkCard(v, rank){
   const metricaSort = _igSort === 'views'
     ? (temViews ? `▶ ${fmt(v.views_count)}` : temLikes ? `❤ ${fmt(v.likes_count)}` : '<span style="opacity:.6">sem número medido</span>')
     : (temLikes ? `❤ ${fmt(v.likes_count)}` : temViews ? `▶ ${fmt(v.views_count)}` : '<span style="opacity:.6">sem número medido</span>');
-  const tituloMetrica = medido && (temViews || temLikes)
-    ? tkEsc(`Número medido em ${medido} e congelado desde então — não atualizamos mais este Reel.`)
-    : '';
+  // A dica de "medido em" saiu junto com o selo (11/08). Ela não aparecia no
+  // card, só ao passar o mouse — mas é a mesma informação que o dono não quer
+  // dar: num acervo de virais, o número é retrato do estouro, não cotação.
+  const tituloMetrica = '';
 
   return `
     <div class="tk-card">

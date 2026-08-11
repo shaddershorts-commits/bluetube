@@ -77,13 +77,15 @@ test('DEFEITO 4: réplica sem views (0 no banco) NÃO publica "▶ 0 · medido e
   assert.equal(/medido em/.test(html), false, 'a data de medição saiu do card');
   // Sobra a métrica que EXISTE: likes.
   assert.match(html, /❤\s*184 mil/, 'perdeu os likes, que foram medidos de verdade');
-  assert.match(html, /medido em 11\/08/, 'likes medido perdeu a data da medição');
 });
 
 test('DEFEITO 4: réplica com views de verdade continua mostrando views', () => {
   const html = montarCard({ ...REPLICA_BASE, views_count: 12400000, likes_count: 184000, comments_count: 2310 });
   assert.match(html, /▶\s*12,4 mi/);
-  assert.match(html, /medido em 11\/08/);
+  // A data saiu do card em 11/08 (decisão do dono). O que estes testes
+  // protegem segue sendo o essencial: número medido aparece, número ausente
+  // NÃO vira 0. A data era só o enfeite em volta disso.
+  assert.equal(/medido em/.test(html), false, 'a data de medição saiu do card');
 });
 
 test('DEFEITO 4: réplica sem métrica NENHUMA sai sem selo de número', () => {
