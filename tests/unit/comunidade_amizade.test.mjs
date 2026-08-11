@@ -815,7 +815,7 @@ test('PERFIL (API): o uuid do alvo não vaza — a busca é por display_name', (
 
 test('PERFIL (API): enfeite que falha não derruba a identidade', () => {
   const i = API.indexOf("if (action === 'perfil')");
-  const bloco = API.slice(i, i + 3600);
+  const bloco = API.slice(i, i + 5200);
   // desde/posts são try/catch próprios: uma consulta ruim não pode zerar o perfil.
   assert.match(bloco, /let desde = null;/);
   assert.match(bloco, /let posts = null;/);
@@ -857,7 +857,7 @@ test('PÁGINA: clicar no feed NAVEGA, não abre modal', () => {
     'o clique voltou a abrir algo na própria página em vez de navegar');
   assert.equal(/cbp-ov|role="dialog"/.test(PERFILJS), false,
     'o modal voltou — o perfil tem que ser página própria');
-  assert.match(PERFILJS, /'\/perfil\?u=' \+ encodeURIComponent\(nome\)/);
+  // (a URL virou /nome — quem guarda esse formato agora é o teste 'URL:' mais abaixo)
 });
 
 test('PÁGINA: ctrl/cmd-clique continua abrindo em nova aba', () => {
@@ -892,8 +892,88 @@ test('PÁGINA: iframe só com id de YouTube validado', () => {
 
 test('PÁGINA (API): o perfil devolve amigos e a lista de posts', () => {
   const i = API.indexOf("if (action === 'perfil')");
-  const bloco = API.slice(i, i + 3600);
+  const bloco = API.slice(i, i + 5200);
   assert.match(bloco, /amigos,/, 'a contagem de amigos não sai da API');
   assert.match(bloco, /lista: \(lista \|\| \[\]\)/, 'os posts não saem da API');
   assert.match(bloco, /deleted=eq\.false/, 'post apagado apareceria no perfil');
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// BIO, LINK, CAPA E FOTO — o perfil que a pessoa controla
+// ═══════════════════════════════════════════════════════════════════════════
+test('BIO (API): 160 é o mesmo teto no banco, na API e na tela', () => {
+  const SQL = readFileSync(new URL('../../sql/comunidade_perfil_bio.sql', import.meta.url), 'utf8');
+  assert.match(SQL, /length\(bio\) <= 160/, 'o banco não trava em 160');
+  assert.match(API, /clean\(b\.bio, 160\)/, 'a API não trava em 160');
+  assert.match(PAGINAJS, /MAXBIO = 160/, 'a tela não trava em 160');
+});
+
+test('LINK (API): só https, e javascript:/data: são recusados', () => {
+  const i = API.indexOf("if (action === 'perfil-salvar'");
+  assert.notEqual(i, -1, 'a ação de salvar sumiu');
+  const bloco = API.slice(i, i + 2600);
+  assert.match(bloco, /u\.protocol === 'https:'/,
+    'sem checar o esquema, javascript: vira link clicável numa página que outras pessoas visitam');
+  assert.match(bloco, /hostname\.includes\('\.'\)/, 'aceita host sem ponto');
+});
+
+test('LINK (tela): há um SEGUNDO portão antes do href', () => {
+  assert.match(PAGINAJS, /d\.link && \/\^https:/,
+    'a tela confia só no servidor — um portão só já deixou o microfone aberto antes');
+  assert.match(PAGINAJS, /rel="noopener noreferrer nofollow"/,
+    'sem noopener o site de destino ganha referência à nossa aba e pode trocá-la por um login falso');
+});
+
+test('CAPA (API): o cliente NUNCA dita o endereço da imagem', () => {
+  const i = API.indexOf("if (action === 'perfil-salvar'");
+  const bloco = API.slice(i, i + 2600);
+  assert.match(bloco, /community\/covers\/\$\{userId\}\.jpg/,
+    'o caminho tem que ser derivado do token, não vir do corpo do pedido');
+  assert.match(bloco, /data:\(image/, 'aceita qualquer coisa como capa');
+  assert.match(bloco, /\?v=\$\{Date\.now\(\)\}/,
+    'mesmo caminho de arquivo sem ?v= faz o navegador servir a capa velha — parece que nada mudou');
+});
+
+test('EDITAR: só o dono edita, e quem decide é o servidor', () => {
+  const i = API.indexOf("if (action === 'perfil-salvar'");
+  const bloco = API.slice(i, i + 3000);
+  assert.match(bloco, /user_id=eq\.\$\{userId\}/,
+    'o alvo do PATCH tem que vir do token; se viesse do corpo, daria pra editar o perfil alheio');
+  assert.equal(/b\.user_id|b\.name/.test(bloco), false, 'a ação passou a aceitar alvo vindo do cliente');
+  assert.match(PAGINAJS, /d\.eu\s*\?/, 'a tela mostra os botões sem checar se é o próprio perfil');
+});
+
+test('IMAGEM: encolhe no navegador antes de subir', () => {
+  assert.match(PAGINAJS, /function encolher\(/,
+    'foto de celular tem 4-8MB: sem encolher, a API recusa e o 4G da pessoa paga por nada');
+  assert.match(PAGINAJS, /toDataURL\('image\/jpeg'/);
+});
+
+test('IMAGEM: os inputs de arquivo são ligados UMA vez', () => {
+  // pintar() roda de novo a cada salvamento; ligar lá empilharia handlers e
+  // um clique viraria N uploads.
+  const i = PAGINAJS.indexOf("getElementById('pfFileCapa')");
+  assert.notEqual(i, -1);
+  assert.equal(PAGINAJS.indexOf('function pintar(') < i, true,
+    'os inputs foram parar dentro do pintar() — cada salvamento empilha um handler');
+});
+
+test('POSTS: cada um é um CARD separado, não linhas coladas', () => {
+  const HTMLP = readFileSync(new URL('../../public/perfil.html', import.meta.url), 'utf8');
+  assert.match(HTMLP, /\.pf-lista\{[^}]*gap:12px/,
+    'sem respiro entre os posts eles voltam a parecer um só — foi exatamente o que o dono relatou');
+  assert.match(HTMLP, /\.pf-post\{[^}]*border-radius:15px/, 'o post perdeu a forma de card');
+  assert.match(HTMLP, /\.pf-post\{[^}]*background:/, 'sem fundo próprio o card some no fundo da página');
+});
+
+test('URL: o perfil vive em /nome, não numa querystring', () => {
+  assert.match(PERFILJS, /'\/' \+ encodeURIComponent\(nome\)/, 'voltou pra /perfil?u=');
+  assert.match(PAGINAJS, /location\.pathname/, 'a página não lê o nome do caminho');
+  assert.match(PAGINAJS, /URLSearchParams\(location\.search\)\.get\('u'\)/,
+    'sumiu a segunda via ?u= — quem tiver nome igual ao de uma página real fica sem perfil');
+  const V = JSON.parse(readFileSync(new URL('../../vercel.json', import.meta.url), 'utf8'));
+  const r = (V.rewrites || []).find((x) => x.destination === '/perfil.html');
+  assert.ok(r, 'sem a reescrita, /nome dá 404');
+  assert.equal((V.rewrites || []).indexOf(r), (V.rewrites || []).length - 1,
+    'a reescrita do perfil tem que ser a ÚLTIMA, senão engole rotas reais');
 });

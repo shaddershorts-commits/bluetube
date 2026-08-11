@@ -21,11 +21,19 @@
   }
   function $(id) { return document.getElementById(id); }
   function BT() { return window.ComunidadeBT || null; }
+  function toast(m) { try { if (window.toast) window.toast(m); else if (BT() && BT().toast) BT().toast(m); } catch (e) {} }
 
+  // O nome vem do CAMINHO (/felipedesignersocial). O ?u= fica como segunda
+  // via: é o que salva quem tem display_name igual ao nome de uma página real
+  // (/virais, /comunidade…), onde o arquivo vence a reescrita e o caminho
+  // limpo nunca chega aqui.
   function nomeDaUrl() {
     try {
-      var p = new URLSearchParams(location.search);
-      return (p.get('u') || p.get('nome') || '').trim();
+      var q = new URLSearchParams(location.search).get('u');
+      if (q && q.trim()) return q.trim();
+      var seg = decodeURIComponent((location.pathname || '').split('/').filter(Boolean)[0] || '');
+      if (seg && seg.toLowerCase() !== 'perfil') return seg.trim();
+      return '';
     } catch (e) { return ''; }
   }
 
@@ -102,6 +110,107 @@
       + '</article>';
   }
 
+
+  // ── EDIÇÃO DO PRÓPRIO PERFIL ───────────────────────────────────────────────
+  // Capa, foto, bio e link. Só aparece no próprio perfil, e o servidor decide
+  // isso pelo token — a tela esconder o botão é conveniência, não segurança.
+  var MAXBIO = 160;
+  var atual = null; // último perfil carregado, pra reabrir o editor sem ir ao ar
+
+  // Encolhe a imagem no NAVEGADOR antes de mandar. Uma foto de celular tem
+  // 4-8MB; a API recusa acima de ~2,5MB e, mesmo passando, subir isso no 4G da
+  // pessoa é castigo. Capa vira 1500px de largura, foto 400.
+  function encolher(file, ladoMax, qualidade) {
+    return new Promise(function (ok, falha) {
+      var img = new Image();
+      var urlObj = URL.createObjectURL(file);
+      img.onload = function () {
+        try {
+          var r = Math.min(1, ladoMax / Math.max(img.width, img.height));
+          var c = document.createElement('canvas');
+          c.width = Math.round(img.width * r);
+          c.height = Math.round(img.height * r);
+          c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
+          URL.revokeObjectURL(urlObj);
+          ok(c.toDataURL('image/jpeg', qualidade));
+        } catch (e) { URL.revokeObjectURL(urlObj); falha(e); }
+      };
+      img.onerror = function () { URL.revokeObjectURL(urlObj); falha(new Error('imagem ilegível')); };
+      img.src = urlObj;
+    });
+  }
+
+  async function mandarImagem(file, tipo) {
+    if (!file) return;
+    if (!/^image\/(jpeg|png|webp)$/.test(file.type || '')) {
+      return toast('Use uma imagem JPG, PNG ou WebP.');
+    }
+    toast(tipo === 'capa' ? 'Enviando a capa…' : 'Enviando a foto…');
+    var dados;
+    try { dados = await encolher(file, tipo === 'capa' ? 1500 : 400, 0.85); }
+    catch (e) { return toast('❌ Não consegui ler essa imagem.'); }
+
+    var r;
+    try {
+      r = tipo === 'capa'
+        ? await BT().call('perfil-salvar', { body: { capa_data: dados } })
+        : await BT().call('profile-set', { body: { avatar_data: dados } });
+    } catch (e) { r = { ok: false, d: {} }; }
+
+    if (!r.ok) return toast('❌ ' + ((r.d && (r.d.detalhe || r.d.error)) || 'Não deu pra salvar agora.'));
+    toast(tipo === 'capa' ? '✅ Capa atualizada!' : '✅ Foto atualizada!');
+    carregar();
+  }
+
+  function abrirEditor() {
+    if (!atual) return;
+    var alvo = document.getElementById('pfEditor');
+    if (!alvo) return;
+    var bio = atual.bio || '';
+    var link = atual.link || '';
+    alvo.innerHTML =
+      '<div class="pf-ed">'
+      + '<div class="pf-edlinha"><label for="pfBio">SOBRE VOCÊ</label>'
+      + '<textarea id="pfBio" rows="3" maxlength="' + MAXBIO + '" placeholder="Conta em uma frase o que você faz.">' + esc(bio) + '</textarea>'
+      + '<div class="pf-conta" id="pfConta"></div></div>'
+      + '<div class="pf-edlinha"><label for="pfLink">SEU LINK</label>'
+      + '<input id="pfLink" type="url" inputmode="url" maxlength="200" placeholder="seucanal.com" value="' + esc(link) + '"></div>'
+      + '<div class="pf-edbot">'
+      + '<button class="pf-b ghost" id="pfCancelar">Cancelar</button>'
+      + '<button class="pf-b" id="pfSalvar">Salvar</button>'
+      + '</div></div>';
+
+    var ta = document.getElementById('pfBio');
+    var conta = document.getElementById('pfConta');
+    function contar() {
+      var n = (ta.value || '').length;
+      conta.textContent = n + '/' + MAXBIO;
+      conta.className = 'pf-conta' + (n >= MAXBIO ? ' estourou' : n > MAXBIO - 25 ? ' perto' : '');
+    }
+    ta.addEventListener('input', contar);
+    contar();
+    ta.focus();
+
+    document.getElementById('pfCancelar').addEventListener('click', function () { alvo.innerHTML = ''; });
+    document.getElementById('pfSalvar').addEventListener('click', async function () {
+      var btn = this;
+      btn.disabled = true;
+      btn.textContent = 'Salvando…';
+      var r;
+      try {
+        r = await BT().call('perfil-salvar', {
+          body: { bio: ta.value || '', link: (document.getElementById('pfLink').value || '') },
+        });
+      } catch (e) { r = { ok: false, d: {} }; }
+      btn.disabled = false;
+      btn.textContent = 'Salvar';
+      if (!r.ok) return toast('❌ ' + ((r.d && (r.d.detalhe || r.d.error)) || 'Não deu pra salvar agora.'));
+      toast('✅ Perfil atualizado!');
+      alvo.innerHTML = '';
+      carregar();
+    });
+  }
+
   // ── Desenho da página ──────────────────────────────────────────────────────
   function pintarErro(msg, comRetentar) {
     $('pfAv').style.display = 'none';
@@ -121,15 +230,27 @@
     var tn = $('pfTopNome');
     if (tn) { tn.textContent = u.name; tn.classList.add('on'); }
 
-    // A capa tira a cor do nome: cada perfil ganha a sua sem ninguém precisar
-    // subir imagem — e some o "banner cinza" que todo perfil vazio tem.
+    // Capa: imagem da pessoa quando existe; senão o gradiente do nome, que
+    // evita o "banner cinza" de perfil vazio.
     var h = hue(u.name);
     var capa = $('pfCapa');
     if (capa) {
-      capa.style.background = u.mod || u.plan === 'master'
-        ? 'linear-gradient(120deg,#3d2f07 0%,#6b4e0a 45%,#0a1830 100%)'
-        : 'linear-gradient(120deg,hsl(' + h + ',55%,17%) 0%,hsl(' + ((h + 40) % 360) + ',60%,22%) 50%,#0a1830 100%)';
+      if (d.capa) {
+        capa.style.backgroundImage = 'url("' + String(d.capa).replace(/"/g, '%22') + '")';
+        capa.style.backgroundColor = '#0a1830';
+      } else {
+        capa.style.backgroundImage = 'none';
+        capa.style.background = u.mod || u.plan === 'master'
+          ? 'linear-gradient(120deg,#3d2f07 0%,#6b4e0a 45%,#0a1830 100%)'
+          : 'linear-gradient(120deg,hsl(' + h + ',55%,17%) 0%,hsl(' + ((h + 40) % 360) + ',60%,22%) 50%,#0a1830 100%)';
+      }
     }
+    // Os botões de editar só existem no PRÓPRIO perfil. Quem manda é d.eu, que
+    // vem do servidor comparando o token — não é a tela que decide.
+    var cb = $('pfCapaBtn');
+    if (cb) cb.innerHTML = d.eu ? '<button class="pf-capabtn" id="pfTrocarCapa">📷 Trocar capa</button>' : '';
+    var ae = $('pfAvEdit');
+    if (ae) ae.innerHTML = d.eu ? '<button class="pf-avedit" id="pfTrocarFoto" title="Trocar foto" aria-label="Trocar foto">✏️</button>' : '';
 
     var av = $('pfAv');
     av.className = 'pf-av' + anel;
@@ -163,15 +284,44 @@
     var nPosts = (typeof d.posts === 'number') ? fmt(d.posts) : '—';
     var nAmigos = (typeof d.amigos === 'number') ? fmt(d.amigos) : '—';
 
+    atual = d;
     var cab = document.querySelector('.pf-cab');
     var extra = document.createElement('div');
+
+    // Link: rel="noopener noreferrer nofollow" porque o destino é escolhido por
+    // outra pessoa. Sem noopener, a página de destino ganha referência à nossa
+    // aba e pode trocá-la por uma tela de login falsa.
+    var linkHtml = '';
+    // Segundo portão. O servidor já só grava https, mas link é conteúdo de
+    // outra pessoa indo pra dentro de um href — e href aceita javascript: e
+    // data:, que executam. Um portão só é como o microfone ficou aberto na
+    // barra final: bastou um caminho não previsto.
+    if (d.link && /^https:\/\//i.test(String(d.link))) {
+      var rotulo = String(d.link).replace(/^https?:\/\//i, '').replace(/\/$/, '');
+      linkHtml = '<a class="pf-link" href="' + esc(d.link) + '" target="_blank" rel="noopener noreferrer nofollow">🔗 ' + esc(rotulo) + '</a>';
+    }
+
     extra.innerHTML =
       '<div class="pf-nome">' + esc(u.name) + selos + '</div>'
       + '<div class="pf-arroba">@' + esc(u.name) + '</div>'
+      + (d.bio ? '<div class="pf-bio">' + esc(d.bio) + '</div>' : '')
+      + linkHtml
       + (desde ? '<div class="pf-desde">🗓 na Comunidade desde ' + esc(desde) + '</div>' : '')
       + '<div class="pf-nums"><span><b>' + esc(nPosts) + '</b>posts</span>'
-      + '<span><b>' + esc(nAmigos) + '</b>' + (d.amigos === 1 ? 'amigo' : 'amigos') + '</span></div>';
+      + '<span><b>' + esc(nAmigos) + '</b>' + (d.amigos === 1 ? 'amigo' : 'amigos') + '</span></div>'
+      + (d.eu
+        ? '<div><button class="pf-b ghost" id="pfEditar" style="margin-top:12px">'
+          + (d.bio || d.link ? '✏️ Editar bio e link' : '✏️ Escrever uma bio') + '</button></div>'
+        : '')
+      + '<div id="pfEditor"></div>';
     cab.appendChild(extra);
+
+    var be = $('pfEditar');
+    if (be) be.addEventListener('click', abrirEditor);
+    var bc = $('pfTrocarCapa');
+    if (bc) bc.addEventListener('click', function () { $('pfFileCapa').click(); });
+    var bf = $('pfTrocarFoto');
+    if (bf) bf.addEventListener('click', function () { $('pfFileFoto').click(); });
 
     $('pfCorpo').innerHTML =
       '<div class="pf-abas"><div class="pf-aba on">POSTS</div></div>'
@@ -216,6 +366,13 @@
     if (!el) return;
     setTimeout(carregar, 900);
   });
+
+  // Os dois inputs de arquivo são ligados UMA vez, aqui — e não dentro do
+  // pintar(), que roda de novo a cada salvamento e empilharia handlers.
+  var fc = document.getElementById('pfFileCapa');
+  if (fc) fc.addEventListener('change', function () { var f = this.files && this.files[0]; this.value = ''; mandarImagem(f, 'capa'); });
+  var ff = document.getElementById('pfFileFoto');
+  if (ff) ff.addEventListener('change', function () { var f = this.files && this.files[0]; this.value = ''; mandarImagem(f, 'foto'); });
 
   if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', carregar);

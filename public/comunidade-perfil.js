@@ -34,7 +34,12 @@
     (document.head || document.documentElement).appendChild(st);
   }
 
-  function url(nome) { return '/perfil?u=' + encodeURIComponent(nome); }
+  // URL limpa: /nomedousuario. A reescrita no vercel.json é a ÚLTIMA da lista,
+  // então arquivo real e função de api/ vencem — /virais e /comunidade seguem
+  // intocados. O efeito colateral aceito: quem escolher um display_name igual
+  // ao nome de uma página existente fica com o perfil inalcançável por essa
+  // URL (o ?u= continua funcionando pra esse caso).
+  function url(nome) { return '/' + encodeURIComponent(nome); }
 
   function abrir(nome) {
     if (!nome) return;

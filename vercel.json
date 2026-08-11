@@ -17,6 +17,10 @@
     {
       "source": "/sitemap.xml",
       "destination": "/api/sitemap"
+    },
+    {
+      "source": "/:nome([A-Za-z0-9._-]{2,40})",
+      "destination": "/perfil.html"
     }
   ],
   "functions": {

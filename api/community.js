@@ -124,7 +124,7 @@ module.exports = async function handler(req, res) {
   const acharPorNome = async (name) => {
     const n = String(name == null ? '' : name).trim().slice(0, 40);
     if (!n) return null;
-    const r = await fetch(`${SU}/rest/v1/community_profiles?display_name=eq.${encodeURIComponent(n)}&select=user_id,display_name,avatar_url,is_moderator,plan,banned`, { headers: H });
+    const r = await fetch(`${SU}/rest/v1/community_profiles?display_name=eq.${encodeURIComponent(n)}&select=user_id,display_name,avatar_url,is_moderator,plan,banned,bio,link,cover_url`, { headers: H });
     return r.ok ? ((await r.json())[0] || null) : null;
   };
 
@@ -354,6 +354,78 @@ module.exports = async function handler(req, res) {
 
     // ── AMIZADES (leitura): minhas listas ────────────────────────────────────
     // Uma linha por par, então "amigos" é só status=accepted em qualquer lado.
+    // ── PERFIL: editar o MEU (bio, link e capa) ──────────────────────────────
+    // Só o próprio dono edita, e o alvo é sempre o token — não existe campo de
+    // "quem" no corpo. Assim não há como pedir pra editar o perfil alheio.
+    if (action === 'perfil-salvar' && req.method === 'POST') {
+      if (!profile) return res.status(500).json({ error: 'Perfil indisponível.' });
+      const mudanca = { updated_at: nowIso() };
+
+      // BIO — 160 é o mesmo teto do banco e da tela. Os três têm que concordar.
+      if (typeof b.bio === 'string') {
+        const bio = clean(b.bio, 160);
+        mudanca.bio = bio || null;
+      }
+
+      // LINK — só https. javascript: e data: viram link clicável em página que
+      // outras pessoas visitam; é a porta mais barata pra roubar sessão.
+      if (typeof b.link === 'string') {
+        const cru = String(b.link).trim().slice(0, 200);
+        if (!cru) mudanca.link = null;
+        else {
+          const comEsquema = /^https?:\/\//i.test(cru) ? cru : 'https://' + cru;
+          let ok = false;
+          try {
+            const u = new URL(comEsquema);
+            // http:// puro também sai fora: página nossa não manda ninguém
+            // pra conexão sem cadeado.
+            ok = u.protocol === 'https:' && !!u.hostname && u.hostname.includes('.');
+          } catch (e) { ok = false; }
+          if (!ok) return res.status(400).json({ error: 'Link inválido. Use um endereço https:// completo.' });
+          mudanca.link = comEsquema;
+        }
+      }
+
+      // CAPA — mesmo caminho da foto de perfil (profile-set): a imagem chega em
+      // base64, quem escreve no storage é o servidor, e o que vai pro banco é a
+      // URL que ELE acabou de escrever. Cliente nunca dita endereço de imagem.
+      if (typeof b.capa_data === 'string' && b.capa_data) {
+        if (b.capa_data.length > 3_500_000) return res.status(400).json({ error: 'Capa muito pesada (máx ~2,5MB).' });
+        const m = b.capa_data.match(/^data:(image\/(?:jpeg|png|webp));base64,(.+)$/);
+        if (!m) return res.status(400).json({ error: 'Capa inválida (use JPG/PNG/WebP).' });
+        const path = `community/covers/${userId}.jpg`;
+        const up = await fetch(`${SU}/storage/v1/object/blue-videos/${path}`, {
+          method: 'POST', headers: { apikey: SK, Authorization: 'Bearer ' + SK, 'Content-Type': m[1], 'x-upsert': 'true' },
+          body: Buffer.from(m[2], 'base64'),
+        });
+        if (!up.ok) return res.status(500).json({ error: 'Não consegui salvar a capa agora.' });
+        // ?v= no fim: mesmo caminho de arquivo (x-upsert), então sem isso o
+        // navegador serve a capa velha e parece que nada mudou.
+        mudanca.cover_url = `${SU}/storage/v1/object/public/blue-videos/${path}?v=${Date.now()}`;
+      } else if (b.capa_data === null) {
+        mudanca.cover_url = null; // tirar a capa é uma escolha legítima
+      }
+
+      if (Object.keys(mudanca).length === 1) return res.status(400).json({ error: 'Nada pra salvar.' });
+
+      const r = await fetch(`${SU}/rest/v1/community_profiles?user_id=eq.${userId}`, {
+        method: 'PATCH', headers: { ...H, Prefer: 'return=representation' },
+        body: JSON.stringify(mudanca),
+      });
+      if (!r.ok) {
+        const det = await r.text().catch(() => '');
+        console.error('[perfil-salvar] falhou', r.status, det.slice(0, 200));
+        return res.status(500).json({
+          error: 'Não consegui salvar agora.',
+          detalhe: /bio|link|cover_url|column/i.test(det)
+            ? 'As colunas bio/link/cover_url ainda não existem — rode sql/comunidade_perfil_bio.sql no Supabase.'
+            : undefined,
+        });
+      }
+      const salvo = (await r.json())[0] || {};
+      return res.status(200).json({ ok: true, bio: salvo.bio || null, link: salvo.link || null, capa: salvo.cover_url || null });
+    }
+
     // ── PERFIL PÚBLICO de uma pessoa ─────────────────────────────────────────
     // Nasceu de uma dor concreta: só dava pra adicionar quem aparecesse no feed
     // por acaso, e não havia onde clicar num nome. O perfil é o lugar onde a
@@ -417,6 +489,11 @@ module.exports = async function handler(req, res) {
 
       return res.status(200).json({
         user: pubPerfil(alvo),
+        // bio/link/capa não entram no pubPerfil de propósito: ele é usado no
+        // feed inteiro, e mandar bio em cada card do feed seria peso à toa.
+        bio: alvo.bio || null,
+        link: alvo.link || null,
+        capa: alvo.cover_url || null,
         eu: souEu,
         desde,
         posts,

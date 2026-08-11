@@ -26,11 +26,6 @@ body{background:radial-gradient(ellipse 130% 70% at 50% -12%,#0a2050 0%,#051334 
 
 .pf-wrap{max-width:640px;margin:0 auto;padding-bottom:60px}
 
-/* CAPA — a faixa que dá a cara da página. A cor sai do nome da pessoa, então
-   cada perfil tem a sua e ninguém precisa subir imagem nenhuma. */
-.pf-capa{height:150px;position:relative;overflow:hidden;background:#0a1830}
-.pf-capa::after{content:'';position:absolute;inset:0;background:linear-gradient(180deg,transparent 40%,rgba(2,8,23,.55) 100%)}
-@media(max-width:520px){.pf-capa{height:118px}}
 
 .pf-cab{padding:0 18px;position:relative}
 .pf-avlinha{display:flex;align-items:flex-end;justify-content:space-between;margin-top:-46px;margin-bottom:12px;gap:12px}
@@ -58,17 +53,11 @@ body{background:radial-gradient(ellipse 130% 70% at 50% -12%,#0a2050 0%,#051334 
 .pf-aba.on::after{content:'';position:absolute;bottom:-1px;left:50%;transform:translateX(-50%);width:58px;height:3px;border-radius:3px;background:var(--neon)}
 
 /* POSTS */
-.pf-lista{padding:0 0 8px}
-.pf-post{padding:16px 18px;border-bottom:1px solid rgba(0,170,255,.07)}
-.pf-post:hover{background:rgba(0,170,255,.02)}
-.pf-ph{display:flex;align-items:center;gap:8px;font-family:var(--font-mono);font-size:11px;color:var(--text-dim);margin-bottom:8px}
-.pf-ph b{font-family:var(--font-display);font-size:14px;color:var(--text-primary);font-weight:700}
 .pf-txt{font-size:15px;line-height:1.62;color:#dbe7f7;white-space:pre-wrap;word-break:break-word}
 .pf-mid{margin-top:11px;border-radius:13px;overflow:hidden;border:1px solid rgba(0,170,255,.12)}
 .pf-mid img,.pf-mid video{width:100%;display:block;max-height:520px;object-fit:cover;background:#020817}
 .pf-yt{position:relative;padding-top:56.25%}
 .pf-yt iframe{position:absolute;inset:0;width:100%;height:100%;border:0}
-.pf-pe{display:flex;gap:18px;margin-top:11px;font-family:var(--font-mono);font-size:11.5px;color:var(--text-dim)}
 .pf-tag{display:inline-block;font-family:var(--font-mono);font-size:9.5px;padding:2px 8px;border-radius:100px;background:rgba(251,191,36,.12);color:#fbbf24;border:1px solid rgba(251,191,36,.28);margin-bottom:8px}
 
 .pf-msg{padding:54px 24px;text-align:center;font-family:var(--font-mono);font-size:13px;color:var(--text-secondary);line-height:1.8}
@@ -79,6 +68,48 @@ body{background:radial-gradient(ellipse 130% 70% at 50% -12%,#0a2050 0%,#051334 
 .pf-sk{background:linear-gradient(90deg,rgba(255,255,255,.04),rgba(255,255,255,.08),rgba(255,255,255,.04));background-size:200% 100%;animation:pfSk 1.3s ease-in-out infinite;border-radius:8px}
 @keyframes pfSk{0%{background-position:200% 0}100%{background-position:-200% 0}}
 @media(prefers-reduced-motion:reduce){.pf-sk{animation:none}}
+/* CAPA — imagem própria quando existe; senão, gradiente derivado do nome */
+.pf-capa{height:170px;position:relative;overflow:hidden;background:#0a1830;background-size:cover;background-position:center}
+.pf-capa::after{content:'';position:absolute;inset:0;background:linear-gradient(180deg,transparent 45%,rgba(2,8,23,.6) 100%)}
+.pf-capabtn{position:absolute;right:12px;bottom:12px;z-index:2;background:rgba(2,8,23,.72);border:1px solid rgba(255,255,255,.22);color:#e8f0fb;font-family:var(--font-mono);font-size:11px;padding:7px 13px;border-radius:100px;cursor:pointer;backdrop-filter:blur(8px)}
+.pf-capabtn:hover{background:rgba(2,8,23,.9);border-color:rgba(0,170,255,.5)}
+@media(max-width:520px){.pf-capa{height:128px}}
+
+/* Editar a foto: o lápis vive SOBRE o avatar, que é onde a pessoa procura */
+.pf-avbox{position:relative;flex:0 0 auto}
+.pf-avedit{position:absolute;right:2px;bottom:2px;width:30px;height:30px;border-radius:50%;background:rgba(2,8,23,.85);border:1px solid rgba(0,170,255,.4);color:#00c4ff;cursor:pointer;font-size:13px;display:flex;align-items:center;justify-content:center}
+.pf-avedit:hover{background:#00aaff;color:#02101f;border-color:#00aaff}
+
+/* BIO e link */
+.pf-bio{font-family:var(--font-sans);font-size:14.5px;line-height:1.6;color:#c8d8ee;margin-top:11px;white-space:pre-wrap;word-break:break-word}
+.pf-link{display:inline-flex;align-items:center;gap:6px;margin-top:9px;font-family:var(--font-mono);font-size:12.5px;color:#00c4ff;text-decoration:none;word-break:break-all}
+.pf-link:hover{text-decoration:underline}
+
+/* EDITOR */
+.pf-ed{margin-top:14px;background:rgba(10,22,40,.6);border:1px solid rgba(0,170,255,.18);border-radius:14px;padding:14px}
+.pf-ed label{display:block;font-family:var(--font-mono);font-size:10px;color:var(--text-dim);letter-spacing:.6px;margin-bottom:6px}
+.pf-ed textarea,.pf-ed input{width:100%;background:rgba(2,8,23,.6);border:1px solid rgba(0,170,255,.18);border-radius:10px;color:#e8f0fb;font-family:var(--font-sans);font-size:14px;padding:10px 12px;resize:vertical}
+.pf-ed textarea:focus,.pf-ed input:focus{outline:none;border-color:rgba(0,170,255,.5);box-shadow:0 0 0 3px rgba(0,170,255,.1)}
+.pf-ed input{font-family:var(--font-mono);font-size:12.5px}
+.pf-edlinha{margin-bottom:12px}
+.pf-conta{font-family:var(--font-mono);font-size:10.5px;color:var(--text-dim);text-align:right;margin-top:4px}
+.pf-conta.perto{color:#fbbf24}
+.pf-conta.estourou{color:#fca5a5}
+.pf-edbot{display:flex;gap:8px;justify-content:flex-end}
+.pf-b{font-family:var(--font-mono);font-size:12px;padding:9px 17px;border-radius:100px;cursor:pointer;border:1px solid rgba(0,170,255,.26);background:rgba(0,170,255,.09);color:#00c4ff}
+.pf-b:hover{background:rgba(0,170,255,.18)}
+.pf-b.ghost{background:transparent;border-color:rgba(138,160,189,.28);color:var(--text-secondary)}
+.pf-b:disabled{opacity:.5;cursor:default}
+
+/* POSTS — cada um é um CARD separado. Antes eram só linhas divididas por um
+   fio de 1px e o dono leu como "1 post só". Fundo, borda e respiro entre eles
+   é o que faz o olho contar quantos são. */
+.pf-lista{padding:14px 14px 8px;display:flex;flex-direction:column;gap:12px}
+.pf-post{padding:15px 16px;background:rgba(10,22,40,.5);border:1px solid rgba(0,170,255,.12);border-radius:15px;transition:border-color .18s,transform .18s}
+.pf-post:hover{border-color:rgba(0,170,255,.28);transform:translateY(-1px)}
+.pf-ph{display:flex;align-items:center;gap:7px;font-family:var(--font-mono);font-size:11px;color:var(--text-dim);margin-bottom:9px;padding-bottom:9px;border-bottom:1px solid rgba(0,170,255,.08)}
+.pf-ph b{font-family:var(--font-display);font-size:13.5px;color:var(--text-primary);font-weight:700}
+.pf-pe{display:flex;gap:18px;margin-top:12px;padding-top:11px;border-top:1px solid rgba(0,170,255,.08);font-family:var(--font-mono);font-size:11.5px;color:var(--text-dim)}
 </style>
 </head>
 <body>
@@ -89,16 +120,18 @@ body{background:radial-gradient(ellipse 130% 70% at 50% -12%,#0a2050 0%,#051334 
 </header>
 
 <main class="pf-wrap" id="pfMain">
-  <div class="pf-capa" id="pfCapa"></div>
+  <div class="pf-capa" id="pfCapa"><div id="pfCapaBtn"></div></div>
   <div class="pf-cab">
     <div class="pf-avlinha">
-      <div class="pf-av pf-sk" id="pfAv" style="border-radius:50%"></div>
+      <div class="pf-avbox"><div class="pf-av pf-sk" id="pfAv" style="border-radius:50%"></div><div id="pfAvEdit"></div></div>
       <div class="pf-acao" id="pfAcao"></div>
     </div>
     <div class="pf-sk" style="width:170px;height:24px" id="pfSk1"></div>
   </div>
   <div id="pfCorpo"></div>
 </main>
+<input type="file" id="pfFileCapa" accept="image/jpeg,image/png,image/webp" hidden>
+<input type="file" id="pfFileFoto" accept="image/jpeg,image/png,image/webp" hidden>
 
 <!-- O comunidade.js entra por causa do ComunidadeBT.call (token, sessão) e o
      de amigos por causa do botão de amizade — um só lugar decide como ele se
@@ -106,6 +139,6 @@ body{background:radial-gradient(ellipse 130% 70% at 50% -12%,#0a2050 0%,#051334 
 <script src="/comunidade.js?v=10"></script>
 <script src="/comunidade-amigos.js?v=4"></script>
 <script src="/toast.js?v=20260811a"></script>
-<script src="/perfil-pagina.js?v=1"></script>
+<script src="/perfil-pagina.js?v=2"></script>
 </body>
 </html>
