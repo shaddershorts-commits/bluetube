@@ -1313,3 +1313,17 @@ test('MODAL: sem contagem fresca, não desenha rosto nenhum', () => {
   assert.match(SALA.slice(i, i + 220), /contagemFresca\(\) \? \(S\.foraNomes \|\| \[\]\) : \[\]/,
     'voltaria a desenhar 4 rostos embaixo da frase que diz que a sala está vazia');
 });
+
+test('A reescrita de /nome NÃO pode aceitar ponto (arquivo virando HTML)', () => {
+  // Medido em produção: com ponto no padrão, /favicon.ico e /ads.txt passavam
+  // a devolver a PÁGINA DE PERFIL em text/html. Um rastreador pedindo ads.txt
+  // recebia HTML; qualquer .txt/.xml/.ico ausente virava página.
+  const V = JSON.parse(readFileSync(new URL('../../vercel.json', import.meta.url), 'utf8'));
+  const r = (V.rewrites || []).find((x) => x.destination === '/perfil');
+  assert.ok(r, 'sumiu a reescrita do perfil');
+  assert.equal(/\\./.test(r.source) || r.source.includes('.'), false,
+    'o padrão voltou a aceitar ponto — arquivo inexistente vira página de perfil');
+  assert.equal(/[{}]/.test(r.source), false, 'chaves quebram o path-to-regexp');
+  assert.equal((V.rewrites || []).indexOf(r), (V.rewrites || []).length - 1,
+    'a reescrita genérica tem que ser a ÚLTIMA');
+});

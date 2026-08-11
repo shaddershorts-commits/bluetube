@@ -19,7 +19,7 @@
       "destination": "/api/sitemap"
     },
     {
-      "source": "/:nome([a-zA-Z0-9_.-]+)",
+      "source": "/:nome([a-zA-Z0-9_-]+)",
       "destination": "/perfil"
     }
   ],
