@@ -438,3 +438,115 @@ test('erro de rede no front vira mensagem legível', () => {
   assert.match(FRONT, /login_obrigatorio:/, 'cada erro do backend precisa de tradução');
   assert.match(FRONT, /plano_necessario:/);
 });
+
+// ═══ A COMUNIDADE INTEIRA (11/08) ════════════════════════════════════════
+// Por que estes testes existem: a sala de voz entrou em produção em 11/08 e o
+// conhecimento do Blublu NÃO foi atualizado junto. Ele passou a atender gente
+// da Comunidade sem saber que a sala de voz existia — e o pior modo de falha de
+// um suporte não é errar, é ignorar com confiança uma tela que está na frente
+// da pessoa. Os testes abaixo amarram cada NÚMERO que ele ensina ao código que
+// manda nele, do mesmo jeito que os idiomas e o BlueClean já eram amarrados.
+
+const SALA_API = readFileSync(new URL('../../api/sala-voz.js', import.meta.url), 'utf8');
+const SALA_FRONT = readFileSync(new URL('../../public/sala-voz.js', import.meta.url), 'utf8');
+const COMM_API = readFileSync(new URL('../../api/community.js', import.meta.url), 'utf8');
+const AMIZADE = readFileSync(new URL('../../api/_helpers/amizade.js', import.meta.url), 'utf8');
+
+const numeroDe = (fonte, re, nome) => {
+  const m = fonte.match(re);
+  assert.ok(m, `não consegui ler ${nome} do código — o teste ficou cego`);
+  return m[1];
+};
+
+test('os números da SALA DE VOZ que ele ensina são os do código', () => {
+  const teto = numeroDe(SALA_API, /const MAX_PESSOAS = (\d+)/, 'MAX_PESSOAS');
+  assert.ok(CONHECIMENTO_1L.includes(`**${teto} pessoas**`),
+    `a sala cabe ${teto} e o Blublu ensina outro número`);
+
+  // Os dois relógios de inatividade: são a causa nº 1 de "fui expulso do nada".
+  const semFalar = numeroDe(SALA_FRONT, /SEM_FALAR_MS: (\d+) \* 60 \* 1000/, 'SEM_FALAR_MS');
+  const semTocar = numeroDe(SALA_FRONT, /SEM_TOCAR_MS: (\d+) \* 60 \* 1000/, 'SEM_TOCAR_MS');
+  assert.ok(CONHECIMENTO_1L.includes(`**${semFalar} minutos sem falar**`), `o relógio de fala virou ${semFalar}min`);
+  assert.ok(CONHECIMENTO_1L.includes(`**${semTocar} minutos**`), `o teto sem toque virou ${semTocar}min`);
+});
+
+test('os números das SALAS PRIVADAS que ele ensina são os do código', () => {
+  const horas = numeroDe(SALA_API, /const EXPULSAO_H = (\d+)/, 'EXPULSAO_H');
+  const tentativas = numeroDe(SALA_API, /const SENHA_TENTATIVAS = (\d+)/, 'SENHA_TENTATIVAS');
+  const castigo = numeroDe(SALA_API, /const SENHA_CASTIGO_MIN = (\d+)/, 'SENHA_CASTIGO_MIN');
+  const titulo = numeroDe(SALA_API, /const TITULO_MAX = (\d+)/, 'TITULO_MAX');
+  const senhaMin = numeroDe(SALA_API, /const SENHA_MIN = (\d+)/, 'SENHA_MIN');
+
+  assert.ok(CONHECIMENTO_1L.includes(`**${horas} horas**`), `a expulsão virou ${horas}h`);
+  assert.ok(CONHECIMENTO_1L.includes(`**${tentativas} vezes**`), `o freio virou ${tentativas} tentativas`);
+  assert.ok(CONHECIMENTO_1L.includes(`**${castigo} minutos**`), `o castigo virou ${castigo}min`);
+  assert.ok(CONHECIMENTO_1L.includes(`**${titulo}** letras`), `o nome da sala virou ${titulo}`);
+  assert.ok(CONHECIMENTO_1L.includes(`**${senhaMin}** caracteres`), `a senha mínima virou ${senhaMin}`);
+});
+
+test('ele explica a diferença entre TROCAR SENHA e EXPULSAR (a promessa que não pode virar mentira)', () => {
+  // Isto não é detalhe de texto: trocar a senha NÃO tira quem já está dentro, e
+  // o código foi construído dizendo isso na cara. Um suporte prometendo o
+  // contrário desfaz a única garantia real que a feature tem.
+  assert.match(SALA_API, /aviso: b\.senha !== undefined \? 'A senha nova vale pra quem entrar daqui pra frente/,
+    'o servidor deixou de avisar isso — o conhecimento abaixo ficou órfão');
+  assert.match(CONHECIMENTO_1L, /trocar a senha fecha a PORTA, não esvazia a sala/i);
+  assert.match(CONHECIMENTO_1L, /Expulsar\*\*, que é o único que tira de verdade/i);
+});
+
+test('ele sabe que o ⋯ só aparece no card de OUTRA pessoa (a dúvida real do dono)', () => {
+  // O próprio dono do produto abriu a sala, não viu o botão e perguntou se a
+  // feature existia. Se ele tropeçou, o assinante tropeça mais.
+  assert.match(SALA_FRONT, /if \(souEu\(identity\) \|\| \(pe && pe\.eu\)\) return false;/,
+    'a regra mudou: o ⋯ passou a aparecer no próprio card?');
+  assert.match(CONHECIMENTO_1L, /sozinho na sala não tem em quem clicar/i);
+});
+
+test('ele sabe as regras das AMIZADES que estão no helper', () => {
+  const dias = numeroDe(AMIZADE, /const CARENCIA_RECUSA_DIAS = (\d+)/, 'CARENCIA_RECUSA_DIAS');
+  const strikes = numeroDe(AMIZADE, /const MAX_STRIKES = (\d+)/, 'MAX_STRIKES');
+  assert.ok(CONHECIMENTO_1L.includes(`**${dias} dias**`), `a carência virou ${dias} dias`);
+  assert.ok(CONHECIMENTO_1L.includes(`**${strikes}** recusas`), `o bloqueio virou ${strikes} recusas`);
+});
+
+test('ele sabe o tamanho da bio do perfil', () => {
+  const bio = numeroDe(COMM_API, /const bio = clean\(b\.bio, (\d+)\)/, 'limite da bio');
+  assert.ok(CONHECIMENTO_1L.includes(`**${bio}** caracteres`), `a bio virou ${bio}`);
+});
+
+test('COBERTURA: feature que existe no código tem que existir no conhecimento', () => {
+  // O teste anti-apodrecimento. Cada linha amarra um SINAL do código (uma ação
+  // real do backend, não um texto) à palavra que o Blublu precisa saber. Subir
+  // feature nova sem ensinar o suporte passa a quebrar o build.
+  const cobertura = [
+    ['sala de voz',    SALA_API,  /action === 'entrar'/,     /sala de voz ao vivo/i],
+    ['salas privadas', SALA_API,  /action === 'criar'/,      /criar\s+minha sala/i],
+    ['expulsar',       SALA_API,  /action === 'expulsar'/,   /expulsar/i],
+    ['co-anfitrião',   SALA_API,  /action === 'papel'/,      /co-anfitrião/i],
+    ['silenciar',      SALA_API,  /action === 'silenciar'/,  /silenciar/i],
+    ['encerrar sala',  SALA_API,  /action === 'encerrar'/,   /encerrar sala/i],
+    ['chat da sala',   SALA_FRONT, /function receberDados/,  /chat de texto da sala/i],
+    ['denunciar',      COMM_API,  /action === 'denunciar'/,  /denunciar/i],
+    ['amizades',       COMM_API,  /action === 'amizades'/,   /amigos/i],
+    ['perfil',         COMM_API,  /action === 'perfil'/,     /perfil/i],
+  ];
+  for (const [nome, fonte, existeNoCodigo, ensinado] of cobertura) {
+    if (!existeNoCodigo.test(fonte)) continue;   // a feature saiu: nada a exigir
+    assert.match(CONHECIMENTO_1L, ensinado,
+      `"${nome}" existe no código e o Blublu não sabe — ele vai atender alguém sobre uma tela que ele ignora`);
+  }
+});
+
+test('o conhecimento novo entrou no CONHECIMENTO, não virou resposta pronta na PERSONALIDADE', () => {
+  // A premissa do produto é conversa de gente, não árvore de resposta. A
+  // tentação, quando o suporte erra, é escrever a resposta certa direto na
+  // instrução — e é assim que ele vira robô. Fato vai no conhecimento;
+  // comportamento, na personalidade.
+  for (const fato of ['12 horas', 'co-anfitrião', 'Criar minha sala', '10 pessoas']) {
+    assert.ok(!PERSONALIDADE_TXT.includes(fato),
+      `"${fato}" foi parar na PERSONALIDADE — fato é conhecimento, não instrução de comportamento`);
+  }
+  // E a personalidade continua sendo a de conversa, não a de menu.
+  assert.match(PERSONALIDADE_TXT, /responda a pergunta que foi feita, com o dado exato/i);
+  assert.match(PERSONALIDADE_TXT, /Nunca despeje o bloco inteiro de uma ferramenta/);
+});

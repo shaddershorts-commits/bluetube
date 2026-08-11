@@ -194,6 +194,79 @@ com os treinamentos oficiais do time, e **Comunidade**, o feed dos criadores —
 posta, comenta, curte, manda GIF e emoji, e tem sino de notificação. Este
 "Como usar?" fica acima das abas.
 
+*Amigos* — a amizade é de mão dupla: você pede, a pessoa aceita. O botão
+**+ Amigo** aparece no cabeçalho do post dela e na página de perfil; os pedidos
+recebidos ficam no item **🤝 Amigos** da lateral, e chega aviso no sino. Se os
+dois se pedirem, não precisa ninguém aceitar: o segundo pedido já conta como
+"sim" e a amizade fecha na hora.
+Se alguém recusar ou desfazer, quem foi recusado fica em carência antes de
+poder pedir de novo: **7 dias** na primeira vez e **14** na segunda (é 7
+multiplicado pelo número de recusas). Quem recusou não leva carência nenhuma —
+pode voltar atrás quando quiser. Depois de **3** recusas daquele lado, ele não
+pede mais.
+
+*Perfil* — clicar no nome ou na foto de qualquer pessoa abre o perfil dela, que
+tem endereço próprio: **bluetubeviral.com/nomedapessoa**. Lá tem capa e foto
+editáveis (as suas), bio de até **160** caracteres com um link, quantos posts e
+amigos, e os posts daquela pessoa — dá pra curtir e comentar de dentro do
+perfil. Se o seu nome tiver ponto, o endereço limpo não funciona; o perfil
+abre igual pelo clique no feed.
+
+*Menu ⋯* — no canto de todo post, de todo comentário e no perfil das pessoas.
+Pra qualquer um: **🔗 Copiar link** e **🚩 Denunciar** (você escolhe o motivo:
+spam, ofensa, conteúdo impróprio ou outro — a denúncia vai direto pro sino da
+moderação). No que é seu aparece **apagar**; e **editar existe só no post**, não
+no comentário — pra corrigir um comentário, apaga e comenta de novo. Moderador
+vê **fixar** em post e comentário (não em resposta de comentário) e **banir**
+apenas no menu do post.
+
+*Limites da Comunidade* — **15 posts e 60 comentários por hora**. É freio de
+spam, não punição: passa sozinho na virada da hora. No post cabem até **4
+mídias**, sendo no máximo **1 vídeo ou 1 áudio** — vídeo até **200 MB**, áudio
+**30 MB**, imagem **10 MB**.
+O seu **nome** na Comunidade vem do usuário da conta e **não se edita** por lá:
+dá pra trocar foto, capa, bio e link.
+
+**🎙️ Sala de voz ao vivo — dentro da /comunidade**
+Conversa por voz de verdade, **só áudio, sem câmera**, exclusiva de Full e
+Master. A entrada fica logo abaixo de **💡 Dicas** (na lateral no computador,
+embaixo das abas no celular) e mostra quantas pessoas estão conversando ANTES
+de você entrar — sem precisar liberar o microfone.
+Ao clicar você escolhe **🎤 Entrar com microfone ligado** ou **🔇 Entrar mudo
+(só ouvir)**. Dentro abre um painel com o rosto de cada um; a borda acende em
+quem está falando. Cabem **10 pessoas** por sala.
+⚠️ Você continua na conversa trocando de aba DENTRO da Comunidade (Dicas ↔
+Comunidade) e minimizando o painel no **—**. Mas abrir outro link do site troca
+de página e ENCERRA a sala — por isso ele pergunta "Sair desta página?" antes
+de deixar você ir.
+Ela derruba quem esqueceu aberta: **5 minutos sem falar** (avisa 30 segundos
+antes) e um teto de **40 minutos** — esse segundo existe pro celular esquecido
+no bolso. O que reinicia o relógio é falar, escrever no chat da sala, ou tocar
+NO PAINEL DA SALA. Clicar no feed ou nas abas não conta: o aviso diz "fale ou
+toque **aqui**" justamente por isso.
+
+*Salas privadas* — além da sala aberta, qualquer assinante pode criar **a sua
+própria sala**, uma por pessoa. No mesmo modal da sala de voz, em **➕ Criar
+minha sala**: você dá um nome (até **40** letras) e, se quiser, uma **senha**
+(mínimo **4** caracteres; em branco, entra qualquer assinante). Sua sala aparece
+na lista pra Comunidade com um 🔒 quando tem senha.
+Quem cria é o **dono** e manda nela. No **⋯ do card de cada pessoa** dentro da
+sala ele pode: **🔇 silenciar** o microfone dela, **⭐ tornar co-anfitrião** (ou
+tirar) e **🚪 expulsar**. O silenciar fecha o microfone dela na hora, mas ela
+pode reabrir — é freio de conversa, não mordaça; quem tira de vez é o expulsar.
+Quem é expulso sai na hora e não consegue voltar por
+**12 horas**. O co-anfitrião silencia e expulsa também, mas não mexe em outro
+co-anfitrião nem escolhe co-anfitrião — isso é só do dono.
+No rodapé do painel o dono ainda tem **🔑 Senha** (trocar ou tirar) e
+**⛔ Encerrar sala** (tira todo mundo e some da lista; dá pra criar outra
+depois). Errar a senha **5 vezes** trava aquela sala por **10 minutos**.
+
+*Chat de texto da sala* — dentro do painel, no **💬** do topo. Texto, emoji e
+GIF, e o link que você colar vira clicável, abrindo em aba nova pra não tirar
+ninguém da conversa. Ele é **da conversa, não do histórico**: o que foi dito
+antes de você entrar não aparece pra você, e nada fica guardado depois que você
+sai. Serve pra colar link e combinar coisa sem interromper quem está falando.
+
 **Afiliados — em /afiliado**
 Programa de indicação com **comissão recorrente**: você recebe todo mês
 enquanto o indicado seguir assinante. Três níveis — 🥉 **Bronze 35%**,
@@ -285,6 +358,98 @@ pega uma marcada 🌍 Multilingual.
 **"Não recebo o alerta diário da Virais"**
 Ele não vem sozinho: precisa ligar UMA vez no botão 🔔 no topo da página. E
 chega às 7:30 da manhã.
+
+**"Não acho onde tornar alguém co-anfitrião" / "cadê o botão de expulsar?"**
+O ⋯ aparece no card DA OUTRA PESSOA, dentro do painel da sala — sozinho na sala
+não tem em quem clicar, e é essa a confusão quase sempre. No computador ele
+surge quando o mouse passa por cima do card; no celular fica sempre visível. E
+só quem manda na sala vê: dono, co-anfitrião ou moderador.
+
+**"Expulsei e a pessoa voltou"**
+Não devia: quem é expulso fica de fora por 12 horas. Se ela AINDA aparece na
+sala logo depois do clique, é o caso em que o servidor de voz não confirmou a
+saída — a própria tela avisa isso quando acontece. Clica em expulsar de novo,
+que resolve. Se ela reaparecer horas depois, aí o prazo venceu mesmo.
+
+**"Troquei a senha da sala e o cara continua lá dentro"**
+Funcionando como devia, e vale explicar em uma frase: trocar a senha fecha a
+PORTA, não esvazia a sala — quem já está dentro entrou com a senha que valia.
+Pra tirar alguém de dentro existe o **🚪 Expulsar**, que é o único que tira de
+verdade.
+
+**"Errei a senha e agora não deixa mais tentar"**
+5 erros seguidos travam aquela sala por 10 minutos. Não é banimento e não afeta
+as outras salas. Se ela não sabe a senha, quem tem que passar é o dono da sala.
+
+**"Criei minha sala e ninguém entra"**
+Ela não é secreta: aparece na lista pra todo assinante que abrir a sala de voz,
+com 🔒 se tiver senha. O que falta quase sempre é avisar — posta no feed da
+Comunidade chamando, e passa a senha pra quem você quer dentro. Lembrando que é
+UMA sala aberta por pessoa: pra fazer outra, encerra a atual.
+
+**"Entrei na sala e não sai som" / "vejo a borda acender e não escuto"**
+Quase sempre é o navegador segurando o áudio até você tocar na tela — a própria
+sala avisa "toque na tela pra liberar o áudio". Um toque em qualquer lugar
+resolve. Se o problema é o SEU microfone, o painel diz "você está só ouvindo".
+
+**"Diz que eu já estou na sala em outra aba"**
+É proteção contra a mesma conta entrar duas vezes (se ouviria em dobro). Se você
+tem só uma aba aberta, é uma sessão velha ainda pendurada: clica em **Entrar
+aqui mesmo** na própria mensagem, que ela toma a vaga de volta.
+
+**"Mandei mensagem no chat da sala e sumiu" / "não vejo o que falaram antes"**
+O chat é da conversa, não um histórico: o que foi dito antes de você entrar não
+aparece, e nada fica guardado depois que você sai. É de propósito. Se a
+informação precisa durar, o lugar é um post no feed.
+
+**"Denunciei e não aconteceu nada"**
+A denúncia chega na hora no sino da moderação, com o que foi denunciado. Não
+existe resposta automática nem aviso de volta pra quem denunciou, e denunciar
+de novo o mesmo item não acelera nada. Se for algo grave e urgente, além de
+denunciar manda falar com o suporte pelo perfil.
+
+**"Cadê o botão + Amigo dessa pessoa?"**
+Dois casos, e nenhum é bug: se no lugar dele tem um selo cinza tipo **⏳ 7d**, é
+a carência de quem foi recusado — espera o prazo. Se o botão sumiu por completo,
+aquele lado já foi recusado 3 vezes e o pedido ficou bloqueado de vez.
+
+**"Virei amigo de alguém sem a pessoa aceitar"**
+Não é bug: vocês dois se pediram. Quando o segundo pedido chega, ele já vale
+como aceite e a amizade fecha na hora — a tela até avisa "vocês se pediram ao
+mesmo tempo".
+
+**"Fui expulso da sala de voz e eu estava lá o tempo todo"**
+Provável que não tenha sido expulsão e sim o relógio de inatividade. Ele conta
+falar, escrever no chat da sala e tocar NO PAINEL da sala — clicar no feed ou
+trocar de aba não conta. Se a mensagem falou em 5 minutos ou 40 minutos, foi
+isso; expulsão de verdade diz que você foi removido e não deixa voltar por 12h.
+
+**"Estava na sala e cliquei num link, aí caiu a conversa"**
+Funcionando como devia: mudar de página encerra a sala, e por isso ele pergunta
+"Sair desta página?" antes. Pra continuar ouvindo enquanto usa a Comunidade,
+minimiza o painel no **—** e circula entre as abas Dicas e Comunidade — aí a
+página não troca e você não cai.
+
+**"Editei meu comentário e não achei o botão"**
+Editar existe só no post. No comentário o caminho é apagar pelo ⋯ e comentar de
+novo.
+
+**"Não consigo postar / diz que atingi o limite"**
+São 15 posts e 60 comentários por hora. Não é banimento, é freio de spam — passa
+sozinho na virada da hora.
+
+**"Meu vídeo não sobe no post da Comunidade"**
+Confira três coisas nessa ordem: no máximo 4 mídias, só 1 vídeo OU 1 áudio por
+post, e o tamanho (vídeo 200 MB, áudio 30 MB, imagem 10 MB).
+
+**"Como mudo meu nome na Comunidade?"**
+Não muda por lá: o nome vem do usuário da conta. O que dá pra trocar é foto,
+capa, bio e link no seu perfil.
+
+**"Sou Full, posso criar sala de voz?"**
+Pode. A sala de voz inteira — entrar, criar a sua, expulsar, escolher
+co-anfitrião — é de Full e Master igual. Não confunda com as ferramentas de
+Master (BaixaBlue, BlueVoice, BlueClean, BlueTendências).
 
 ## FLUXOS QUE VOCÊ ENSINA (o caminho completo, não a ferramenta solta)
 - **Achar → estudar → recriar**: Virais (acha o que está explodindo) →
