@@ -153,11 +153,22 @@ module.exports = async function handler(req, res) {
       const likes = lR.ok ? await lR.json() : [];
       if (!likes.length) return res.status(200).json({ videos: [] });
       const ids = [...new Set(likes.map(l => l.video_id))];
+      // Data em que EU curti, por vídeo — o app agrupa "Sua atividade" por
+      // mês/ano usando esta data, não a de publicação do vídeo. Se a coluna
+      // não veio (fallback da linha acima), fica undefined e o app cai pra
+      // data do vídeo: agrupamento menos preciso, mas nunca lista vazia.
+      const quando = new Map();
+      for (const l of likes) if (!quando.has(l.video_id)) quando.set(l.video_id, l.created_at);
       const vR = await fetch(`${SU}/rest/v1/blue_videos?id=in.(${ids.join(',')})&status=eq.active&select=*`, { headers: h });
       const vids = vR.ok ? await vR.json() : [];
       // Mantém a ordem das curtidas (mais recente primeiro)
       const vm = new Map(vids.map(v => [v.id, v]));
-      return res.status(200).json({ videos: ids.map(id => vm.get(id)).filter(Boolean) });
+      return res.status(200).json({
+        videos: ids.map(id => {
+          const v = vm.get(id);
+          return v ? { ...v, curtido_em: quando.get(id) } : null;
+        }).filter(Boolean),
+      });
     } catch(e) { return res.status(200).json({ videos: [], error: e.message }); }
   }
 
