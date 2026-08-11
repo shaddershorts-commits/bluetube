@@ -64,6 +64,10 @@
       '.sn-item:last-child{border-bottom:none}',
       '.sn-item.link{cursor:pointer}.sn-item.link:hover{background:rgba(0,170,255,.05)}',
       '.sn-item.nova{background:rgba(0,170,255,.045)}',
+      // viral absoluto: fundo e borda dourados, título em ouro
+      '.sn-item.sn-ouro{background:linear-gradient(135deg,rgba(251,191,36,.12),rgba(251,191,36,.03));border-left:3px solid #fbbf24}',
+      '.sn-item.sn-ouro .sn-ico{background:rgba(251,191,36,.16);border-color:rgba(251,191,36,.45)}',
+      '.sn-item.sn-ouro .sn-tit{color:#fbbf24;font-weight:800}',
       '.sn-ico{width:28px;height:28px;border-radius:8px;background:rgba(0,170,255,.1);border:1px solid rgba(0,170,255,.18);',
       'display:flex;align-items:center;justify-content:center;font-size:13px;flex-shrink:0}',
       '.sn-txt{flex:1;min-width:0}',
@@ -170,9 +174,13 @@
     }
     corpo.innerHTML = _lista.map(function (n) {
       var url = (n.dados && n.dados.url) || '';
-      return '<div class="sn-item' + (url ? ' link' : '') + (n.lida ? '' : ' nova') + '"' +
+      // 'ouro' = viral absoluto (300 mil em menos de 3h). O aviso tem que
+      // gritar mais que os outros, senão some no meio da lista.
+      var ouro = n.dados && n.dados.destaque === 'ouro';
+      return '<div class="sn-item' + (url ? ' link' : '') + (n.lida ? '' : ' nova') +
+        (ouro ? ' sn-ouro' : '') + '"' +
         (url ? ' data-url="' + esc(url) + '"' : '') + '>' +
-        '<div class="sn-ico">' + (ICONES[n.tipo] || '🔔') + '</div>' +
+        '<div class="sn-ico">' + (ouro ? '👑' : (ICONES[n.tipo] || '🔔')) + '</div>' +
         '<div class="sn-txt">' +
           '<div class="sn-tit">' + esc(n.titulo || 'Aviso') + '</div>' +
           (n.mensagem ? '<div class="sn-msg">' + esc(n.mensagem) + '</div>' : '') +
@@ -182,7 +190,11 @@
     corpo.querySelectorAll('.sn-item.link').forEach(function (el) {
       el.addEventListener('click', function () {
         marcarLidas();
-        window.location.href = el.dataset.url;
+        var u = el.dataset.url;
+        // Link de fora (o Short no YouTube) abre em aba nova — jogar a pessoa
+        // pra fora do BlueTube pra ver um vídeo seria perder a sessão dela.
+        if (/^https?:\/\//i.test(u)) window.open(u, '_blank', 'noopener');
+        else window.location.href = u;
       });
     });
   }

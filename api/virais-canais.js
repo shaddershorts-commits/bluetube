@@ -85,6 +85,7 @@ const LANG_BY_CODE = {
 // emails/dia contra um teto de 200/dia. O email é só o resumo das 7:30.
 const REGRAS = {
   r1: { views: 100000,  horas: 5,   rotulo: '100 mil views em menos de 5 horas' },
+  r4: { views: 300000,  horas: 3,   rotulo: '300 mil views em menos de 3 horas', ouro: true },
   r2: { views: 1000000, horas: 72,  rotulo: '1 milhão de views em até 3 dias' },
   r3: { views: 5000000, horas: 168, rotulo: '5 milhões de views em até 7 dias' },
 };
@@ -92,7 +93,7 @@ const REGRAS = {
 // O que a tela mostra. Fica aqui pra rótulo e limite morarem num lugar só —
 // mudar o número no backend sem mudar o texto da tela seria mentira pro user.
 const REGRAS_PUBLICAS = Object.entries(REGRAS).map(([id, r]) => ({
-  id, rotulo: r.rotulo, views: r.views, horas: r.horas,
+  id, rotulo: r.rotulo, views: r.views, horas: r.horas, ouro: !!r.ouro,
 }));
 
 // Teto por rodada. Se o acervo receber um pico anormal, é melhor avisar de
@@ -727,9 +728,13 @@ async function alertasGatilho(req, res) {
           method: 'POST', headers: { ...HDR, Prefer: 'return=minimal' },
           body: JSON.stringify({
             user_id: uid, tipo: 'virais',
-            titulo: '🔥 ' + fmtViews(v.views) + ' views em ' + horas + 'h',
+            titulo: (R.ouro ? '👑 VIRAL ABSOLUTO · ' : '🔥 ') + fmtViews(v.views) + ' views em ' + horas + 'h',
             mensagem: String(v.titulo || '').slice(0, 120),
-            dados: { youtube_id: v.youtube_id, regra, url: '/virais?v=' + v.youtube_id },
+            dados: {
+              youtube_id: v.youtube_id, regra,
+              url: v.url || ('https://youtube.com/shorts/' + v.youtube_id),
+              destaque: R.ouro ? 'ouro' : null,
+            },
           }),
         }).catch(() => {});
         avisos++;
