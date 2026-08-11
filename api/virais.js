@@ -258,6 +258,19 @@ async function historicoAction(req, res) {
     'Range-Unit': 'items',
   };
 
+  // Busca por UM vídeo específico (holofote da notificação do sininho).
+  // Ignora filtro, janela de tempo e paginação de propósito: a pessoa clicou
+  // num aviso sobre ESTE vídeo, então ele tem que aparecer mesmo que o filtro
+  // atual dela seja outro.
+  const soEsse = String(req.query.youtube_id || '').trim();
+  if (/^[A-Za-z0-9_-]{6,15}$/.test(soEsse)) {
+    const un = await fetch(
+      `${SU}/rest/v1/virais_banco?youtube_id=eq.${encodeURIComponent(soEsse)}&ativo=eq.true&select=*&limit=1`,
+      { headers: HDR });
+    const um = un.ok ? await un.json() : [];
+    return res.status(200).json({ videos: um, total: um.length, pagina: 1 });
+  }
+
   const r = await fetch(`${SU}/rest/v1/virais_banco?${qs}`, { headers });
   if (!r.ok) {
     return res.status(200).json({ videos: [], total: 0, pagina, total_paginas: 0, tem_mais: false });

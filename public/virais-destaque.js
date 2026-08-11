@@ -18,7 +18,10 @@
   var ALVO = new URLSearchParams(location.search).get('v');
   if (!ALVO || !/^[A-Za-z0-9_-]{6,15}$/.test(ALVO)) return;
 
-  var MAX_ESPERA = 15000;   // o grid carrega por fetch; não esperar pra sempre
+  // 3s, não 15. O grid chega em ~1s; esperar 15 deixava a pessoa olhando pra
+  // uma página normal, achando que o clique não fez nada — foi exatamente o
+  // que aconteceu no primeiro teste.
+  var MAX_ESPERA = 3000;
   var montado = false;
 
   function estilo() {
@@ -98,15 +101,59 @@
     setTimeout(function () {
       obs.disconnect();
       if (montado) return;
-      abrir(
-        '<div style="font-size:34px;margin-bottom:10px">🔍</div>' +
-        '<div style="font-size:16px;font-weight:700;margin-bottom:8px">Esse vídeo não está na lista atual</div>' +
-        '<div style="font-size:13px;color:rgba(150,190,230,.7);line-height:1.6;margin-bottom:18px">' +
-        'Ele pode ter saído da janela de tempo ou do filtro selecionado.</div>' +
-        '<a href="https://youtube.com/shorts/' + ALVO + '" target="_blank" rel="noopener" ' +
-        'style="display:inline-block;background:linear-gradient(135deg,#1a6bff,#00aaff);color:#fff;text-decoration:none;' +
-        'padding:12px 26px;border-radius:10px;font-weight:700;font-size:14px">Ver no YouTube →</a>', true);
+      buscarNoAcervo();
     }, MAX_ESPERA);
+  }
+
+  // Não está no grid (filtro diferente, fora da janela de tempo, outra página
+  // da lista). Em vez de desistir — que era o comportamento antigo e deixava a
+  // notificação sem serventia — busca o vídeo no acervo e monta o destaque.
+  function buscarNoAcervo() {
+    fetch('/api/virais?action=historico&youtube_id=' + encodeURIComponent(ALVO))
+      .then(function (r) { return r.ok ? r.json() : null; })
+      .then(function (d) {
+        var v = (d && (d.videos || d.data || d.results) || []).filter(function (x) {
+          return x.youtube_id === ALVO;
+        })[0];
+        if (!v) return semSorte();
+        montarCard(v);
+      })
+      .catch(semSorte);
+  }
+
+  function montarCard(v) {
+    var url = v.url || ('https://youtube.com/shorts/' + v.youtube_id);
+    var views = Number(v.views) || 0;
+    var vf = views >= 1e6 ? (views / 1e6).toFixed(1).replace('.', ',') + 'M'
+      : views >= 1e3 ? Math.round(views / 1e3) + 'K' : String(views);
+    var el = document.createElement('div');
+    el.className = 'short-card';
+    el.style.cssText = 'display:block;background:#0a1628;border:1px solid rgba(0,170,255,.2);border-radius:16px;overflow:hidden';
+    el.innerHTML =
+      '<a href="' + url + '" target="_blank" rel="noopener" style="display:block;text-decoration:none;color:inherit">' +
+      (v.thumbnail_url ? '<img src="' + v.thumbnail_url + '" alt="" style="width:100%;display:block;aspect-ratio:9/16;object-fit:cover">' : '') +
+      '<div style="padding:13px">' +
+      '<div style="font-size:13.5px;font-weight:600;color:#e8f4ff;line-height:1.4;margin-bottom:6px">' +
+      String(v.titulo || '').replace(/</g, '&lt;').slice(0, 90) + '</div>' +
+      '<div style="font-family:var(--mono,monospace);font-size:11px;color:rgba(150,190,230,.6)">' +
+      '👁 ' + vf + ' · ' + String(v.canal_nome || '').replace(/</g, '&lt;').slice(0, 30) + '</div>' +
+      '</div></a>' +
+      '<div style="display:flex;gap:8px;padding:0 13px 13px">' +
+      '<a href="' + url + '" target="_blank" rel="noopener" style="flex:1;text-align:center;background:linear-gradient(135deg,#1a6bff,#00aaff);color:#fff;text-decoration:none;padding:10px;border-radius:9px;font-size:12.5px;font-weight:700">▶ Assistir</a>' +
+      '</div>';
+    abrir(el, false);
+  }
+
+  function semSorte() {
+    if (montado) return;
+    abrir(
+      '<div style="font-size:34px;margin-bottom:10px">🔍</div>' +
+      '<div style="font-size:16px;font-weight:700;margin-bottom:8px">Não achei esse vídeo no acervo</div>' +
+      '<div style="font-size:13px;color:rgba(150,190,230,.7);line-height:1.6;margin-bottom:18px">' +
+      'Ele pode ter sido removido do YouTube ou saído da nossa base.</div>' +
+      '<a href="https://youtube.com/shorts/' + ALVO + '" target="_blank" rel="noopener" ' +
+      'style="display:inline-block;background:linear-gradient(135deg,#1a6bff,#00aaff);color:#fff;text-decoration:none;' +
+      'padding:12px 26px;border-radius:10px;font-weight:700;font-size:14px">Ver no YouTube →</a>', true);
   }
 
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', iniciar);
