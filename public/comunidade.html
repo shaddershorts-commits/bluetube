@@ -60,6 +60,10 @@ main{position:relative;z-index:1}
      a entrada logo ABAIXO de Dicas (nas abas no mobile, na lateral no desktop).
      O ?v= é obrigatório — a Vercel cacheia .js por 4h e sem versão nova o
      deploy não chega no navegador de ninguém. Mexeu no arquivo, sobe a versão. -->
-<script src="/sala-voz.js?v=20260811b" defer></script>
+<!-- Timbres da sala (BTSom.entrou/saiu). Mesmo arquivo do sininho da home, então
+     quem passou por lá já tem no cache. Vem ANTES do sala-voz.js; se falhar, a
+     sala funciona igual, só sem som (ver a função som() lá dentro). -->
+<script src="/som-notificacao.js?v=20260811b" defer></script>
+<script src="/sala-voz.js?v=20260811d" defer></script>
 </body>
 </html>

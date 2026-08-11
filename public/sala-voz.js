@@ -106,6 +106,16 @@
     tIdle: null, tVigia: null, tTicket: null,
     promessaConfig: null, promessaConexao: null, resolvendo: false,
     sincronizou: false, aguardandoSync: [],
+    // Primeira sincronização depois de entrar não toca som: quem já estava na
+    // sala não "acabou de chegar", e sem isto entrar numa sala com 6 pessoas
+    // dispara 6 bipes de uma vez.
+    silenciarDiff: true,
+    // O ESTADO DO SERVIDOR me incluía na última sincronização? É diferente de
+    // "eu estou em S.presentes": desde o conserto do "0 pessoas", eu me insiro
+    // na lista local sempre, então S.presentes.has(S.sessao) virou constante e
+    // parou de servir como sinal. Quem poda o mesh precisa do sinal ORIGINAL
+    // (ver mesh()). Começa false = na dúvida, não poda ninguém.
+    euNoServidor: false,
   };
 
   // ── utilidades ────────────────────────────────────────────────────────────
@@ -129,6 +139,16 @@
     el.classList.add('on');
     clearTimeout(el._t);
     el._t = setTimeout(function () { el.classList.remove('on'); }, 4200);
+  }
+
+  // Som é enfeite: som-notificacao.js é um <script defer> separado e pode não
+  // ter carregado (ou a pessoa desligou o som no localStorage). A sala nunca
+  // pode quebrar por causa de um bipe.
+  function som(nome) {
+    try {
+      if (window.BTSom && typeof window.BTSom[nome] === 'function') return !!window.BTSom[nome]();
+    } catch (e) {}
+    return false;
   }
 
   async function api(action, body) {
@@ -227,6 +247,17 @@
     + '.svz-b.sair{background:rgba(255,60,60,.16);color:#ff9b8f;border:1px solid rgba(255,60,60,.34)}'
     + '.svz-b.sair:hover{background:rgba(255,60,60,.26);color:#fff}'
     + '.svz-dock.mini .svz-grid,.svz-dock.mini .svz-ctrl{display:none}'
+    // confirmação de saída: mesmo vidro do painel, por cima dele. Não é um
+    // segundo modal solto na tela — a pergunta é sobre ESTE painel e nasce
+    // dentro dele, então o olho não precisa procurar.
+    + '.svz-conf{position:absolute;inset:0;z-index:2;display:none;align-items:center;justify-content:center;padding:16px;'
+    + 'background:rgba(4,10,22,.9);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px)}'
+    + '.svz-conf.on{display:flex}'
+    + '.svz-confbox{width:100%;max-width:290px;text-align:center}'
+    + '.svz-conftit{font-family:var(--font-display,Syne,sans-serif);font-weight:800;font-size:15.5px;color:#fff;letter-spacing:-.25px}'
+    + '.svz-confsub{font-family:var(--font-mono,monospace);font-size:10.5px;color:#8aa0bd;margin-top:7px;line-height:1.6}'
+    + '.svz-confbtns{display:flex;gap:9px;margin-top:16px}'
+    + '.svz-confbtns .svz-b{flex:1;padding:11px 10px;font-size:13.5px}'
     + '.svz-nota{padding:0 15px 12px;font-family:var(--font-mono,monospace);font-size:10px;color:#5f7590;line-height:1.6}'
     + '@media(max-width:620px){.svz-dock{right:8px;left:8px;bottom:8px;width:auto}}'
     + '.svz-toast{position:fixed;bottom:26px;left:50%;transform:translateX(-50%);z-index:9060;background:#0a1830;'
@@ -269,6 +300,10 @@
         if (!r.ok || !r.d || !r.d.ok) return ticketVivo(0) ? S.cfg : null;
         S.cfg = r.d;
         if (r.d.max) MAX = r.d.max;
+        // Ticket novo = identidade nova a registrar. Sem isto, logo depois de
+        // uma renovação eu voltava a ser um ticket desconhecido pro meu
+        // próprio painel até o `verificar` responder.
+        registrarMinhaIdentidade();
         return S.cfg;
       }).catch(function () {
         S.promessaConfig = null;
@@ -406,6 +441,7 @@
   function anunciar() {
     if (!S.canal || !S.cfg || !S.cfg.ticket) return Promise.resolve(false);
     if (!S.entrouEm) S.entrouEm = Date.now();
+    registrarMinhaIdentidade();
     var r;
     try {
       r = S.canal.track({ t: S.cfg.ticket, m: S.mudo ? 1 : 0, j: S.entrouEm });
@@ -440,6 +476,58 @@
   }
 
   // ── presença ──────────────────────────────────────────────────────────────
+
+  // Meu próprio registro na sala. Não depende de nada que venha da rede: o
+  // ticket é o meu (assinado pelo servidor pra mim), o mudo é o meu botão e a
+  // hora de entrada é a que eu mesmo marquei em entrar().
+  function euPresenca() {
+    return {
+      ticket: (S.cfg && S.cfg.ticket) || '',
+      mudo: !!S.mudo,
+      entrou: S.entrouEm || Date.now(),
+    };
+  }
+
+  // ⚠️ BUG DE PRODUÇÃO (11/08): o dono entrou na sala e o painel mostrou
+  // "0 pessoas · 1 falando", sem card nenhum — nem o dele.
+  //
+  // Causa: quem preenchia S.presentes era SÓ o evento 'presence sync' do
+  // Realtime. Na sala vazia esse evento não chega (não existe diferença de
+  // estado pra sincronizar — é o mesmo impasse já anotado no subscribe, lá
+  // resolvido só pro portão de entrada). Resultado: a pessoa fazia track(),
+  // entrava de verdade, mas o mapa local continuava vazio pra sempre. Zero
+  // cards, zero na contagem — e o medidor de fala, que roda em cima do
+  // microfone e não da presence, dizia "1 falando".
+  //
+  // Conserto: minha presença eu conheço sem perguntar. Registro localmente e
+  // deixo o 'sync' só confirmar/atualizar quando (e se) chegar. Regra do
+  // pedido: a pessoa SEMPRE se vê e SEMPRE é contada.
+  function garantirEuNaLista() {
+    if (!S.entrei || !S.sessao) return false;
+    var atual = S.presentes.get(S.sessao);
+    var novo = euPresenca();
+    if (atual && atual.ticket === novo.ticket && atual.mudo === novo.mudo && atual.entrou === novo.entrou) return false;
+    S.presentes.set(S.sessao, novo);
+    return true;
+  }
+
+  // Minha identidade também já está comigo: veio assinada em
+  // /api/sala-voz?action=config junto com o ticket. Sem isto o meu card
+  // dependia de uma ida à rede (`verificar`) só pra descobrir o meu próprio
+  // nome — e se ela falhasse eu virava "…" ou, pior, ticket "recusado".
+  function registrarMinhaIdentidade() {
+    if (!S.cfg || !S.cfg.ticket || !S.cfg.me) return false;
+    if (S.ids.has(S.cfg.ticket)) return false;
+    S.ids.set(S.cfg.ticket, {
+      id: S.cfg.me.id,
+      nome: S.cfg.me.nome || 'criador',
+      avatar: S.cfg.me.avatar || null,
+      plano: S.cfg.me.mod ? 'mod' : (S.cfg.me.plano || 'full'),
+    });
+    S.ruins.delete(S.cfg.ticket);
+    return true;
+  }
+
   function sincronizar() {
     if (!S.canal) return;
     var st = {};
@@ -450,20 +538,50 @@
       if (!m || !m.t) return;
       novos.set(k, { ticket: String(m.t), mudo: !!m.m, entrou: Number(m.j) || 0 });
     });
-    if (S.entrei && !novos.has(S.sessao)) {
+    // ⚠️ Lido AQUI, antes de qualquer remendo local. Depois do garantirEuNaLista()
+    // esta pergunta não tem mais resposta honesta — eu sempre estarei lá.
+    var euNoEstado = novos.has(S.sessao);
+    if (S.entrei && !euNoEstado) {
       // Estou na sala e o estado não me inclui. Vazio = estado ainda não
-      // chegou (acontece a cada reconexão de socket): ignora, senão o contador
-      // zera e o mesh começa a derrubar áudio de gente que não saiu.
-      if (!novos.size) return;
+      // chegou (acontece a cada reconexão de socket): ignora o estado, senão o
+      // mesh começa a derrubar áudio de gente que não saiu. Mas AINDA ASSIM me
+      // garanto na lista — o contador não pode zerar quem está com o microfone
+      // aberto (era exatamente o "0 pessoas").
+      if (!novos.size) { S.euNoServidor = false; if (garantirEuNaLista()) pintar(); return; }
       // Não-vazio sem mim = meu track sumiu de verdade (socket caiu e voltou).
       anunciar();
     }
+    S.euNoServidor = euNoEstado;
+    var antes = S.presentes;
     S.presentes = novos;
+    garantirEuNaLista();
     S.dormindo = false;
+    anunciarChegadasESaidas(antes);
     marcarSincronizado();
     resolverIdentidades();
     pintar();
     if (S.entrei) { checarLotacao(); mesh(); }
+  }
+
+  // Som de sala viva: alguém chegou / alguém saiu. Só dentro da sala — quem
+  // está só olhando a entrada da Comunidade não pode ouvir bipe de uma sala em
+  // que não entrou. O teto anti-rajada mora no som-notificacao.js, mas aqui
+  // também vale só UM bipe por sincronização: 4 pessoas entrando no mesmo
+  // 'sync' é um evento ("chegou gente"), não quatro.
+  function anunciarChegadasESaidas(antes) {
+    if (!S.entrei) { S.silenciarDiff = true; return; }
+    if (S.silenciarDiff) { S.silenciarDiff = false; return; }
+    var entrou = false, saiu = false;
+    S.presentes.forEach(function (p, k) {
+      if (k === S.sessao || antes.has(k)) return;
+      if (!fantasma(p, k)) entrou = true;
+    });
+    antes.forEach(function (p, k) {
+      if (k === S.sessao || S.presentes.has(k)) return;
+      if (!fantasma(p, k)) saiu = true;
+    });
+    if (entrou) som('entrou');
+    if (saiu) som('saiu');
   }
 
   function marcarSincronizado() {
@@ -488,13 +606,34 @@
   // Ticket que o servidor recusou (vencido ou forjado). Não é participante:
   // não conta no total, não ocupa vaga e aparece marcado no painel — antes
   // entrava na conta como uma pessoa normal, muda e sem nenhuma marcação.
-  function fantasma(pres) {
+  //
+  // EU NUNCA SOU FANTASMA. Meu ticket é o que o servidor acabou de assinar pra
+  // mim; se ele vencer, quem trata é a renovação (ligarRenovacaoTicket), que me
+  // TIRA da sala avisando. Deixar a regra genérica valer pra mim fazia uma
+  // falha de rede no `verificar` me apagar do meu próprio painel — a pessoa com
+  // o microfone aberto sumia da contagem e do card.
+  function fantasma(pres, chave) {
+    if (chave && chave === S.sessao) return false;
     return !!(pres && pres.ticket && !S.ids.has(pres.ticket) && S.ruins.has(pres.ticket));
   }
 
   function contarPresentes() {
     var n = 0;
-    S.presentes.forEach(function (p) { if (!fantasma(p)) n++; });
+    S.presentes.forEach(function (p, k) { if (!fantasma(p, k)) n++; });
+    return n;
+  }
+
+  // "0 pessoas · 1 falando" não pode existir: falando é subconjunto de
+  // presentes. S.falando é alimentado pelos MEDIDORES de áudio (microfone e
+  // faixas remotas), que vivem em outro ciclo de vida — chave que já saiu da
+  // presence, ou fantasma, ainda podia estar lá piscando. Aqui a contagem passa
+  // a ser a interseção, então o segundo número nunca ultrapassa o primeiro.
+  function contarFalando() {
+    var n = 0;
+    S.falando.forEach(function (k) {
+      var p = S.presentes.get(k);
+      if (p && !fantasma(p, k)) n++;
+    });
     return n;
   }
 
@@ -540,7 +679,7 @@
   function checarLotacao() {
     if (!S.entrei || contarPresentes() <= MAX) return;
     var ordem = Array.from(S.presentes.entries()).filter(function (e) {
-      return !fantasma(e[1]);
+      return !fantasma(e[1], e[0]);
     }).sort(function (a, b) {
       return (a[1].entrou - b[1].entrou) || (a[0] < b[0] ? -1 : 1);
     }).map(function (e) { return e[0]; });
@@ -573,7 +712,11 @@
     // socket entrega presence vazia por um instante; sem carência isso
     // derrubava o áudio de TODO MUNDO a cada oscilação de rede, e a
     // reconstrução seguinte zerava os contadores de tentativa.
-    var confiavel = S.presentes.has(S.sessao);
+    // O sinal é "o SERVIDOR me viu", não "eu estou na minha própria lista".
+    // Desde o conserto do "0 pessoas" eu me insiro em S.presentes sempre, então
+    // ler daqui daria confiável=true até durante um socket flap — e a poda
+    // derrubaria o áudio de quem não saiu, exatamente o que a carência evita.
+    var confiavel = S.euNoServidor;
     var agora = Date.now();
     Array.from(S.peers.keys()).forEach(function (k) {
       if (S.presentes.has(k)) { S.sumido.delete(k); return; }
@@ -1112,12 +1255,24 @@
       return;
     }
     S.entrei = true;
+    // Entro na lista AQUI, não quando o Realtime resolver me contar. Era este o
+    // buraco do "0 pessoas · 1 falando": na sala vazia o 'sync' nunca chega e a
+    // pessoa nunca aparecia pra si mesma.
+    registrarMinhaIdentidade();
+    garantirEuNaLista();
+    // A próxima sincronização é a foto de quem JÁ estava aqui: não é chegada.
+    S.silenciarDiff = true;
+    // Ainda não houve sync NESTA sessão: o servidor não me confirmou. Sem
+    // zerar, um "confiável" herdado da sessão anterior deixaria o mesh podar
+    // com base num estado que não é mais deste ingresso.
+    S.euNoServidor = false;
     medirLocal();
     ligarVigia();
     ligarRenovacaoTicket();
     fecharModal();
     abrirDock();
     pintar();
+    som('entrou');
   }
 
   // Depois de um congelamento longo (tela do celular apagada, aba no bfcache)
@@ -1168,9 +1323,16 @@
       pararRenovacaoTicket();
       pararMicrofone();
       pararMedidores();
+      // Saí: some da minha própria lista na hora. Se ficasse esperando o
+      // 'sync', a entrada continuaria dizendo "você está na sala".
+      S.presentes.delete(S.sessao);
+      som('saiu');
     }
     S.mudo = false;
     S.suspenso = false;
+    S.silenciarDiff = true;
+    S.euNoServidor = false;
+    fecharConfirmacaoSaida();
     fecharDock();
     pintar();
     if (motivo) aviso(motivo);
@@ -1186,6 +1348,7 @@
     // recente da sala e era exatamente quem o desempate de sala cheia expulsa.
     anunciar();
     if (S.mudo) S.falando.delete(S.sessao);
+    garantirEuNaLista();   // meu registro local carrega o mudo novo
     pintar();
   }
 
@@ -1398,21 +1561,83 @@
       + '<button class="svz-b sec" id="svzBMudar">🎤 Mudo</button>'
       + '<button class="svz-b sair" id="svzBSair">Sair</button>'
       + '</div>'
-      + '<div class="svz-nota" id="svzNota"></div>';
+      + '<div class="svz-nota" id="svzNota"></div>'
+      + '<div class="svz-conf" id="svzConf" role="alertdialog" aria-label="Confirmar saída da sala">'
+      + '<div class="svz-confbox">'
+      + '<div class="svz-conftit">Sair da sala de voz?</div>'
+      + '<div class="svz-confsub">seu microfone fecha e a conversa segue sem você</div>'
+      + '<div class="svz-confbtns">'
+      + '<button class="svz-b sec" id="svzBFicar">Ficar</button>'
+      + '<button class="svz-b sair" id="svzBSairSim">Sair</button>'
+      + '</div></div></div>';
     document.body.appendChild(d);
     $('svzBMin').addEventListener('click', function () { d.classList.toggle('mini'); });
     $('svzBMudar').addEventListener('click', alternarMudo);
-    $('svzBSair').addEventListener('click', function () { sair(''); });
+    $('svzBSair').addEventListener('click', abrirConfirmacaoSaida);
+    $('svzBFicar').addEventListener('click', fecharConfirmacaoSaida);
+    $('svzBSairSim').addEventListener('click', function () { sair(''); });
+    ligarLacosConfirmacao();
   }
 
-  function abrirDock() { montarDock(); pintarSala(); }
+  // ── UI: confirmação de saída ──────────────────────────────────────────────
+  // "Sair" saía na hora. O botão fica colado no "Mudo", num painel pequeno que
+  // no celular ocupa a largura da tela — o toque errado é questão de tempo, e
+  // sair não tem desfazer: cai o áudio, morre o mesh e a vaga volta pra fila do
+  // limite de 10. Confirmação INLINE, no vidro do próprio painel: confirm() do
+  // navegador trava a thread (o áudio engasga), não combina com nada daqui e
+  // no iOS aparece colado no topo, longe do dedo.
+  var lacosConfirmacao = false;
+
+  function confirmacaoAberta() {
+    var c = $('svzConf');
+    return !!(c && c.classList.contains('on'));
+  }
+
+  function abrirConfirmacaoSaida() {
+    var c = $('svzConf');
+    // Painel antigo em cache sem a confirmação: sair continua funcionando. Um
+    // botão de sair que não sai seria pior que sair sem perguntar.
+    if (!c) { sair(''); return; }
+    c.classList.add('on');
+    var b = $('svzBSairSim');
+    if (b) { try { b.focus(); } catch (e) {} }   // Enter confirma, Esc desiste
+  }
+
+  function fecharConfirmacaoSaida() {
+    var c = $('svzConf');
+    if (c) c.classList.remove('on');
+  }
+
+  // Esc e clique fora dispensam. A pergunta precisa sair da frente tão rápido
+  // quanto entrou — senão ela deixa de ser proteção e vira pedágio.
+  // Os laços moram no document e são ligados UMA vez: fecharDock() remove o
+  // painel inteiro, e re-registrar a cada entrada empilharia listeners.
+  function ligarLacosConfirmacao() {
+    if (lacosConfirmacao) return;
+    lacosConfirmacao = true;
+    document.addEventListener('keydown', function (e) {
+      if (e.key === 'Escape' && confirmacaoAberta()) { e.preventDefault(); fecharConfirmacaoSaida(); }
+    });
+    // pointerdown em captura: fecha antes do clique chegar em qualquer coisa,
+    // então encostar fora nunca aciona outra ação por engano.
+    var foraEv = window.PointerEvent ? 'pointerdown' : 'mousedown';
+    document.addEventListener(foraEv, function (e) {
+      if (!confirmacaoAberta()) return;
+      var c = $('svzConf');
+      var caixa = c && c.querySelector('.svz-confbox');
+      if (caixa && caixa.contains(e.target)) return;   // clicou em Ficar/Sair
+      fecharConfirmacaoSaida();
+    }, true);
+  }
+
+  function abrirDock() { montarDock(); fecharConfirmacaoSaida(); pintarSala(); }
   function fecharDock() { var d = $('svzDock'); if (d) d.remove(); }
 
   function pintarSala() {
     var d = $('svzDock');
     if (!d || !S.entrei) return;
     var n = contarPresentes();
-    var falando = S.falando.size;
+    var falando = contarFalando();
     var sub = $('svzDockSub');
     if (sub) sub.textContent = n + (n === 1 ? ' pessoa' : ' pessoas') + ' • ' + falando + ' falando';
     var grid = $('svzGrid');
@@ -1444,7 +1669,7 @@
       });
       caidos += S.semRota.size;
       var ghosts = 0;
-      S.presentes.forEach(function (p) { if (fantasma(p)) ghosts++; });
+      S.presentes.forEach(function (p, k) { if (fantasma(p, k)) ghosts++; });
       nota.textContent = S.sub === 'erro' ? 'conexão instável — tentando voltar'
         : S.suspenso ? 'tela bloqueada — você continua na sala'
           : caidos ? caidos + ' pessoa(s) sem conexão direta com você (rede bloqueando)'
@@ -1459,7 +1684,7 @@
     // Ticket que o servidor recusou. Antes caía no mesmo "…" de quem ainda
     // estava sendo verificado: ficava lá, contado como pessoa, mudo pra
     // sempre, sem nada indicando que aquilo não ia funcionar nunca.
-    if (fantasma(pres)) {
+    if (fantasma(pres, chave)) {
       return '<div class="svz-p caiu" data-svz-card="' + esc(chave) + '" title="sessão vencida — sem áudio">'
         + '<div class="svz-ava" style="background:#26374f">?</div>'
         + '<div class="svz-nome">não verificado</div>'
@@ -1486,7 +1711,7 @@
     });
     var n = contarPresentes();
     var sub = $('svzDockSub');
-    if (sub) sub.textContent = n + (n === 1 ? ' pessoa' : ' pessoas') + ' • ' + S.falando.size + ' falando';
+    if (sub) sub.textContent = n + (n === 1 ? ' pessoa' : ' pessoas') + ' • ' + contarFalando() + ' falando';
   }
 
   function pintarEstadoPeers() { pintarSala(); }
@@ -1576,6 +1801,18 @@
   window.SalaVoz = {
     abrir: abrirModal, entrar: entrar, sair: sair, mudo: alternarMudo,
     _estado: function () { return S; },
+    // Superfície de diagnóstico (irmã do _estado, que já existia): deixa o
+    // console e os testes exercitarem a contagem e a lista sem precisar de
+    // socket, microfone e WebRTC de verdade. Nada aqui é usado pela UI.
+    _interno: {
+      contarPresentes: contarPresentes,
+      contarFalando: contarFalando,
+      fantasma: fantasma,
+      garantirEuNaLista: garantirEuNaLista,
+      registrarMinhaIdentidade: registrarMinhaIdentidade,
+      sincronizar: sincronizar,
+      cardHTML: cardHTML,
+    },
   };
 
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', ligar);

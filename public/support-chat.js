@@ -439,25 +439,106 @@
   const PING_MS = 120000;
   let ultimoPing = 0;
 
+  // ⚠️ 403 EM PRODUÇÃO (11/08/2026) — POST /rest/v1/support_presenca 403.
+  //
+  // Causa raiz (detalhada em sql/support_presenca_fix_403.sql): o Prefer
+  // resolution=merge-duplicates faz o PostgREST gerar INSERT ... ON CONFLICT
+  // DO UPDATE. Sob RLS, esse comando executa uma checagem a mais — a linha em
+  // conflito precisa ser VISÍVEL pelas policies de SELECT. O support_chat_v2
+  // criou insert e update e deixou o SELECT de fora de propósito; sem ele a
+  // checagem falha sempre, o Postgres devolve 42501 e o PostgREST traduz pra
+  // 403. Bate com o sintoma: o primeiro ping (insert puro) passava, e todos os
+  // seguintes davam 403.
+  //
+  // E POR QUE NÃO BASTA UM try/catch: o Chrome escreve "POST ... 403" no
+  // console sozinho, antes do JS ver a resposta. Não existe catch que apague
+  // isso. A única forma de não poluir o console é PARAR DE MANDAR o request —
+  // por isso, ao esgotar os caminhos, a presença se cala por 24h (guardado no
+  // localStorage, senão cada recarga de página repetiria o erro).
+
+  const PRES_MUDO = 'bt_sup_presenca_mudo';   // timestamp do silêncio
+  const PRES_VIA = 'bt_sup_presenca_via';     // 'rpc' | 'tabela' — o que funcionou
+  const MUDO_MS = 24 * 3600000;
+
+  function presencaMuda() {
+    try {
+      const t = Number(localStorage.getItem(PRES_MUDO) || 0);
+      if (!t) return false;
+      if (Date.now() - t < MUDO_MS) return true;
+      localStorage.removeItem(PRES_MUDO);
+      return false;
+    } catch (_) { return false; }
+  }
+  function calarPresenca(motivo) {
+    try { localStorage.setItem(PRES_MUDO, String(Date.now())); } catch (_) {}
+    // console.debug some do painel padrão (nível "Verbose"): fica pra quem for
+    // investigar e não aparece pra quem só abriu o site.
+    try { console.debug('[presença] desligada por 24h —', motivo); } catch (_) {}
+  }
+  function lembrarVia(via) { try { localStorage.setItem(PRES_VIA, via); } catch (_) {} }
+  function viaPreferida() {
+    try { return localStorage.getItem(PRES_VIA) || 'rpc'; } catch (_) { return 'rpc'; }
+  }
+
+  // RPC é o caminho preferido: a função é SECURITY DEFINER e não passa pela
+  // armadilha do ON CONFLICT + RLS. Se ela ainda não existir (SQL não rodado),
+  // devolve 404 e a gente cai na escrita direta na tabela.
+  async function pingVia(via, tok) {
+    const base = { apikey: SUPABASE_ANON_KEY, Authorization: 'Bearer ' + tok, 'Content-Type': 'application/json' };
+    if (via === 'rpc') {
+      const r = await fetch(`${SUPABASE_URL}/rest/v1/rpc/support_ping`, {
+        method: 'POST', headers: base, body: '{}',
+      });
+      return r.status;
+    }
+    // on_conflict explícito + user_id explícito: não deixa o upsert depender
+    // nem da inferência do PostgREST nem do DEFAULT auth.uid() da coluna.
+    const uid = idDoToken(tok);
+    if (!uid) return 0;                       // token ilegível: nem tenta
+    const r = await fetch(`${SUPABASE_URL}/rest/v1/support_presenca?on_conflict=user_id`, {
+      method: 'POST',
+      headers: Object.assign({}, base, { Prefer: 'resolution=merge-duplicates,return=minimal' }),
+      body: JSON.stringify({ user_id: uid, visto_em: new Date().toISOString() }),
+    });
+    return r.status;
+  }
+
+  // O `sub` do JWT é o mesmo user_id que a policy exige. Ler aqui evita
+  // depender do DEFAULT auth.uid() da coluna — e o servidor continua sendo
+  // quem decide: JWT forjado não passa da validação do PostgREST.
+  function idDoToken(tok) {
+    try {
+      const p = String(tok).split('.')[1];
+      if (!p) return '';
+      const json = atob(p.replace(/-/g, '+').replace(/_/g, '/'));
+      return JSON.parse(json).sub || '';
+    } catch (_) { return ''; }
+  }
+
   async function pingPresenca() {
     const tok = getToken();
     if (!tok) return;
     if (document.hidden) return;
+    if (presencaMuda()) return;               // calado = nenhum request = console limpo
     if (Date.now() - ultimoPing < PING_MS) return;
     ultimoPing = Date.now();
     if (!(await fetchSupabaseConfig())) return;
+
+    const primeiro = viaPreferida();
+    const segundo = primeiro === 'rpc' ? 'tabela' : 'rpc';
     try {
-      await fetch(`${SUPABASE_URL}/rest/v1/support_presenca`, {
-        method: 'POST',
-        headers: {
-          apikey: SUPABASE_ANON_KEY,
-          Authorization: 'Bearer ' + tok,
-          'Content-Type': 'application/json',
-          Prefer: 'resolution=merge-duplicates,return=minimal',
-        },
-        body: JSON.stringify({ visto_em: new Date().toISOString() }),
-      });
-    } catch (_) { /* presença é conforto: falhou, ninguém percebe */ }
+      let st = await pingVia(primeiro, tok);
+      if (st >= 200 && st < 300) { lembrarVia(primeiro); return; }
+      // 401 é sessão vencida, não defeito de schema: não vale queimar 24h de
+      // presença por causa disso — o próximo login volta a funcionar.
+      if (st === 401) return;
+      st = await pingVia(segundo, tok);
+      if (st >= 200 && st < 300) { lembrarVia(segundo); return; }
+      if (st === 401) return;
+      calarPresenca('http ' + st + ' — rode sql/support_presenca_fix_403.sql');
+    } catch (_) {
+      // Rede caiu: presença é conforto, tenta de novo no próximo ciclo.
+    }
   }
 
   function iniciarPresenca() {

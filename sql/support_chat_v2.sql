@@ -43,8 +43,12 @@ drop policy if exists presenca_update_own on support_presenca;
 create policy presenca_update_own on support_presenca
   for update to authenticated using (auth.uid() = user_id);
 
--- SEM policy de SELECT de propósito: quem lê é só o backend com service key.
--- Usuário não descobre quem mais está online.
+-- ⚠️ CORRIGIDO em sql/support_presenca_fix_403.sql — LEIA ANTES DE MEXER.
+-- A ausência da policy de SELECT aqui era intencional (usuário não descobre
+-- quem mais está online), mas quebrava o upsert: INSERT ... ON CONFLICT DO
+-- UPDATE, sob RLS, exige que a linha em conflito seja visível por SELECT. Sem
+-- ela, todo ping depois do primeiro virava 403 no console. O fix adiciona uma
+-- policy de SELECT restrita à PRÓPRIA linha — a privacidade continua inteira.
 
 -- ── BUCKET DOS PRINTS ──────────────────────────────────────────────────────
 -- PRIVADO de propósito (public=false). Criado pelo backend na primeira vez,
