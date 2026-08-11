@@ -534,8 +534,28 @@
     // attach() cria (ou reaproveita) um <audio> com a faixa dentro. Ele
     // precisa estar no documento pra tocar em alguns navegadores, e por isso
     // o elemento vai pro DOM, escondido.
-    sala.on(E.TrackSubscribed, function (faixa) {
+    // ⚠️ PORTEIRO DE VÍDEO. O crachá promete sala só de voz, mas o SFU compara a
+    // FONTE declarada, não o tipo da faixa — MEDIDO: vídeo 1080p declarado como
+    // "microphone" foi aceito pelo servidor. Se um navegador adulterado publicar
+    // vídeo, quem paga são os OUTROS: cada um baixaria o fluxo no 4G dele.
+    // Aqui a assinatura é recusada ANTES de descer o primeiro byte.
+    sala.on(E.TrackPublished, function (pub) {
       try {
+        if (pub && pub.kind && pub.kind !== 'audio' && pub.setSubscribed) {
+          pub.setSubscribed(false);
+          console.warn('[sala-voz] faixa de vídeo recusada numa sala de voz');
+        }
+      } catch (e) {}
+    });
+    sala.on(E.TrackSubscribed, function (faixa, publicacao) {
+      try {
+        // Rede de segurança: se uma faixa de vídeo venceu a corrida com o
+        // porteiro acima e já foi assinada, ela cai FORA aqui. Duas camadas
+        // porque uma corrida perdida custa a banda de nove pessoas.
+        if (faixa && faixa.kind && faixa.kind !== 'audio') {
+          try { if (publicacao && publicacao.setSubscribed) publicacao.setSubscribed(false); } catch (_) {}
+          return sincronizar(), pintar();
+        }
         if (faixa && faixa.kind === 'audio') {
           var el = faixa.attach();
           el.autoplay = true;
@@ -659,7 +679,28 @@
   // `assumir` só vem do botão "Entrar aqui mesmo" da recusa por sessão
   // duplicada (ver erroDuplicado): é a pessoa dizendo que a outra sessão é dela
   // e pode cair.
+  // ⚠️ ENVELOPE, não conserto pontual. Medido: uma falha de rede no clique de
+  // Entrar deixava S.entrando=true pra sempre — o modal congelava em
+  // "conectando…" e o botão morria até o F5. Consertar só a chamada que falhou
+  // deixaria a MESMA armadilha em todos os outros await lá dentro (o new Room,
+  // o setMicrophoneEnabled, qualquer um futuro). O finally cobre a classe:
+  // saiu de entrar() sem ter entrado, o botão volta a funcionar, sempre.
   async function entrar(mudo, assumir) {
+    try {
+      return await entrarInterno(mudo, assumir);
+    } catch (e) {
+      console.warn('[sala-voz] entrar falhou:', e && e.message);
+      S.conn = 'erro';
+      erroModal('Não consegui falar com o servidor agora. Confere a internet e tenta de novo.');
+      pintarModal();
+      return;
+    } finally {
+      // Só solta a trava se NÃO entrou: entrada bem-sucedida já cuidou disso.
+      if (!S.entrei && S.entrando) { S.entrando = false; pintarModal(); pintar(); }
+    }
+  }
+
+  async function entrarInterno(mudo, assumir) {
     if (S.entrei || S.entrando) return;
     if (!window.RTCPeerConnection) { erroModal('Este navegador não fala WebRTC. Use Chrome, Edge, Firefox ou Safari atualizado.'); return; }
     if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
@@ -1173,7 +1214,14 @@
       sub.textContent = fora ? 'A sala de voz está indisponível agora. Tenta de novo em instantes.'
         : S.entrando ? 'conectando…'
           : cheia ? 'A sala está cheia (' + MAX + ' de ' + MAX + '). Espera alguém sair.'
-            : n === 0 ? 'A sala está vazia. Entra e chama a galera no feed — é conversa por voz, só áudio.'
+            // ⚠️ "A sala está vazia" só pode ser dito quando a gente SABE. Sem
+            // esta guarda o modal afirmava vazio toda vez que a contagem ainda
+            // não tinha chegado (4G ruim, primeiro clique logo após o load) —
+            // e contradizia na cara o botão que a pessoa acabou de tocar, que
+            // dizia "2 pessoas conversando agora". A entrada já tinha essa
+            // guarda; o modal, não.
+            : (!S.entrei && !contagemFresca()) ? 'vendo quem está na sala…'
+              : n === 0 ? 'A sala está vazia. Entra e chama a galera no feed — é conversa por voz, só áudio.'
               : n + (n === 1 ? ' pessoa está' : ' pessoas estão') + ' na sala agora. Cabem ' + MAX + '.';
     }
     var quem = $('svzDlgQuem');
@@ -1182,7 +1230,10 @@
       // Fora da sala os nomes vêm da contagem do backend; dentro dela, do
       // próprio LiveKit. Nos dois casos a origem é servidor, nunca o payload de
       // outro navegador.
-      var lista = S.entrei ? Array.from(S.pessoas.values()) : (S.foraNomes || []);
+      // Mesma guarda: sem ela o modal desenhava 4 rostos embaixo de uma frase
+      // dizendo que a sala estava vazia.
+      var lista = S.entrei ? Array.from(S.pessoas.values())
+        : (contagemFresca() ? (S.foraNomes || []) : []);
       lista.forEach(function (pe) {
         htm += '<div class="svz-mini">' + avatarHTML(pe) + '<span>' + esc(pe.nome) + '</span></div>';
       });

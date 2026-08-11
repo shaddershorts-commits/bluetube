@@ -1249,3 +1249,67 @@ test('INATIVIDADE: sair() recebe TEXTO legível, não um código cru', () => {
     'voltou a passar código cru pro sair() — a pessoa leria "inatividade" na tela');
   assert.match(corpo, /Você saiu da sala de voz/, 'sumiu a explicação que a pessoa lê');
 });
+
+// ═══════════════════════════════════════════════════════════════════════════
+// SALA DE VOZ É SÓ VOZ — e quem garante isso é o navegador de quem OUVE.
+// Medido: o SFU compara a FONTE declarada, não o tipo da faixa. Vídeo 1080p
+// declarado como "microphone" foi ACEITO pelo servidor.
+// ═══════════════════════════════════════════════════════════════════════════
+test('VÍDEO: a faixa que não é áudio é recusada ANTES de baixar byte', () => {
+  const i = SALA.indexOf('E.TrackPublished');
+  assert.notEqual(i, -1, 'sumiu o porteiro do TrackPublished — vídeo voltaria a descer pra todo mundo');
+  const bloco = SALA.slice(i, i + 500);
+  assert.match(bloco, /kind !== 'audio'/);
+  assert.match(bloco, /setSubscribed\(false\)/, 'o porteiro não recusa a assinatura');
+});
+
+test('VÍDEO: há SEGUNDA camada pra faixa que vencer a corrida', () => {
+  const i = SALA.indexOf('E.TrackSubscribed');
+  const bloco = SALA.slice(i, i + 900);
+  assert.match(bloco, /kind !== 'audio'/,
+    'o TrackSubscribed voltou a aceitar qualquer faixa — uma corrida perdida custa a banda de nove pessoas');
+  assert.match(bloco, /function \(faixa, publicacao\)/,
+    'sem a publicação no handler não dá pra desassinar');
+});
+
+test('VÍDEO: o comentário do crachá não ensina mais o modelo errado', () => {
+  const API = readFileSync(new URL('../../api/sala-voz.js', import.meta.url), 'utf8');
+  assert.equal(/mesmo um navegador adulterado não publica câmera/.test(API), false,
+    'voltou a afirmar que o servidor barra vídeo — medido que NÃO barra quando a fonte é declarada como microfone');
+  assert.match(API, /FONTE DECLARADA, não o tipo da faixa/);
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// O BOTÃO NÃO PODE MORRER
+// ═══════════════════════════════════════════════════════════════════════════
+test('ENTRAR: o envelope solta a trava em QUALQUER saída, não só na que falhou', () => {
+  assert.match(SALA, /async function entrarInterno\(/,
+    'o corpo do entrar deixou de ser envolvido — cada await lá dentro volta a poder congelar o modal');
+  const i = SALA.indexOf('async function entrar(mudo, assumir)');
+  const bloco = SALA.slice(i, i + 900);
+  assert.match(bloco, /finally/, 'sem finally, uma rejeição nova volta a deixar S.entrando preso');
+  assert.match(bloco, /if \(!S\.entrei && S\.entrando\)/,
+    'a trava tem que sair só quando NÃO entrou — senão atropela a entrada boa');
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// NÃO AFIRMAR O QUE NÃO SE MEDIU
+// ═══════════════════════════════════════════════════════════════════════════
+test('MODAL: não diz "a sala está vazia" quando a contagem não chegou', () => {
+  const i = SALA.indexOf("A sala está cheia (' + MAX + ' de ' + MAX");
+  const bloco = SALA.slice(i, i + 1400);
+  assert.match(bloco, /!S\.entrei && !contagemFresca\(\)/,
+    'o modal voltou a afirmar sala vazia sem ter medido — e contradiz o botão que a pessoa acabou de tocar');
+  const pos = bloco.indexOf('!contagemFresca()');
+  // Ancora no TEXTO do código, não na frase solta: o comentário logo acima
+  // também contém 'A sala está vazia' e fazia o teste medir a distância errada.
+  const posVazia = bloco.indexOf('A sala está vazia. Entra e chama');
+  assert.ok(pos > -1 && pos < posVazia, 'a guarda tem que vir ANTES do texto de sala vazia');
+});
+
+test('MODAL: sem contagem fresca, não desenha rosto nenhum', () => {
+  const i = SALA.indexOf('var lista = S.entrei ? Array.from(S.pessoas.values())');
+  assert.notEqual(i, -1);
+  assert.match(SALA.slice(i, i + 220), /contagemFresca\(\) \? \(S\.foraNomes \|\| \[\]\) : \[\]/,
+    'voltaria a desenhar 4 rostos embaixo da frase que diz que a sala está vazia');
+});

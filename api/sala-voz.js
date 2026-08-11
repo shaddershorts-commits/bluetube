@@ -108,8 +108,16 @@ function crachaAdmin(key, secret) {
 }
 
 // Crachá de PARTICIPANTE: entra na sala, publica e escuta — só isso.
-//   · canPublishSources: ['microphone'] — vídeo e tela ficam para depois, e o
-//     limite é do SERVIDOR: mesmo um navegador adulterado não publica câmera.
+//   · canPublishSources: ['microphone'] — vídeo e tela ficam para depois.
+//     ⚠️ ATENÇÃO ao que este limite REALMENTE faz. Ele estava descrito aqui como
+//     "o limite é do SERVIDOR: mesmo um navegador adulterado não publica
+//     câmera", e isso é FALSO — medido em 11/08 contra esta conta. O SFU compara
+//     a FONTE DECLARADA, não o tipo da faixa: vídeo 1920x1080 declarado com
+//     source=MICROPHONE foi ACEITO (TrackPublished, type=1 VIDEO). Só é barrado
+//     quem se declara honestamente como câmera ou tela.
+//     Ou seja: isto barra o desatento, não o adulterado. Quem segura de verdade
+//     é o navegador dos OUTROS, que recusa assinar faixa que não seja áudio
+//     (public/sala-voz.js) — é lá que a banda de todo mundo é protegida.
 //   · canPublishData: false — não existe chat de dados aqui; o que não é usado
 //     não precisa ser permitido.
 //   · canUpdateOwnMetadata: false — é o que faz nome/foto/plano serem fato e
