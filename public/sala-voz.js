@@ -970,7 +970,29 @@
         return S.peers.get(chave) === p;   // geração velha: para de insistir
       });
     };
-    pc.ontrack = function (e) { anexarAudio(chave, e.streams && e.streams[0]); };
+    // ⚠️ NÃO confie em e.streams[0]. Medido no teste real do dono (11/08): o
+    // elemento de áudio ficava com `temStream: true` e `faixas: 0` — stream
+    // preso, mas VAZIO. O áudio chegava (o espião viu 1 faixa no ontrack) e
+    // sumia depois, porque o agrupamento em stream depende do `msid` do SDP e
+    // não sobrevive a uma renegociação. A faixa de verdade é `e.track`.
+    //
+    // Aqui a gente monta um stream PRÓPRIO por par e vai enchendo com as
+    // faixas que chegam. Ele é nosso, então ninguém esvazia pelas nossas
+    // costas.
+    pc.ontrack = function (e) {
+      var p = S.peers.get(chave);
+      if (!p) return;
+      if (!p.remoto) p.remoto = new MediaStream();
+      if (e.track && p.remoto.getTracks().indexOf(e.track) === -1) {
+        p.remoto.addTrack(e.track);
+        // Faixa que morre tem que sair do stream, senão o medidor fica lendo
+        // silêncio de uma faixa morta e a borda nunca mais acende.
+        e.track.addEventListener('ended', function () {
+          try { p.remoto.removeTrack(e.track); } catch (_) {}
+        });
+      }
+      anexarAudio(chave, p.remoto);
+    };
     pc.onconnectionstatechange = function () {
       var est = pc.connectionState;
       if (est === 'connected') {
@@ -1057,6 +1079,12 @@
     if (p.tDesc) { try { clearTimeout(p.tDesc); } catch (e) {} p.tDesc = null; }
     try { p.pc.onicecandidate = null; p.pc.ontrack = null; p.pc.onconnectionstatechange = null; p.pc.close(); } catch (e) {}
     if (p.audio) { try { p.audio.srcObject = null; p.audio.remove(); } catch (e) {} }
+    // O stream remoto é NOSSO (montado no ontrack), então nós é que soltamos
+    // as faixas dele. Sem isso elas ficariam vivas depois do peer morrer.
+    if (p.remoto) {
+      try { p.remoto.getTracks().forEach(function (t) { p.remoto.removeTrack(t); }); } catch (e) {}
+      p.remoto = null;
+    }
     pararMedidor(chave);
     S.peers.delete(chave);
     S.iceP.delete(chave);
