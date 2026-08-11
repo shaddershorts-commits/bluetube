@@ -63,7 +63,17 @@
     { urls: ['stun:stun.l.google.com:19302', 'stun:stun1.l.google.com:19302'] },
   ];
   // Voz humana normal passa fácil disso; ruído de teclado/ventilador não.
-  var LIMIAR_FALA = 0.045;
+  // MEDIDO no microfone real do dono (11/08): pico de fala normal = 0,0131.
+  // O limiar era 0,045 — TRÊS VEZES E MEIA acima da voz dele. A sala nunca
+  // acendia "falando" pra ninguém, e eu passei duas hipóteses erradas (WebRTC,
+  // depois o medidor) antes de medir o número.
+  //
+  // Limiar fixo é errado por natureza: o ganho varia por microfone, sistema e
+  // navegador. Agora ele se CALIBRA — cada medidor aprende o silêncio daquela
+  // pessoa e considera fala o que sobe bem acima desse chão.
+  var LIMIAR_MINIMO = 0.008;   // piso absoluto: abaixo disso é ruído elétrico
+  var FATOR_FALA = 3.5;        // fala é ~3,5x o silêncio daquele microfone
+  var CHAO_INICIAL = 0.003;
   // Segura o "falando" por meio segundo: sem isso a borda pisca entre sílabas.
   var SOLTURA_FALA = 550;
   // Renova o ticket 15min antes de vencer. Sem margem, o ticket vence no meio
@@ -1364,7 +1374,19 @@
         var soma = 0;
         for (var i = 0; i < m.buf.length; i++) { var v = (m.buf[i] - 128) / 128; soma += v * v; }
         var rms = Math.sqrt(soma / m.buf.length);
-        if (rms > LIMIAR_FALA) m.ate = agora + SOLTURA_FALA;
+        // Chão de ruído daquele microfone: sobe devagar e desce rápido, então
+        // ele aprende o silêncio sem ser puxado pra cima pela própria fala.
+        if (m.chao == null) m.chao = CHAO_INICIAL;
+        var limiar = Math.max(LIMIAR_MINIMO, m.chao * FATOR_FALA);
+        if (rms > limiar) {
+          m.ate = agora + SOLTURA_FALA;
+        } else {
+          // O chão SÓ aprende no silêncio. Deixar ele subir durante a fala foi
+          // o defeito do meu primeiro conserto: numa simulação com a voz real
+          // do dono (0,0131 constante), o chão subia, o limiar passava a voz e
+          // a borda acendia em só 15 de 38 ciclos — piscava em vez de ficar.
+          m.chao = m.chao * 0.95 + rms * 0.05;
+        }
         var fala = agora < m.ate && !(k === S.sessao && S.mudo);
         if (fala !== S.falando.has(k)) {
           mudou = true;
