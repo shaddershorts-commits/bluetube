@@ -93,16 +93,15 @@
 
   function iniciar() {
     if (procurar()) return;
-    // O grid chega por fetch. Observa até aparecer, com prazo — se o vídeo
-    // saiu do acervo ou está fora do filtro atual, avisa em vez de girar.
+    // A busca sai NA HORA, junto com a espera pelo grid — antes ela só começava
+    // depois de 3s parados, e o holofote demorava mais que o necessário.
+    // Ganha quem chegar primeiro: se o card do grid aparecer, ele é melhor
+    // (é o card real); se a busca voltar antes, já mostra.
+    buscarNoAcervo();
     var obs = new MutationObserver(function () { if (procurar()) obs.disconnect(); });
     var grid = document.getElementById('grid') || document.body;
     obs.observe(grid, { childList: true, subtree: true });
-    setTimeout(function () {
-      obs.disconnect();
-      if (montado) return;
-      buscarNoAcervo();
-    }, MAX_ESPERA);
+    setTimeout(function () { obs.disconnect(); }, MAX_ESPERA);
   }
 
   // Não está no grid (filtro diferente, fora da janela de tempo, outra página
@@ -126,22 +125,48 @@
     var views = Number(v.views) || 0;
     var vf = views >= 1e6 ? (views / 1e6).toFixed(1).replace('.', ',') + 'M'
       : views >= 1e3 ? Math.round(views / 1e3) + 'K' : String(views);
+    var esc2 = function (t) { return String(t == null ? '' : t).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/"/g, '&quot;'); };
+
+    // Reaproveita as funções da PRÓPRIA Virais em vez de reimplementar:
+    // marcadorSalvar() monta o 🔖 com o estado certo e alternarSalvo() já
+    // trata portão Master e o desfaz-em-caso-de-erro. Reescrever aqui seria
+    // criar uma segunda versão pra sair do ar de sincronia.
+    var salvar = '';
+    try {
+      if (typeof window.marcadorSalvar === 'function') {
+        salvar = window.marcadorSalvar('youtube', v.youtube_id, {
+          titulo: v.titulo, thumbnail_url: v.thumbnail_url,
+          canal_nome: v.canal_nome, video_url: url, views: v.views,
+        });
+      }
+    } catch (e) {}
+
     var el = document.createElement('div');
     el.className = 'short-card';
-    el.style.cssText = 'display:block;background:#0a1628;border:1px solid rgba(0,170,255,.2);border-radius:16px;overflow:hidden';
+    el.style.cssText = 'position:relative;display:block;background:#0a1628;border:1px solid rgba(0,170,255,.2);border-radius:16px;overflow:hidden';
     el.innerHTML =
-      '<a href="' + url + '" target="_blank" rel="noopener" style="display:block;text-decoration:none;color:inherit">' +
-      (v.thumbnail_url ? '<img src="' + v.thumbnail_url + '" alt="" style="width:100%;display:block;aspect-ratio:9/16;object-fit:cover">' : '') +
+      salvar +
+      '<a href="' + esc2(url) + '" target="_blank" rel="noopener" style="display:block;text-decoration:none;color:inherit">' +
+      (v.thumbnail_url ? '<img src="' + esc2(v.thumbnail_url) + '" alt="" style="width:100%;display:block;aspect-ratio:9/16;object-fit:cover">' : '') +
       '<div style="padding:13px">' +
       '<div style="font-size:13.5px;font-weight:600;color:#e8f4ff;line-height:1.4;margin-bottom:6px">' +
-      String(v.titulo || '').replace(/</g, '&lt;').slice(0, 90) + '</div>' +
+      esc2(v.titulo).slice(0, 90) + '</div>' +
       '<div style="font-family:var(--mono,monospace);font-size:11px;color:rgba(150,190,230,.6)">' +
-      '👁 ' + vf + ' · ' + String(v.canal_nome || '').replace(/</g, '&lt;').slice(0, 30) + '</div>' +
+      '👁 ' + vf + ' · ' + esc2(v.canal_nome).slice(0, 30) + '</div>' +
       '</div></a>' +
-      '<div style="display:flex;gap:8px;padding:0 13px 13px">' +
-      '<a href="' + url + '" target="_blank" rel="noopener" style="flex:1;text-align:center;background:linear-gradient(135deg,#1a6bff,#00aaff);color:#fff;text-decoration:none;padding:10px;border-radius:9px;font-size:12.5px;font-weight:700">▶ Assistir</a>' +
+      '<div style="display:flex;flex-direction:column;gap:7px;padding:0 13px 13px">' +
+      '<a href="' + esc2(url) + '" target="_blank" rel="noopener" style="text-align:center;background:linear-gradient(135deg,#1a6bff,#00aaff);color:#fff;text-decoration:none;padding:10px;border-radius:9px;font-size:12.5px;font-weight:700">▶ Assistir</a>' +
+      '<button id="vdUsar" style="background:rgba(0,170,255,.08);border:1px solid rgba(0,170,255,.3);color:#00aaff;padding:10px;border-radius:9px;font-size:12.5px;font-weight:700;cursor:pointer;font-family:inherit">↗ Usar no BlueTube</button>' +
       '</div>';
+
     abrir(el, false);
+
+    var bu = el.querySelector('#vdUsar');
+    if (bu) bu.addEventListener('click', function (ev) {
+      ev.stopPropagation();
+      if (typeof window.useShort === 'function') window.useShort(ev, v.youtube_id, url);
+      else window.location.href = '/?url=' + encodeURIComponent(url);
+    });
   }
 
   function semSorte() {
