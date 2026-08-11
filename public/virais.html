@@ -2791,6 +2791,11 @@ async function alternarSalvo(ev, plataforma, id, dadosEnc) {
 </script>
 <!-- Holofote do vídeo que veio da notificação (?v=). Arquivo próprio:
      script inline novo no meio do virais.html seria engolido. -->
+<!-- toast(): a confirmação do alerta diário estava protegida por
+     typeof toast === 'function', e a função nunca existiu — então o "✅
+     Notificações ativadas!" nunca aparecia. O aviso dentro do modal durava
+     1,2s e o modal fechava; era o toast que devia sobreviver a isso. -->
+<script src="/toast.js?v=20260811a" defer></script>
 <script src="/virais-destaque.js?v=20260811a" defer></script>
 </body>
 </html>
