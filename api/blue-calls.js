@@ -140,6 +140,33 @@ module.exports = async function handler(req, res) {
 
       const eu = await perfil(userId);
       const nome = eu?.display_name || ('@' + (eu?.username || 'alguém'));
+
+      // TOQUE (app do outro ABERTO) — emitido AQUI, pelo servidor.
+      //
+      // Antes quem ligava entrava no canal `ring-<callee>` pelo próprio
+      // aparelho pra mandar o broadcast. Isso obrigava o canal da campainha a
+      // ficar aberto pra qualquer um — e, com o nome sendo previsível
+      // (`ring-<user_id>`), qualquer pessoa com a chave do APK entrava no
+      // canal de qualquer usuário (provado em teste na auditoria 11/08).
+      //
+      // Emitindo pela service key, o canal do destinatário passa a ser
+      // escutado só por ele (sql/realtime_lockdown_2026_08_11.sql) sem
+      // quebrar a ligação. Com await, porque em serverless promessa solta
+      // morre quando o handler responde.
+      try {
+        await fetch(`${SU}/realtime/v1/api/broadcast`, {
+          method: 'POST',
+          headers: { apikey: SK, Authorization: `Bearer ${SK}`, 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            messages: [{
+              topic: `ring-${to_user_id}`,
+              event: 'ring',
+              payload: { call_id: call.id, tipo: t, caller: eu },
+            }],
+          }),
+        });
+      } catch (e) { /* o push abaixo continua cobrindo o app fechado */ }
+
       // push com AWAIT (regra: efeito colateral em serverless nunca fire-and-forget)
       try {
         const { sendPushToUser } = require('./_helpers/push.js');
