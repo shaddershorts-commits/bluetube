@@ -574,6 +574,8 @@
       // depois de eu me mutar.
       if (S.mudo && S.cfg && S.cfg.me) nova.delete(S.cfg.me.id);
       S.falando = nova;
+      // Eu falei: o relógio da inatividade volta ao zero.
+      if (S.cfg && S.cfg.me && nova.has(S.cfg.me.id)) inatReiniciar(false);
       pintarFala();
     });
 
@@ -764,6 +766,7 @@
     S.entrando = false;
     S.entrei = true;
     S.conn = 'on';
+    inatLigar();
     sincronizar();
     // Entrei numa sala que já estava estourada (corrida com outro pedido no
     // mesmo instante): quem chegou por último se retira, em vez de furar o teto.
@@ -779,7 +782,91 @@
     som('entrou');
   }
 
+  // ── QUEDA POR INATIVIDADE ─────────────────────────────────────────────────
+  // Nasceu de uma medição: ninguém nunca desconecta quem esquece a sala aberta,
+  // e DUAS pessoas esquecidas queimam a cota do plano grátis do LiveKit em 1,7
+  // dia. A sala aberta sozinha de madrugada é a conta chegando.
+  //
+  // São DOIS relógios, e o segundo existe por um motivo específico:
+  //
+  //   1) SEM FALAR (5 min) — o pedido. Reinicia quando EU falo, e também com
+  //      um toque meu dentro do painel: quem está de fato ali, ouvindo a
+  //      conversa, não pode ser expulso no meio dela.
+  //
+  //   2) SEM TOCAR (40 min) — o teto duro, que SÓ um toque de gente reinicia.
+  //      Sem ele o relógio 1 teria um buraco: celular no bolso com a tela
+  //      apagada segue transmitindo, o barulho de roçar registra como fala, o
+  //      relógio 1 se reinicia sozinho pra sempre e o aparelho fica na sala
+  //      até a bateria acabar — exatamente o caso que a queda deveria pegar.
+  //      Barulho não toca em tela; só gente toca.
+  var INAT = {
+    SEM_FALAR_MS: 5 * 60 * 1000,
+    AVISO_ANTES_MS: 30 * 1000,
+    SEM_TOCAR_MS: 40 * 60 * 1000,
+    PASSO_MS: 5000,
+    fala: 0, toque: 0, timer: null, avisou: false,
+  };
+
+  function inatReiniciar(porToque) {
+    var t = Date.now();
+    INAT.fala = t;
+    if (porToque) INAT.toque = t;
+    if (INAT.avisou) { INAT.avisou = false; pintar(); }
+  }
+
+  function inatLigar() {
+    inatReiniciar(true);
+    if (INAT.timer) clearInterval(INAT.timer);
+    INAT.timer = setInterval(inatChecar, INAT.PASSO_MS);
+    document.addEventListener('pointerdown', inatToque, true);
+    document.addEventListener('keydown', inatToque, true);
+  }
+
+  function inatDesligar() {
+    if (INAT.timer) { clearInterval(INAT.timer); INAT.timer = null; }
+    INAT.avisou = false;
+    document.removeEventListener('pointerdown', inatToque, true);
+    document.removeEventListener('keydown', inatToque, true);
+  }
+
+  function inatToque(ev) {
+    // Só conta toque DENTRO da sala: clique no resto da Comunidade não é sinal
+    // de que a pessoa está acompanhando a conversa.
+    try {
+      // Casa pelo PREFIXO da nossa interface, não por um id de container. A
+      // primeira versão disto apontava pra '#svzPainel,#svzModal', que não
+      // existem — o closest() nunca casava, nenhum toque contava, e o teto de
+      // 40 min derrubaria todo mundo mesmo com a pessoa ali interagindo.
+      var alvo = ev && ev.target && ev.target.closest
+        ? ev.target.closest('[id^="svz"],[class^="svz-"],[class*=" svz-"]') : null;
+      if (alvo) inatReiniciar(true);
+    } catch (e) {}
+  }
+
+  function inatChecar() {
+    if (!S.entrei) return inatDesligar();
+    var agora = Date.now();
+    var mudo = agora - INAT.fala;
+    var parado = agora - INAT.toque;
+    if (mudo >= INAT.SEM_FALAR_MS || parado >= INAT.SEM_TOCAR_MS) {
+      // sair() recebe o TEXTO que a pessoa lê (veja o aviso(motivo) lá dentro),
+      // não um código. Os dois relógios dizem coisas diferentes de propósito:
+      // quem só ficou quieto merece uma explicação diferente de quem largou o
+      // aparelho ligado — senão o segundo caso parece castigo sem motivo.
+      return sair(parado >= INAT.SEM_TOCAR_MS
+        ? '😴 Você saiu da sala de voz: 40 minutos sem nenhum sinal de que estava por aí.'
+        : '😴 Você saiu da sala de voz por inatividade — 5 minutos sem falar nada.');
+    }
+    if (!INAT.avisou && mudo >= INAT.SEM_FALAR_MS - INAT.AVISO_ANTES_MS) {
+      INAT.avisou = true;
+      aviso('😴 Sem falar há um tempo. Você sai da sala em 30s — fale ou toque aqui pra continuar.');
+      som('saiu');
+      pintar();
+    }
+  }
+
   function sair(motivo) {
+    inatDesligar();
     // O link que estava esperando confirmação é lido AQUI, antes de qualquer
     // coisa: logo abaixo o fecharConfirmacaoSaida() zera o destinoPendente
     // (é o que ele faz quando a pessoa desiste), e sem esta cópia a navegação

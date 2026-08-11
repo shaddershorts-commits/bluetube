@@ -117,7 +117,15 @@ function domFalso() {
   window.document = document;
   const ctx = {
     window, document, console, URL,
-    setTimeout, clearTimeout, setInterval, clearInterval,
+    setTimeout, clearTimeout,
+    // ⚠️ setInterval do Node NÃO entra aqui. O relógio da inatividade abre um
+    // intervalo de verdade ao entrar na sala, e no navegador ele se encerra
+    // sozinho (sair() chama inatDesligar); mas dentro do vm ninguém sai, então
+    // o intervalo ficava vivo segurando o processo e o ARQUIVO de teste nunca
+    // terminava — 75 testes verdes e o node pendurado. Aqui ele é registrado e
+    // descartado: o que se testa é a lógica, não a passagem do tempo.
+    setInterval: () => 0,
+    clearInterval: () => {},
     Map, Set, Promise, Date, Math, JSON, String, Number, Array, Object, Boolean,
     localStorage: { getItem: () => null, setItem: () => {}, removeItem: () => {} },
     // Microfone existe no aparelho — quem PEDE é o LiveKit, e só depois do clique.
@@ -1183,4 +1191,61 @@ test('a versão do sala-voz.js no HTML sobe junto (cache de 4h da Vercel)', () =
   const m = html.match(/sala-voz\.js\?v=(\w+)/);
   assert.ok(m, 'sala-voz.js sem ?v= - a Vercel serve .js com cache de 4h e o conserto nao chega em ninguem');
   assert.notEqual(m[1], '20260811lk1', 'a versao nao subiu junto com a mudanca no arquivo');
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// QUEDA POR INATIVIDADE
+// Nasceu de medição: ninguém desconecta quem esquece a sala aberta, e duas
+// pessoas esquecidas queimam a cota grátis do LiveKit em 1,7 dia.
+// ═══════════════════════════════════════════════════════════════════════════
+test('INATIVIDADE: são DOIS relógios — sem falar (5min) e sem tocar (40min)', () => {
+  assert.match(SALA, /SEM_FALAR_MS:\s*5\s*\*\s*60\s*\*\s*1000/, 'o relógio de 5 min sem falar sumiu');
+  assert.match(SALA, /SEM_TOCAR_MS:\s*40\s*\*\s*60\s*\*\s*1000/,
+    'o teto por falta de TOQUE sumiu — sem ele, celular no bolso roçando o tecido reinicia o relógio da fala pra sempre e nunca cai');
+});
+
+test('INATIVIDADE: só o toque de gente reinicia o teto longo; falar não', () => {
+  const i = SALA.indexOf('function inatReiniciar');
+  assert.notEqual(i, -1);
+  const corpo = SALA.slice(i, i + 320);
+  assert.match(corpo, /if \(porToque\) INAT\.toque = t;/,
+    'o relógio do teto longo passou a ser reiniciado sem toque — o buraco do bolso volta');
+  // E a fala chama com porToque FALSO, senão barulho vira "gente presente".
+  assert.match(SALA, /inatReiniciar\(false\)/, 'a fala deixou de ser marcada como "não é toque"');
+});
+
+test('INATIVIDADE: o seletor do toque casa com a interface que EXISTE', () => {
+  const i = SALA.indexOf('function inatToque');
+  const corpo = SALA.slice(i, i + 1200);
+  const sel = /closest\(\s*'([^']+)'/.exec(corpo);
+  assert.ok(sel, 'sumiu o closest do toque');
+  // Um seletor que não casa com nada é pior que não ter: derruba quem está ali.
+  assert.equal(/#svzPainel|#svzModal/.test(sel[1]), false,
+    'voltou a apontar pra id que não existe neste arquivo — nenhum toque contaria');
+  assert.match(sel[1], /svz/, 'o seletor precisa mirar a interface da sala');
+});
+
+test('INATIVIDADE: o relógio liga ao entrar e desliga ao sair', () => {
+  const e = SALA.indexOf('S.entrei = true;');
+  assert.match(SALA.slice(e, e + 120), /inatLigar\(\)/, 'entrou na sala e o relógio não ligou');
+  const s = SALA.indexOf('function sair(motivo)');
+  assert.match(SALA.slice(s, s + 120), /inatDesligar\(\)/,
+    'saiu e o relógio continuou correndo — dispararia sair() de novo, fora da sala');
+});
+
+test('INATIVIDADE: a pessoa é AVISADA antes de cair, não expulsa de surpresa', () => {
+  assert.match(SALA, /AVISO_ANTES_MS/, 'sumiu o aviso prévio');
+  const i = SALA.indexOf('function inatChecar');
+  const corpo = SALA.slice(i, i + 900);
+  assert.match(corpo, /INAT\.SEM_FALAR_MS - INAT\.AVISO_ANTES_MS/,
+    'o aviso deixou de vir ANTES do prazo — quem só ouvia cairia sem chance de reagir');
+});
+
+test('INATIVIDADE: sair() recebe TEXTO legível, não um código cru', () => {
+  const i = SALA.indexOf('function inatChecar');
+  const corpo = SALA.slice(i, i + 900);
+  // sair(motivo) faz aviso(motivo): passar 'inatividade' mostraria a palavra crua.
+  assert.equal(/sair\('inatividade'\)|sair\('inatividade_longa'\)/.test(corpo), false,
+    'voltou a passar código cru pro sair() — a pessoa leria "inatividade" na tela');
+  assert.match(corpo, /Você saiu da sala de voz/, 'sumiu a explicação que a pessoa lê');
 });
