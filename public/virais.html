@@ -376,6 +376,13 @@ nav{position:fixed;top:0;left:0;right:0;z-index:100;display:flex;align-items:cen
 #igView{display:none}
 #igView.active{display:block}
 #igView .tk-card:hover{border-color:rgba(255,119,192,.45)}
+/* Badge de views com a data da medição: a legenda "medido em" é menor e mais
+   apagada que o número, mas fica GRUDADA nele — nunca some sozinha. O badge
+   pode quebrar em 2 linhas sem vazar do card. */
+#igView .tk-card-views{max-width:calc(100% - 16px);line-height:1.35;white-space:normal}
+.ig-medido{font-weight:400;font-size:10px;color:#cbd5e1;opacity:.9}
+.tk-card-likes .ig-medido{font-size:10px}
+.ig-nicho{background:rgba(255,61,158,.16);border:1px solid rgba(255,119,192,.35);color:#ffaadb;border-radius:999px;padding:1px 7px;font-size:10px;font-weight:600}
 .ig-card-btn-ver{background:linear-gradient(135deg,#ff3d9e,#c2255f);color:#fff}
 .ig-card-btn-ver:hover{background:linear-gradient(135deg,#f0308f,#a91e52)}
 .ig-sort-btn{padding:6px 12px;border:none;background:transparent;color:#cbd5e1;border-radius:6px;cursor:pointer}
@@ -2154,6 +2161,31 @@ function igAtualizarPaginacao(hasMore){
   }
 }
 
+// Número em português: 12400000 -> "12,4 mi". Usado nas RÉPLICAS, onde o
+// número é congelado e vem acompanhado da data em que foi medido.
+function igFmtBr(n){
+  n = parseInt(n) || 0;
+  const br = (x) => x.toFixed(1).replace('.', ',').replace(/,0$/, '');
+  if(n >= 1e9) return br(n/1e9) + ' bi';
+  if(n >= 1e6) return br(n/1e6) + ' mi';
+  if(n >= 1e3) return br(n/1e3) + ' mil';
+  return String(n);
+}
+
+function igDataCurta(ts){
+  if(!ts) return '';
+  const d = new Date(ts);
+  return isNaN(d.getTime()) ? '' : d.toLocaleDateString('pt-BR', {day:'2-digit', month:'2-digit'});
+}
+
+// A imagem tem que ser NOSSA. Réplica sempre é; acervo antigo pode ter ficado
+// com a URL crua da Meta (fbcdn/cdninstagram), que é ASSINADA e EXPIRA — some
+// sozinha depois de alguns dias. Não dá pra consertar no cliente, mas dá pra
+// não mentir: marcamos como frágil e o onerror já cobre a queda.
+function igThumbNossa(url){
+  return !!url && !/cdninstagram\.com|fbcdn\.net/i.test(url);
+}
+
 function igMkCard(v, rank){
   const _plataformaCard = 'instagram', _idCard = v.shortcode;
   const rankLabel = rank === 1 ? '🥇 #1' : rank === 2 ? '🥈 #2' : rank === 3 ? '🥉 #3' : `#${rank}`;
@@ -2162,21 +2194,51 @@ function igMkCard(v, rank){
   const handle = tkEsc(v.author_handle || 'instagram');
   const name = tkEsc(v.author_name || handle);
   const quando = v.ig_created_at || v.collected_at;
-  const metricaSort = _igSort === 'views' ? `▶ ${tkFmt(v.views_count)}` : `❤ ${tkFmt(v.likes_count)}`;
+  const thumb = tkEsc(v.thumbnail_url || '');
+  const nossa = igThumbNossa(v.thumbnail_url);
+
+  // MÉTRICA CONGELADA: réplica não é atualizada nunca mais, então o número vem
+  // com a data em que foi medido. Número parado fingindo ser ao vivo é mentira.
+  const medido = igDataCurta(v.metrics_measured_at);
+
+  // MÉTRICA AUSENTE FICA AUSENTE. O og de Reel traz likes e comments mas NÃO
+  // traz views: views chegava nula, virava o DEFAULT 0 da coluna e o card
+  // publicava "▶ 0 · medido em <hoje>" — afirmando que zero foi medido hoje.
+  // Em réplica (a que tem "medido em"), 0 é sempre "não medido": Reel com zero
+  // views não existe. Isso também cura as linhas ruins já gravadas no banco.
+  const temNum = (x) => x !== null && x !== undefined && x !== '' && Number.isFinite(Number(x));
+  const medida = (x) => medido ? (temNum(x) && Number(x) > 0) : temNum(x);
+  const temViews = medida(v.views_count);
+  const temLikes = medida(v.likes_count);
+  const fmt = (x) => medido ? igFmtBr(x) : tkFmt(x);
+  // "medido em" só acompanha número que foi REALMENTE medido.
+  const seloMedido = medido ? `<span class="ig-medido"> · medido em ${medido}</span>` : '';
+  // Selo do topo da capa: views se houver; senão likes; se não houver nenhuma,
+  // o selo não aparece (não inventamos número).
+  const seloCapa = temViews ? `▶ ${fmt(v.views_count)}${seloMedido}`
+    : temLikes ? `❤ ${fmt(v.likes_count)}${seloMedido}`
+    : '';
+  const metricaSort = _igSort === 'views'
+    ? (temViews ? `▶ ${fmt(v.views_count)}` : temLikes ? `❤ ${fmt(v.likes_count)}` : '<span style="opacity:.6">sem número medido</span>')
+    : (temLikes ? `❤ ${fmt(v.likes_count)}` : temViews ? `▶ ${fmt(v.views_count)}` : '<span style="opacity:.6">sem número medido</span>');
+  const tituloMetrica = medido && (temViews || temLikes)
+    ? tkEsc(`Número medido em ${medido} e congelado desde então — não atualizamos mais este Reel.`)
+    : '';
+
   return `
     <div class="tk-card">
       <div class="tk-card-thumb">
-        <img src="${tkEsc(v.thumbnail_url||'')}" alt="" loading="lazy" onerror="this.style.display='none';const p=this.parentElement;if(p&&!p.querySelector('.tk-fallback')){const d=document.createElement('div');d.className='tk-fallback';d.innerHTML='<div class=\\'tk-fb-inner\\'><div class=\\'tk-fb-icon\\'>📸</div><div class=\\'tk-fb-caption\\'>${tkEsc((v.caption||'').slice(0,40)).replace(/'/g,'&#39;')}</div></div>';p.appendChild(d);}"/>
+        <img src="${thumb}" alt="${caption || 'Reel do Instagram'}" loading="lazy" decoding="async" referrerpolicy="no-referrer"${nossa?'':' data-fonte="meta"'} onerror="this.style.display='none';const p=this.parentElement;if(p&&!p.querySelector('.tk-fallback')){const d=document.createElement('div');d.className='tk-fallback';d.innerHTML='<div class=\\'tk-fb-inner\\'><div class=\\'tk-fb-icon\\'>📸</div><div class=\\'tk-fb-caption\\'>${tkEsc((v.caption||'').slice(0,40)).replace(/'/g,'&#39;')}</div></div>';p.appendChild(d);}"/>
         <div class="tk-card-flag">📸</div>
         <div class="tk-card-rank ${isTop3?'top3':''}">${rankLabel}</div>
         ${marcadorSalvar(_plataformaCard, _idCard, v)}
-        <div class="tk-card-views">▶ ${tkFmt(v.views_count)}</div>
+        ${seloCapa ? `<div class="tk-card-views"${tituloMetrica?` title="${tituloMetrica}"`:''}>${seloCapa}</div>` : ''}
       </div>
       <div class="tk-card-info">
         <div class="tk-card-caption">${caption || '<em style="color:#475569">sem legenda</em>'}</div>
-        <div class="tk-card-author">@${handle} · ${name}</div>
+        <div class="tk-card-author">@${handle} · ${name}${v.nicho?` · <span class="ig-nicho">${tkEsc(v.nicho)}</span>`:''}</div>
         <div class="tk-card-stats">
-          <span class="tk-card-likes">${metricaSort}</span>
+          <span class="tk-card-likes"${tituloMetrica?` title="${tituloMetrica}"`:''}>${metricaSort}</span>
           <span>${tkTimeAgo(quando)} atrás</span>
         </div>
         <a class="tk-card-btn ig-card-btn-ver" href="${tkEsc(v.video_url)}" target="_blank" rel="noopener">↗ Ver no Instagram</a>
