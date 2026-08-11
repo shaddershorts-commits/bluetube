@@ -525,8 +525,40 @@
     // vem daqui, não de mensagem que a gente troca com ninguém.
     sala.on(E.TrackMuted, function () { sincronizar(); pintar(); });
     sala.on(E.TrackUnmuted, function () { sincronizar(); pintar(); });
-    sala.on(E.TrackSubscribed, function () { sincronizar(); pintar(); });
-    sala.on(E.TrackUnsubscribed, function () { sincronizar(); pintar(); });
+    // ⚠️ AQUI MORAVA O "acende mas não sai som" (medido no teste do dono,
+    // 11/08). O handler só repintava a tela — ninguém LIGAVA a faixa num
+    // elemento de áudio, e faixa que ninguém anexa não toca. O indicador de
+    // fala acendia porque o LiveKit avisa que há som chegando; o som em si
+    // não tinha onde sair.
+    //
+    // attach() cria (ou reaproveita) um <audio> com a faixa dentro. Ele
+    // precisa estar no documento pra tocar em alguns navegadores, e por isso
+    // o elemento vai pro DOM, escondido.
+    sala.on(E.TrackSubscribed, function (faixa) {
+      try {
+        if (faixa && faixa.kind === 'audio') {
+          var el = faixa.attach();
+          el.autoplay = true;
+          el.setAttribute('playsinline', '');
+          el.style.display = 'none';
+          el.setAttribute('data-svz-audio', '');
+          (document.body || document.documentElement).appendChild(el);
+          var pr = el.play();
+          // Autoplay recusado é caso NORMAL, não erro: o startAudio() do
+          // LiveKit resolve no próximo gesto da pessoa.
+          if (pr && pr.catch) pr.catch(function () {
+            try { Promise.resolve(sala.startAudio()).catch(function () {}); } catch (e) {}
+          });
+        }
+      } catch (e) { console.warn('[sala-voz] falha ao anexar áudio:', e && e.message); }
+      sincronizar(); pintar();
+    });
+    // Faixa que saiu tem que SUMIR do documento. Sem isso, sobra <audio> órfão
+    // com stream morto acumulando a cada entra-e-sai.
+    sala.on(E.TrackUnsubscribed, function (faixa) {
+      try { if (faixa && faixa.detach) faixa.detach().forEach(function (el) { el.remove(); }); } catch (e) {}
+      sincronizar(); pintar();
+    });
     sala.on(E.LocalTrackPublished, function () { sincronizar(); pintar(); });
     sala.on(E.ParticipantMetadataChanged, function () { sincronizar(); pintar(); });
     sala.on(E.ParticipantNameChanged, function () { sincronizar(); pintar(); });

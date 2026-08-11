@@ -1150,3 +1150,36 @@ test('trocar de aba não derruba ninguém da conversa', async () => {
   assert.equal(S.suspenso, false, 'e voltar limpa a marca');
   I.pararPolling();
 });
+
+// ═══════════════════════════════════════════════════════════════════════════
+// DEFEITO 12 — "acende mas não sai som"
+// Medido pelo dono em 11/08: o indicador de fala funcionava (o LiveKit avisa
+// que há som chegando) e nenhum som saía. Causa: o handler de TrackSubscribed
+// só repintava a tela. Faixa que ninguém anexa num elemento de áudio NÃO TOCA.
+//
+// Estes testes guardam a CLASSE, não a linha: qualquer refatoração que volte a
+// tratar TrackSubscribed sem anexar a faixa quebra aqui.
+// ═══════════════════════════════════════════════════════════════════════════
+test('DEFEITO 12: TrackSubscribed ANEXA a faixa de áudio, não só repinta', () => {
+  const i = SALA.indexOf('E.TrackSubscribed');
+  assert.notEqual(i, -1, 'o handler de TrackSubscribed sumiu');
+  // Recorta até o handler seguinte pra não passar por acaso com um attach()
+  // que mora em outro lugar do arquivo.
+  const bloco = SALA.slice(i, SALA.indexOf('E.TrackUnsubscribed'));
+  assert.match(bloco, /\.attach\(\)/, 'TrackSubscribed nao anexa a faixa - o som nao tem por onde sair');
+  assert.match(bloco, /appendChild/, 'o <audio> nao entra no documento; alguns navegadores nao tocam fora do DOM');
+  assert.match(bloco, /startAudio/, 'autoplay recusado precisa cair no startAudio() do LiveKit');
+});
+
+test('DEFEITO 12: TrackUnsubscribed REMOVE o <audio>, sem deixar órfão', () => {
+  const i = SALA.indexOf('E.TrackUnsubscribed');
+  assert.notEqual(i, -1);
+  assert.match(SALA.slice(i, i + 500), /detach\(\)/, 'faixa que saiu nao e desanexada - sobra <audio> morto a cada entra-e-sai');
+});
+
+test('a versão do sala-voz.js no HTML sobe junto (cache de 4h da Vercel)', () => {
+  const html = readFileSync(new URL('../../public/comunidade.html', import.meta.url), 'utf8');
+  const m = html.match(/sala-voz\.js\?v=(\w+)/);
+  assert.ok(m, 'sala-voz.js sem ?v= - a Vercel serve .js com cache de 4h e o conserto nao chega em ninguem');
+  assert.notEqual(m[1], '20260811lk1', 'a versao nao subiu junto com a mudanca no arquivo');
+});
