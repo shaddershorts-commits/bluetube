@@ -484,7 +484,10 @@ test('a fila carrega sozinha no login do admin (senão ninguém vê o pedido)', 
 });
 
 test('o sininho existe no site e lê a caixa VIVA', () => {
-  assert.match(INDEX, /src="\/sininho\.js"/, 'sem o script o sino não existe');
+  // ?v=<versão> é obrigatório: a Vercel serve .js com cache de 4h, então sem
+  // versão na URL o deploy novo demora horas pra chegar no navegador.
+  assert.match(INDEX, /src="\/sininho\.js\?v=[a-z0-9]+"/,
+    'o sino precisa estar no index E versionado (cache de 4h dos .js)');
   assert.match(SININHO, /action: 'notificacoes'/);
   assert.match(SININHO, /action: 'marcar-lidas'/);
   // blue_notifications (com S no fim) é tabela morta — PGRST205 confirmado
