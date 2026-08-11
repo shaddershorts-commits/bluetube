@@ -91,16 +91,43 @@
   // Sumiu da lista? Espera antes de matar o peer — segunda camada, porque a
   // saída da lista já exige ausência sustentada ou 'tchau' (ver mesh()).
   var CARENCIA_SUMICO = 10000;
+  // Quanto tempo um par AUSENTE da lista pode manter um peer que ainda NÃO
+  // carregou voz nenhuma. Não é carência de conexão viva — conexão viva não tem
+  // prazo aqui (ver varrer()): é o prazo de um peer em formação, que não tem
+  // áudio pra proteger. Medido em 11/08: um apagão de rede de 45s deixou o canal
+  // do Realtime fora por 48,26s (backoff do SDK). 45s cobre o apagão de 20s
+  // (canal fora 28,2s) inteiro e a maior parte do de 45s.
+  var CARENCIA_VOZ = 45000;
+  // send() do SDK pendura até 10s (DEFAULT_TIMEOUT) quando o WebSocket morreu E
+  // o escape HTTP (POST /realtime/v1/api/broadcast) também está fora — foi
+  // exatamente o console do dono. Cada candidato ICE ficava 10s pendurado e o
+  // enviarFirme repetia 3x: 30s por candidato. Aqui a espera é NOSSA: 2,5s e a
+  // gente já sabe que não foi, pra reenviar cedo em vez de esperar o SDK.
+  var PRAZO_ENVIO = 2500;
+  // Conexão que diz 'connected' mas nunca entregou UM pacote de áudio. É o
+  // "faixa recebida: audio · muted=true · rms 0.00000" do relatório. Depois
+  // deste prazo sem NUNCA ter desmutado, a conexão é reparada — e o gatilho é o
+  // sinal da própria faixa, não a lista.
+  var ESPERA_PRIMEIRO_AUDIO = 20000;
 
   // ── os números da presença por batimento ──────────────────────────────────
   // São ELES que decidem se a sala mente. Contas feitas pra sala cheia (10):
   //
   // BATIMENTO 4s — cada pessoa emite 1 mensagem a cada 4s. Sala cheia = 10
   //   mensagens a cada 4s no canal (2,5 msg/s) e cada aparelho RECEBE as 9 dos
-  //   outros por ciclo (~2,25 msg/s, algumas centenas de bytes cada: ~1 KB/s).
-  //   Cabe folgado no eventsPerSecond:30 configurado no cliente e não chega
-  //   perto de tempestade. Baixar pra 1s quadruplicaria isso sem ganhar nada:
-  //   a saída limpa já é instantânea pelo 'tchau'.
+  //   outros por ciclo. Baixar pra 1s quadruplicaria isso sem ganhar nada: a
+  //   saída limpa já é instantânea pelo 'tchau'.
+  //
+  //   MEDIDO em bancada (11/08) contra ESTE projeto, porque a suspeita era que
+  //   o batimento de 4s estivesse sendo punido com desconexão pelo Realtime:
+  //     · payload real do batimento = 413 bytes (o ticket é ~90% disso);
+  //     · 3 minutos com 1, 2 e 5 clientes: 100% de entrega, ZERO SOCKET_CLOSE;
+  //     · rampa de 2 a 200 msg/s com ack: 100% de entrega, zero erro do servidor;
+  //     · rajada crua: 3000 mensagens em 3059ms = 981 msg/s, 3000/3000 entregues,
+  //       nenhuma queda. Não achei o teto — ele está ACIMA de 981 msg/s.
+  //   Sala de 2 gera 0,5 msg/s; sala cheia, 2,5 msg/s. Folga medida: ~2000x e
+  //   ~390x. O batimento está INOCENTE — quem derrubava a voz era a lista
+  //   mandando na conexão (ver varrer()/vozViva()), não a taxa de mensagens.
   var BATIMENTO_MS = 4000;
   // EXPIRA 14s = 3,5 batimentos. Broadcast é fire-and-forget: TRÊS batimentos
   //   seguidos podem se perder sem derrubar ninguém — só a ausência SUSTENTADA
@@ -163,6 +190,7 @@
     sumido: new Map(),     // chave -> quando sumiu da presence (carência)
     ger: new Map(),        // chave -> geração da negociação (quem oferta numera)
     filaSdp: new Map(),    // chave -> promessa: serializa aoSdp por par
+    reparoAudio: new Map(),// chave -> quando reparamos por sinal da FAIXA (não da lista)
     audioCtx: null, medidores: new Map(), timerFala: null, falando: new Set(),
     tIdle: null, tVigia: null, tTicket: null,
     promessaConfig: null, promessaConexao: null, resolvendo: false,
@@ -312,6 +340,10 @@
     + 'background:rgba(255,255,255,.035);border:1px solid rgba(255,255,255,.07);transition:border-color .15s,box-shadow .15s}'
     + '.svz-p.falando{border-color:#00e0a4;box-shadow:0 0 0 1px #00e0a4,0 0 20px rgba(0,224,164,.3)}'
     + '.svz-p.caiu{opacity:.5}'
+    // Sumiu do batimento mas a VOZ continua chegando: o card não pode
+    // desaparecer (a pessoa está sendo ouvida) nem fingir que está tudo bem.
+    // Borda tracejada = "a lista dela oscila", e o áudio segue.
+    + '.svz-p.oscila{border-style:dashed;border-color:rgba(255,200,100,.5)}'
     + '.svz-ava{width:46px;height:46px;flex:0 0 46px;border-radius:50%;overflow:hidden;display:flex;align-items:center;justify-content:center;'
     + 'font-family:var(--font-display,Syne,sans-serif);font-weight:800;font-size:18px;color:#fff;border:2px solid transparent}'
     + '.svz-ava img{width:100%;height:100%;object-fit:cover}'
@@ -433,7 +465,13 @@
       if (!S.sb) {
         S.sb = mod.createClient(cfg.supabase_url, cfg.anon_key, {
           auth: { persistSession: false, autoRefreshToken: false },
-          // ICE chega em rajada; 10/s (padrão) engasga a negociação com 9 peers
+          // ICE chega em rajada; 10/s (padrão) engasga a negociação com 9 peers.
+          // MEDIDO em 11/08: `eventsPerSecond` não existe no código do
+          // supabase-js@2.45.4 nem do realtime-js@2.10.2 — é só repassado como
+          // query da URL do WebSocket. A 25 msg/s com o valor em 1, 10, 30 e
+          // ausente o resultado foi IDÊNTICO (100% de entrega, zero erro): o 1
+          // deveria ter estrangulado tudo e não estrangulou nada. Fica em 30
+          // porque é inofensivo e é a intenção declarada, não porque funcione.
           realtime: { params: { eventsPerSecond: 30 } },
         });
       }
@@ -465,6 +503,12 @@
           // entrada nasce preenchido em vez de esperar 4s pelo próximo ciclo.
           if (S.entrei) garantirConfig().then(function () { anunciar(); });
           else pedirCenso();
+          // As conexões de voz NÃO foram tocadas enquanto o canal estava fora —
+          // mídia é P2P e não passa pelo Realtime. Aqui a gente só confere uma
+          // por uma: as boas seguem intactas, as quebradas ganham o empurrão
+          // barato. Refazer o mesh inteiro na reconexão era o que multiplicava
+          // conexão (4 pra 2 pessoas no teste do dono).
+          revisarPeers();
           // A lista fica em quarentena durante a janela do censo: enquanto as
           // respostas não chegam, ninguém expira. Era aqui que morava o antigo
           // impasse da sala vazia — o portão esperava um 'sync' que não existe.
@@ -514,11 +558,35 @@
   // send() devolve status em vez de rejeitar. O resultado era jogado
   // fora: broadcast é fire-and-forget e um pacote perdido deixava os dois
   // lados calados. Agora dá pra saber e reenviar.
+  //
+  // ⚠️ MEDIDO (11/08): o 'ok' daqui NÃO prova que o socket está vivo. Com o
+  // WebSocket morto, o RealtimeChannel.send() escapa por HTTP
+  // (POST /realtime/v1/api/broadcast) e devolve 'ok' assim mesmo — 9 de 9
+  // sondas com o socket destruído responderam 'ok', em 193-757ms. Isso é BOM (a
+  // mensagem chega), mas significa que ninguém pode inferir saúde de socket
+  // daqui. Quem sabe se a voz está viva é o RTCPeerConnection.
+  //
+  // E quando o escape HTTP também morre — foi o console do dono, com
+  // ERR_CONNECTION_TIMED_OUT no /api/broadcast — o send() fica 10s pendurado
+  // (DEFAULT_TIMEOUT do SDK) antes de devolver 'timed out'. A espera é nossa:
+  // PRAZO_ENVIO corta em 2,5s e devolve false, pra o reenvio começar cedo em
+  // vez de 30s depois (3 tentativas × 10s por candidato ICE).
   function enviar(evento, payload) {
     if (!S.canal) return Promise.resolve(false);
     var r;
     try { r = S.canal.send({ type: 'broadcast', event: evento, payload: payload }); } catch (e) { return Promise.resolve(false); }
-    return Promise.resolve(r).then(function (res) { return res === 'ok'; }, function () { return false; });
+    var resposta = Promise.resolve(r).then(function (res) { return res === 'ok'; }, function () { return false; });
+    return new Promise(function (res) {
+      var fechado = false;
+      // O timer é CANCELADO quando a resposta chega: sem isso todo envio
+      // deixaria 2,5s de relógio pendurado — e a sala manda uma mensagem a
+      // cada 4s, pra sempre.
+      var t = setTimeout(function () { if (!fechado) { fechado = true; res(false); } }, PRAZO_ENVIO);
+      resposta.then(function (ok) {
+        if (fechado) return;
+        fechado = true; clearTimeout(t); res(ok);
+      });
+    });
   }
 
   // Reenvio curto pro que não tem quem peça de novo (ICE, offer/answer, opa).
@@ -566,6 +634,7 @@
       entrou: S.entrouEm || Date.now(),
       visto: Date.now(),
       suspenso: !!S.suspenso,
+      ausente: 0,   // eu nunca oscilo pra mim mesmo: estou aqui, com o mic aberto
     };
   }
 
@@ -665,11 +734,20 @@
           entrou: (antes && antes.entrou) || Number(p.j) || agora,
           visto: agora,
           suspenso: !!p.z,
+          // Bateu = está presente de novo. `ausente` é a marca de "sumiu do
+          // batimento", e ela zera aqui: quem voltou a bater voltou pra lista.
+          ausente: 0,
         };
         S.presentes.set(k, reg);
         if (!antes) chegou(k);
-        else if (antes.mudo !== reg.mudo || antes.ticket !== reg.ticket) {
+        else if (antes.ausente || antes.mudo !== reg.mudo || antes.ticket !== reg.ticket) {
           if (antes.ticket !== reg.ticket) resolverIdentidades();
+          // Voltou depois de sumir da lista: a conexão de voz dele foi PRESERVADA
+          // (varrer() não mata mais peer por sumiço), então normalmente não há
+          // nada a fazer além de repintar. O mesh só age se ele estiver sem peer
+          // nenhum — e criar peer que falta nunca foi o problema; o problema era
+          // DESTRUIR peer bom por informação de lista.
+          if (antes.ausente && S.entrei) mesh();
           pintar();
         }
       }
@@ -706,6 +784,12 @@
     pintar();
   }
 
+  // Tira da lista E desfaz a voz. É a saída DEFINITIVA, e por isso só pode ser
+  // chamada quando existe prova de que a pessoa foi embora:
+  //   · 'tchau' explícito (aoTchau), ou
+  //   · ausência sustentada SEM nenhuma conexão de voz pra proteger (varrer).
+  // Nunca por "sumiu do batimento" sozinho — era exatamente isso que destruía a
+  // voz de quem só tinha perdido o socket por alguns segundos.
   function tirarDaLista(chave) {
     var pres = S.presentes.get(chave);
     S.presentes.delete(chave);
@@ -715,9 +799,49 @@
     pintar();
   }
 
+  // A CONEXÃO É FATO, A LISTA É BOATO.
+  //
+  // O RTCPeerConnection sabe sozinho se está vivo. Enquanto ele estiver
+  // entregando (ou acabou de oscilar), nenhuma decisão de lista pode encostar
+  // nele. 'disconnected' entra aqui de propósito: quase sempre é oscilação e
+  // volta sozinho; se for morte de verdade, o próprio ICE vira 'failed' em
+  // segundos e aí a decisão é dele, não nossa.
+  //
+  // Cenário que isto evita (medido em bancada, 11/08): o socket de um lado cai,
+  // o batimento dele para de chegar, e o outro lado — que nunca caiu — o expira
+  // em 14,0s e destrói a conexão. O canal do caído só volta ~8s depois da rede
+  // (backoff do SDK), ele reanuncia, o mesh reconstrói: ~22s por ciclo. Foram
+  // 4 conexões pra 2 pessoas no teste real do dono.
+  function vozViva(chave) {
+    var p = S.peers.get(chave);
+    if (!p || !p.pc) return false;
+    var e = p.pc.connectionState;
+    return e === 'connected' || e === 'completed' || e === 'disconnected';
+  }
+
+  // Mais estrita que vozViva: a conexão está ENTREGANDO agora, não "provavelmente
+  // volta". Só ela ganha proteção sem prazo na varredura.
+  //
+  // 'disconnected' fica de fora aqui de propósito: na prática o ICE vira
+  // 'failed' em ~30s, mas "na prática" não é garantia — se um navegador
+  // segurasse 'disconnected' pra sempre, quem foi embora nunca sairia da lista.
+  // Oscilação real está coberta assim mesmo: ela é protegida pela carência
+  // (CARENCIA_VOZ), que é maior que o apagão de canal mais longo que medi.
+  function vozEntregando(chave) {
+    var p = S.peers.get(chave);
+    if (!p || !p.pc) return false;
+    var e = p.pc.connectionState;
+    return e === 'connected' || e === 'completed';
+  }
+
   // A varredura é o único jeito de alguém sair sem avisar. Ela é conservadora
   // de propósito: com o canal fora do ar a lista CONGELA (um socket caído não é
   // prova de que a sala esvaziou), e durante um censo ninguém expira.
+  //
+  // Ela agora decide DUAS coisas separadas:
+  //   1) sair da LISTA (o card marca que a conexão oscila) — por ausência de
+  //      batimento, como sempre foi;
+  //   2) desfazer a VOZ — só quando não há voz nenhuma a proteger.
   function varrer() {
     if (S.sub !== 'on') return;
     var agora = Date.now();
@@ -728,6 +852,23 @@
       if (!p) return;
       var prazo = p.suspenso ? EXPIRA_DORMINDO_MS : EXPIRA_MS;
       if (agora - (p.visto || 0) < prazo) return;
+
+      // Parou de bater: marca a ausência (o card passa a mostrar oscilação) e
+      // repinta UMA vez. Isto não desliga áudio de ninguém.
+      if (!p.ausente) { p.ausente = agora; pintar(); }
+
+      // Conexão entregando manda na lista, e não o contrário: enquanto eu ouço
+      // a pessoa, ela está na sala — venha ou não venha batimento dela.
+      if (vozEntregando(k)) return;
+
+      // Sem peer nenhum não há voz a proteger: expira como sempre expirou. É o
+      // caso do observador (que nunca abre peer) e o de quem nunca conectou.
+      if (!S.peers.has(k)) { tirarDaLista(k); return; }
+
+      // Peer existe mas não está entregando ('new'/'connecting'/'disconnected'/
+      // 'failed'): ganha a carência do apagão de canal medido (backoff do SDK)
+      // e, se nada mudar, aí sim sai.
+      if (agora - p.ausente < CARENCIA_VOZ) return;
       tirarDaLista(k);
     });
   }
@@ -810,9 +951,28 @@
     return !!(pres && pres.ticket && !S.ids.has(pres.ticket) && S.ruins.has(pres.ticket));
   }
 
+  // QUEM CONTA COMO ESTANDO NA SALA. É aqui que as duas vidas se encontram:
+  //
+  //   · batendo             -> está na sala (o caso normal);
+  //   · parou de bater MAS  -> continua na sala, porque eu ESTOU OUVINDO. A
+  //     a voz está viva        conexão é fato; o batimento é só o boato.
+  //   · parou de bater e    -> não é anunciado como presente. O registro pode
+  //     não há voz             continuar existindo por um tempo (varrer segura
+  //                            o peer em formação por CARENCIA_VOZ), mas isso é
+  //                            assunto da conexão, não da contagem.
+  //
+  // Sem esta separação, um par em negociação que sumiu do batimento ficaria
+  // contado como pessoa por quase um minuto — a entrada diria "2 pessoas
+  // conversando" com uma sala de 1.
+  function naSala(p, k) {
+    if (!p || fantasma(p, k)) return false;
+    if (!p.ausente) return true;
+    return vozViva(k);
+  }
+
   function contarPresentes() {
     var n = 0;
-    S.presentes.forEach(function (p, k) { if (!fantasma(p, k)) n++; });
+    S.presentes.forEach(function (p, k) { if (naSala(p, k)) n++; });
     return n;
   }
 
@@ -824,8 +984,7 @@
   function contarFalando() {
     var n = 0;
     S.falando.forEach(function (k) {
-      var p = S.presentes.get(k);
-      if (p && !fantasma(p, k)) n++;
+      if (naSala(S.presentes.get(k), k)) n++;
     });
     return n;
   }
@@ -880,8 +1039,12 @@
   // verificados de propósito — lá o erro seguro é NÃO entrar; aqui é FICAR.
   function checarLotacao() {
     if (!S.entrei) return;
+    // Ausente do batimento não empurra ninguém pra fora: quem me expulsa da
+    // conversa tem que estar comprovadamente na sala AGORA. Sem esta guarda,
+    // uma oscilação de socket de terceiros me faria "perder a vaga" de uma sala
+    // que talvez nem esteja cheia.
     var confirmados = Array.from(S.presentes.entries()).filter(function (e) {
-      return e[0] === S.sessao || (!fantasma(e[1], e[0]) && S.ids.has(e[1].ticket));
+      return e[0] === S.sessao || (!e[1].ausente && !fantasma(e[1], e[0]) && S.ids.has(e[1].ticket));
     });
     if (confirmados.length <= MAX) return;
     var ordem = confirmados.sort(function (a, b) {
@@ -904,6 +1067,10 @@
       if (!S.ids.get(p.ticket)) return;            // identidade não confirmada: não conecta
       S.sumido.delete(k);
       if (S.semRota.has(k)) return;                // já desistimos desse par
+      // Quem está AUSENTE do batimento não recebe oferta nova: o socket dele
+      // está fora, a oferta não chegaria, e cada tentativa queima uma geração à
+      // toa. Quando ele voltar a bater, aoBatimento() chama o mesh de novo.
+      if (p.ausente) return;
       if (!S.peers.has(k) && souOfertante(k)) criarPeer(k, true);
     });
     // offers que chegaram antes da identidade
@@ -912,16 +1079,19 @@
       if (pres && S.ids.get(pres.ticket)) { S.ofertasPend.delete(k); aoSdp(m); }
       else if (!pres) S.ofertasPend.delete(k);
     });
-    // Quem saiu da lista sai do mesh — mas COM CARÊNCIA, e só com a lista
-    // confiável (canal de pé, fora de censo). O caminho normal de saída já
-    // desfaz o peer na hora (tirarDaLista); esta varredura é a segunda camada,
-    // pro par que sumiu por algum caminho que não passou por lá. Sem a guarda
-    // de confiança, uma oscilação de socket derrubaria o áudio de todo mundo.
+    // Peer sem registro nenhum na lista é lixo de caminho estranho — o caminho
+    // normal de saída (tirarDaLista) já desfaz o peer junto. Esta varredura é a
+    // segunda camada, e ela tem DUAS guardas:
+    //   · lista confiável (canal de pé, fora de censo): oscilação de socket não
+    //     é prova de que alguém saiu;
+    //   · vozViva(): mesmo com a lista confiável, conexão que está entregando
+    //     áudio NÃO é derrubada por ausência de registro. A lista é boato.
     var confiavel = listaConfiavel();
     var agora = Date.now();
     Array.from(S.peers.keys()).forEach(function (k) {
       if (S.presentes.has(k)) { S.sumido.delete(k); return; }
       if (!confiavel) return;                      // estado suspeito: não poda nada
+      if (vozViva(k)) { S.sumido.delete(k); return; }
       var t = S.sumido.get(k);
       if (!t) { S.sumido.set(k, agora); return; }
       if (agora - t < CARENCIA_SUMICO) return;
@@ -932,7 +1102,7 @@
     // responde e ele nunca ofertou) deixava lixo em tentativas/semRota/ger
     // pra sempre. Varre pelas chaves, não pelos peers.
     if (confiavel) {
-      [S.tentativas, S.opasEnviados, S.opaRecebido, S.ger, S.filaSdp, S.alo].forEach(function (mapa) {
+      [S.tentativas, S.opasEnviados, S.opaRecebido, S.ger, S.filaSdp, S.alo, S.reparoAudio].forEach(function (mapa) {
         Array.from(mapa.keys()).forEach(function (k) {
           if (!S.presentes.has(k) && !S.peers.has(k)) mapa.delete(k);
         });
@@ -944,9 +1114,17 @@
   }
 
   // Zera tudo que a gente guardava sobre um par que saiu de verdade.
+  //
+  // S.tentativas NÃO mora aqui de propósito. Ele é o ORÇAMENTO de reconstruções
+  // do par, e o defeito medido em 11/08 foi exatamente este: cada sumiço da
+  // lista chamava esquecerPar(), o orçamento voltava a zero e MAX_TENTATIVAS
+  // nunca era alcançado — cada ciclo de "sumiu e voltou" comprava reconstruções
+  // infinitas (4 conexões numa sala de 2 pessoas). Ele agora só volta ao cheio
+  // por PROVA de sucesso ('connected', em onconnectionstatechange) ou quando o
+  // par some da lista E do mesh (limpeza no fim do mesh()).
   function esquecerPar(chave) {
     S.sumido.delete(chave);
-    S.tentativas.delete(chave);
+    S.reparoAudio.delete(chave);
     S.opasEnviados.delete(chave);
     S.opaRecebido.delete(chave);
     S.semRota.delete(chave);
@@ -996,9 +1174,28 @@
       if (e.track && p.remoto.getTracks().indexOf(e.track) === -1) {
         p.remoto.addTrack(e.track);
         // Faixa que morre tem que sair do stream, senão o medidor fica lendo
-        // silêncio de uma faixa morta e a borda nunca mais acende.
+        // silêncio de uma faixa morta e a borda nunca mais acende. E faixa
+        // morta é SINAL DO PRÓPRIO PAR de que a voz caiu — é um dos poucos
+        // gatilhos que podem mandar reparar (a lista nunca pode).
         e.track.addEventListener('ended', function () {
           try { p.remoto.removeTrack(e.track); } catch (_) {}
+          if (S.peers.get(chave) !== p) return;
+          repararPorAudio(chave, 'faixa encerrada');
+        });
+        // 'unmute' é o carimbo de que RTP de verdade começou a chegar. É ele que
+        // separa "conectado" de "conectado e ouvindo" — o relatório do dono
+        // mostrou faixa `muted=true` com rms 0.00000 numa conexão que se dizia
+        // de pé. NÃO reagimos a um 'mute' posterior de propósito: com DTX
+        // (usedtx=1, ver opusMono) o silêncio corta o fluxo e mutar é normal.
+        if (!e.track.muted) p.ouvi = Date.now();
+        e.track.addEventListener('unmute', function () {
+          var atual = S.peers.get(chave);
+          if (atual !== p) return;
+          p.ouvi = Date.now();
+          // Chegou áudio: o orçamento de reparos POR ÁUDIO volta ao cheio. É a
+          // prova de sucesso deste sinal — igual ao 'connected' pro orçamento
+          // de reconstruções.
+          S.reparoAudio.delete(chave);
         });
       }
       anexarAudio(chave, p.remoto);
@@ -1007,9 +1204,14 @@
       var est = pc.connectionState;
       if (est === 'connected') {
         // Deu certo: o orçamento de tentativas volta pro cheio pra este par.
+        // Este é o ÚNICO lugar que devolve orçamento — prova de sucesso, não
+        // "o outro sumiu da lista e voltou" (ver esquecerPar).
         S.tentativas.delete(chave);
         S.opasEnviados.delete(chave);
         S.semRota.delete(chave);
+        // Marca do início da conexão: é a partir daqui que se cobra o primeiro
+        // pacote de áudio (ESPERA_PRIMEIRO_AUDIO no vigia).
+        if (!p.conectouEm) p.conectouEm = Date.now();
         if (p.tDesc) { clearTimeout(p.tDesc); p.tDesc = null; }
       } else if (est === 'disconnected') {
         // 'disconnected' quase sempre é oscilação (Wi-Fi↔4G, celular saindo do
@@ -1064,12 +1266,115 @@
     } catch (e) { recuperar(chave); }
   }
 
+  // Reparo pedido pela PRÓPRIA CONEXÃO (faixa que encerrou, áudio que nunca
+  // chegou) — nunca pela lista de participantes. Tenta primeiro o caminho
+  // barato (reinício de ICE, que preserva a conexão e a geração) e tem
+  // throttle próprio pra um par teimoso não virar rebuild em loop.
+  //
+  // Cenário que isto conserta: "faixa recebida: audio · ended · muted=true" com
+  // "analisadores: 5, todos rms 0.00000" — conexão que se diz de pé e não
+  // entrega um pacote. Antes ninguém percebia: o connectionState mentia
+  // 'connected' e a sala ficava muda sem nenhum sinal de erro.
+  function repararPorAudio(chave, motivo) {
+    if (!S.entrei || S.semRota.has(chave)) return;
+    // Par ausente do batimento tem o socket fora: nenhuma mensagem de
+    // sinalização chegaria nele. Não adianta cutucar — quem decide o destino
+    // desta conexão é ela mesma ('failed' -> recuperar).
+    var pres = S.presentes.get(chave);
+    if (pres && pres.ausente) return;
+    var agora = Date.now();
+    var reg = S.reparoAudio.get(chave) || { quando: 0, n: 0 };
+    if (agora - reg.quando < THROTTLE_PAR) return;
+    reg.quando = agora; reg.n++;
+    S.reparoAudio.set(chave, reg);
+    var p = S.peers.get(chave);
+    if (!p) return;
+    p.ouvi = 0;
+    p.conectouEm = conectado(p) ? agora : 0;   // recomeça a cobrança do 1º pacote
+    // Teto: depois de N reinícios de ICE sem áudio, PARA de tentar — e não
+    // destrói nada. Este sinal é indireto (pode estar errado: navegador que não
+    // dispara 'unmute', pessoa que entrou muda, DTX cortando o fluxo), e
+    // derrubar uma conexão possivelmente boa por causa dele seria repetir o
+    // defeito que este conserto inteiro existe pra matar. Se ela estiver morta
+    // mesmo, quem vai dizer isso é o próprio pc ('failed'), e aí o caminho é o
+    // recuperar() de sempre.
+    if (reg.n > MAX_TENTATIVAS) return motivo;
+    if (souOfertante(chave)) reiniciarIce(chave);
+    else pedirOpa(chave);
+    return motivo;
+  }
+
+  // A conexão está entregando voz? 'connected' não basta — foi medido que ela
+  // mente. Voz de verdade é mídia que já chegou pelo menos uma vez, e a marca
+  // LATCHA: quem já falou uma vez nunca mais é suspeito (com DTX o silêncio
+  // corta o fluxo, e isso é normal, não defeito).
+  //
+  // Três fontes, porque nenhuma sozinha é confiável:
+  //   · o evento 'unmute' da faixa (ontrack) — o sinal mais direto;
+  //   · o rms do medidor (loop da fala) — faixa morta lê 0.00000 exato, medido;
+  //   · esta sondagem do estado da faixa, pro navegador que não dispara
+  //     'unmute' de faixa remota. Sem ela, um navegador silencioso faria a sala
+  //     reparar eternamente uma conexão que está ótima.
+  function ouvindo(p) {
+    if (!p) return false;
+    if (p.ouvi) return true;
+    try {
+      var fx = p.remoto ? p.remoto.getAudioTracks() : [];
+      for (var i = 0; i < fx.length; i++) {
+        if (fx[i].readyState === 'live' && !fx[i].muted) { p.ouvi = Date.now(); return true; }
+      }
+    } catch (e) {}
+    return false;
+  }
+
+  // Socket voltou. As conexões que continuaram boas são REAPROVEITADAS: elas
+  // atravessaram o apagão sem nem saber que o canal caiu (mídia é P2P, não
+  // passa pelo Realtime). Só as que realmente quebraram são mexidas — e sempre
+  // pelo caminho mais barato primeiro.
+  //
+  // Cenário que isto evita: reassinar o canal e refazer o mesh inteiro, que era
+  // o que produzia 4 RTCPeerConnection numa sala de 2 pessoas.
+  function revisarPeers() {
+    if (!S.entrei) return;
+    S.peers.forEach(function (p, k) {
+      var est = p.pc && p.pc.connectionState;
+      if (est === 'connected' || est === 'completed') return;   // boa: não se mexe
+      if (est === 'disconnected') return;                       // o tDesc já cuida
+      if (est === 'failed') { recuperar(k); return; }
+      // 'new'/'connecting': a negociação pode ter perdido SDP ou ICE no apagão
+      // (broadcast não tem replay — medido: some exatamente o do intervalo).
+      // Cutuca pelo caminho barato, sem destruir nada.
+      if (!souOfertante(k)) { pedirOpa(k); return; }
+      if (!reenviarOferta(k)) reiniciarIce(k);
+    });
+  }
+
+  // A oferta já existe e está de pé nesta conexão — ela só não chegou do outro
+  // lado (o apagão comeu a mensagem). Mandar de novo a MESMA localDescription é
+  // o conserto mais barato que existe: não cria peer, não muda geração, não
+  // renegocia nada. Devolve false quando não há oferta pendente pra repetir.
+  function reenviarOferta(chave) {
+    var p = S.peers.get(chave);
+    if (!p || !p.pc || !p.pc.localDescription) return false;
+    if (p.pc.signalingState !== 'have-local-offer') return false;
+    enviarFirme('sdp', { to: chave, from: S.sessao, g: p.g, tipo: 'offer', sdp: p.pc.localDescription },
+      function () { return S.peers.get(chave) === p; });
+    return true;
+  }
+
   // Reconstrói a conexão gastando UMA tentativa do orçamento do par. O
   // orçamento mora em S.tentativas (fora do objeto do peer): antes ele morava
   // no peer, então todo criarPeer() nascia com tentativas:0 e o teto nunca era
   // alcançado — rede sem rota virava rebuild eterno a cada 12s.
   function recuperar(chave) {
-    if (!S.presentes.has(chave)) return;
+    var pres = S.presentes.get(chave);
+    if (!pres) return;
+    // O par está AUSENTE do batimento: não há ninguém do outro lado pra
+    // negociar (o socket dele está fora), então reconstruir só queimaria
+    // orçamento e geração à toa. Desfaz a conexão que morreu e deixa a
+    // varredura decidir — se ele voltar a bater, o mesh recria; se não voltar,
+    // ele sai da lista pelo caminho normal.
+    if (pres.ausente) { destruirPeer(chave); return; }
     var t = S.tentativas.get(chave) || 0;
     if (t >= MAX_TENTATIVAS) {
       S.semRota.add(chave);      // desistiu: a nota do painel para de piscar
@@ -1229,9 +1534,30 @@
       if (!S.canal && S.cfg) { conectar(); return; }
       mesh();      // também é aqui que a carência do sumiço vence
       var agora = Date.now();
+
+      // (1) CONEXÕES QUE SE DIZEM BOAS mas nunca entregaram um pacote de áudio.
+      // Percorre os PEERS, não a lista: é a conexão que se denuncia. Sem isto a
+      // sala fica muda com todo mundo aparecendo "conectado" — foi o
+      // "rms 0.00000" do relatório.
+      S.peers.forEach(function (p, k) {
+        if (!conectado(p) || ouvindo(p)) return;
+        if (!p.conectouEm || agora - p.conectouEm < ESPERA_PRIMEIRO_AUDIO) return;
+        // Quem está de microfone DESLIGADO não manda áudio — é o esperado, não
+        // um defeito. Sem esta guarda, todo mundo que clicou em "Entrar mudo"
+        // (um dos dois botões do modal!) viraria alvo de reparo pra sempre.
+        var pres = S.presentes.get(k);
+        if (!pres || pres.mudo) return;
+        repararPorAudio(k, 'conectado sem áudio');
+      });
+
+      // (2) PARES PRESENTES SEM CONEXÃO FECHADA. Aqui a lista é usada só pra
+      // saber com quem AINDA falta conectar — criar o que falta. Ela nunca
+      // manda destruir: quem destrói é o orçamento do próprio par, e só depois
+      // de o caminho barato (reenviar a oferta / reiniciar o ICE) não resolver.
       S.presentes.forEach(function (pres, k) {
         if (k === S.sessao || !S.ids.get(pres.ticket)) return;
         if (S.semRota.has(k)) return;                         // desistimos: nota fica estável
+        if (pres.ausente) return;                             // socket dele fora: não adianta insistir
         var p = S.peers.get(k);
         if (p && conectado(p)) return;
         if (p && p.pc.connectionState === 'disconnected') return;  // o temporizador do restart cuida
@@ -1239,15 +1565,16 @@
         var ultimo = S.alo.get(k) || 0;
         if (agora - ultimo < THROTTLE_PAR) return;
         S.alo.set(k, agora);
+        if (!souOfertante(k)) { pedirOpa(k); return; }
+        // Antes de gastar orçamento, o barato: repetir a oferta que já existe
+        // (o par pode simplesmente não tê-la recebido) e depois o reinício de
+        // ICE. Destruir e recriar é o último recurso, não o primeiro.
+        if (reenviarOferta(k)) return;
         var t = S.tentativas.get(k) || 0;
-        if (souOfertante(k)) {
-          if (t >= MAX_TENTATIVAS) { S.semRota.add(k); pintarSala(); return; }
-          S.tentativas.set(k, t + 1);
-          if (p) destruirPeer(k);
-          criarPeer(k, true);
-        } else {
-          pedirOpa(k);
-        }
+        if (t >= MAX_TENTATIVAS) { S.semRota.add(k); pintarSala(); return; }
+        S.tentativas.set(k, t + 1);
+        if (p) destruirPeer(k);
+        criarPeer(k, true);
       });
     }, 8000);
   }
@@ -1262,6 +1589,7 @@
     S.sumido.clear();
     S.ger.clear();
     S.filaSdp.clear();
+    S.reparoAudio.clear();
   }
 
   function drenarIce(chave) {
@@ -1327,6 +1655,11 @@
 
   // ── medidor de fala ───────────────────────────────────────────────────────
   function ctxAudio() {
+    // Contexto fechado não volta: qualquer analisador pendurado nele lê 0 pra
+    // sempre. Era o "contexto de áudio: closed · analisadores: 5, todos rms
+    // 0.00000" do relatório — o medidor parecia vivo e não media nada, então a
+    // borda de "falando" nunca mais acendia pra ninguém.
+    if (S.audioCtx && S.audioCtx.state === 'closed') { S.audioCtx = null; S.medidores.clear(); }
     if (!S.audioCtx) {
       var C = window.AudioContext || window.webkitAudioContext;
       if (!C) return null;
@@ -1334,6 +1667,14 @@
     }
     if (S.audioCtx.state === 'suspended') { try { S.audioCtx.resume(); } catch (e) {} }
     return S.audioCtx;
+  }
+
+  // Remonta TODOS os medidores no contexto atual. Chamado quando o contexto
+  // morreu por baixo da gente: sem isto os analisadores antigos continuam no
+  // lugar, mudos, e nada nunca mais acende.
+  function remedirTodos() {
+    if (S.stream) medir(S.sessao, S.stream);
+    S.peers.forEach(function (p, k) { if (p.remoto) medir(k, p.remoto); });
   }
 
   function medir(chave, stream) {
@@ -1369,11 +1710,26 @@
     if (S.timerFala) return;
     S.timerFala = setInterval(function () {
       var mudou = false, agora = Date.now();
+      // Contexto que fechou sozinho (aba congelada, iOS, política do navegador)
+      // deixa todo analisador lendo silêncio. Percebe e remonta, em vez de
+      // ficar medindo o nada até a pessoa sair da sala.
+      if (S.audioCtx && S.audioCtx.state === 'closed' && (S.stream || S.peers.size)) {
+        remedirTodos();
+        return;
+      }
       S.medidores.forEach(function (m, k) {
         try { m.an.getByteTimeDomainData(m.buf); } catch (e) { return; }
         var soma = 0;
         for (var i = 0; i < m.buf.length; i++) { var v = (m.buf[i] - 128) / 128; soma += v * v; }
         var rms = Math.sqrt(soma / m.buf.length);
+        // Qualquer sinal — até ruído de fundo — prova que mídia está chegando
+        // por aquele par. Faixa morta lê 0.00000 EXATO (medido no relatório do
+        // dono). É a terceira fonte do latch de "já ouvi este par", e a que não
+        // depende de evento nenhum do navegador.
+        if (rms > 0.0002) {
+          var pp = S.peers.get(k);
+          if (pp && !pp.ouvi) pp.ouvi = agora;
+        }
         // Chão de ruído daquele microfone: sobe devagar e desce rápido, então
         // ele aprende o silêncio sem ser puxado pra cima pela própria fala.
         if (m.chao == null) m.chao = CHAO_INICIAL;
@@ -1810,9 +2166,9 @@
     var quem = $('svzDlgQuem');
     if (quem) {
       var htm = '';
-      S.presentes.forEach(function (p) {
+      S.presentes.forEach(function (p, k) {
         var pe = S.ids.get(p.ticket);
-        if (!pe) return;
+        if (!pe || !naSala(p, k)) return;   // mesma régua do contador logo acima
         htm += '<div class="svz-mini">' + avatarHTML(pe) + '<span>' + esc(pe.nome) + '</span></div>';
       });
       quem.innerHTML = htm;
@@ -2026,8 +2382,12 @@
     var grid = $('svzGrid');
     if (grid) {
       var htm = '';
-      // eu primeiro, depois por ordem de chegada — card não pula de lugar
-      var lista = Array.from(S.presentes.entries()).sort(function (a, b) {
+      // eu primeiro, depois por ordem de chegada — card não pula de lugar.
+      // Quem sumiu do batimento SEM voz viva sai da grade (a lista é dela); quem
+      // sumiu mas continua sendo ouvido FICA, marcado como oscilando.
+      var lista = Array.from(S.presentes.entries()).filter(function (e) {
+        return e[0] === S.sessao || naSala(e[1], e[0]);
+      }).sort(function (a, b) {
         if (a[0] === S.sessao) return -1;
         if (b[0] === S.sessao) return 1;
         return (a[1].entrou - b[1].entrou) || (a[0] < b[0] ? -1 : 1);
@@ -2051,13 +2411,20 @@
         if (!S.semRota.has(k) && p.pc && p.pc.connectionState === 'failed') caidos++;
       });
       caidos += S.semRota.size;
-      var ghosts = 0;
-      S.presentes.forEach(function (p, k) { if (fantasma(p, k)) ghosts++; });
+      var ghosts = 0, oscilando = 0;
+      S.presentes.forEach(function (p, k) {
+        if (fantasma(p, k)) ghosts++;
+        // Só conta como oscilação quando a VOZ segue viva: aí a mensagem é
+        // "continua ouvindo", que é uma informação útil. Ausente sem áudio
+        // nenhum já é contado como pessoa sem conexão logo acima.
+        else if (k !== S.sessao && p.ausente && vozViva(k)) oscilando++;
+      });
       nota.textContent = S.sub === 'erro' ? 'conexão instável — tentando voltar'
         : S.suspenso ? 'tela bloqueada — você continua na sala'
           : caidos ? caidos + ' pessoa(s) sem conexão direta com você (rede bloqueando)'
-            : ghosts ? ghosts + ' presença não verificada na sala (sessão vencida do outro lado)'
-              : (S.mudo ? 'seu microfone está desligado' : 'seu microfone está ligado');
+            : oscilando ? oscilando + ' pessoa(s) com sinal oscilando — o áudio continua'
+              : ghosts ? ghosts + ' presença não verificada na sala (sessão vencida do outro lado)'
+                : (S.mudo ? 'seu microfone está desligado' : 'seu microfone está ligado');
     }
   }
 
@@ -2078,7 +2445,16 @@
     var mudo = eu ? S.mudo : pres.mudo;
     var p = S.peers.get(chave);
     var caiu = !eu && (S.semRota.has(chave) || (p && p.pc && p.pc.connectionState === 'failed'));
-    return '<div class="svz-p' + (S.falando.has(chave) ? ' falando' : '') + (caiu ? ' caiu' : '') + '" data-svz-card="' + esc(chave) + '">'
+    // As duas vidas aparecem separadas no card: `oscila` é a LISTA dele piscando
+    // (parou de bater), e o áudio pode estar perfeito do mesmo jeito. Antes
+    // este card simplesmente sumia — junto com a conexão, que era destruída.
+    var oscila = !eu && !caiu && !!pres.ausente;
+    var titulo = oscila
+      ? (vozViva(chave) ? 'conexão dele oscilando — você continua ouvindo' : 'sem sinal dele agora')
+      : '';
+    return '<div class="svz-p' + (S.falando.has(chave) ? ' falando' : '') + (caiu ? ' caiu' : '')
+      + (oscila ? ' oscila' : '') + '" data-svz-card="' + esc(chave) + '"'
+      + (titulo ? ' title="' + esc(titulo) + '"' : '') + '>'
       + avatarHTML(pe)
       + '<div class="svz-nome">' + esc(eu ? 'Você' : pe.nome) + '</div>'
       + (mudo ? '<span class="svz-mic">🔇</span>' : '')
@@ -2227,6 +2603,16 @@
       listaConfiavel: listaConfiavel,
       suspender: suspender,
       mesh: mesh,
+      // as duas vidas: lista x conexão
+      vozViva: vozViva,
+      vozEntregando: vozEntregando,
+      naSala: naSala,
+      revisarPeers: revisarPeers,
+      repararPorAudio: repararPorAudio,
+      reenviarOferta: reenviarOferta,
+      ouvindo: ouvindo,
+      checarLotacao: checarLotacao,
+      enviar: enviar,
       cardHTML: cardHTML,
       saiDaPagina: saiDaPagina,
       abrirConfirmacaoNavegacao: abrirConfirmacaoNavegacao,

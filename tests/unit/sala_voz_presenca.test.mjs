@@ -217,6 +217,356 @@ test('batimento PERDIDO não derruba ninguém — só a ausência sustentada', (
   assert.equal(I.contarPresentes(), 1, 'quem parou de bater tem que sair da lista');
 });
 
+// ═══ AS DUAS VIDAS: a lista e a conexão ═════════════════════════════════
+// Reprodução do teste real do dono (11/08): celular + computador no MESMO
+// Wi-Fi, "conexões: 4" numa sala de DUAS pessoas, todas closed. A bancada
+// isolou a cadeia: o socket de um lado cai (o escape HTTP do SDK também), o
+// batimento dele some, e o outro lado — que nunca caiu — o expira em 14,03s e
+// chama destruirPeer() + esquecerPar(). O canal do caído só volta ~8s depois da
+// rede (backoff do SDK), ele reanuncia, o mesh reconstrói: ~22s por ciclo,
+// 4 ciclos = 4 conexões. E como esquecerPar() zerava S.tentativas, o teto de
+// MAX_TENTATIVAS nunca chegava: reconstrução infinita.
+
+// Um peer de mentira com o estado que importa (é o pc que decide se há voz).
+function peerFalso(estado) {
+  return {
+    pc: { close: () => {}, connectionState: estado, onicecandidate: null, ontrack: null, onconnectionstatechange: null },
+    audio: null, remoto: null, g: 1, desde: Date.now(), tDesc: null, ouvi: 0, conectouEm: Date.now(),
+  };
+}
+
+test('socket do outro cai: ele sai da LISTA mas a VOZ sobrevive', () => {
+  const { S, I } = carregarSala();
+  entrarNaSala(S, I);
+  canalDePe(S);
+  S.ids.set('T-u2~zz', { id: 'u2', nome: 'Ana', avatar: null, plano: 'full' });
+  I.aoBatimento(batimento('u2~zz'));
+  S.peers.set('u2~zz', peerFalso('connected'));   // áudio fluindo nos dois sentidos
+
+  // 15s sem batimento: é exatamente o instante em que o dono perdia a voz.
+  S.presentes.get('u2~zz').visto = Date.now() - 15000;
+  I.varrer();
+
+  assert.equal(S.peers.has('u2~zz'), true,
+    'destruir a conexão de quem só perdeu o socket é O defeito: 4 conexões pra 2 pessoas');
+  assert.equal(S.presentes.get('u2~zz').ausente > 0, true, 'mas a lista dele marca que oscilou');
+  assert.equal(I.contarPresentes(), 2, 'e ele continua contado: eu ainda o ESTOU ouvindo');
+
+  // Mesmo muito depois da carência: conexão viva não tem prazo.
+  S.presentes.get('u2~zz').visto = Date.now() - 600000;
+  I.varrer();
+  assert.equal(S.peers.has('u2~zz'), true, 'conexão viva não expira por relógio de lista');
+});
+
+test('sem voz pra proteger, a ausência sustentada tira da lista como sempre', () => {
+  const { S, I } = carregarSala();
+  entrarNaSala(S, I);
+  canalDePe(S);
+  S.ids.set('T-u2~zz', { id: 'u2', nome: 'Ana', avatar: null, plano: 'full' });
+  I.aoBatimento(batimento('u2~zz'));
+  S.peers.delete('u2~zz');            // nunca abriu peer (é o caso do observador)
+  S.presentes.get('u2~zz').visto = Date.now() - 15000;
+  I.varrer();
+  assert.equal(S.presentes.has('u2~zz'), false,
+    'sem conexão nenhuma a proteger, a lista volta a ser a única prova');
+});
+
+test('peer em formação ganha a carência do apagão de canal, e ela vence', () => {
+  const { S, I } = carregarSala();
+  entrarNaSala(S, I);
+  canalDePe(S);
+  S.ids.set('T-u2~zz', { id: 'u2', nome: 'Ana', avatar: null, plano: 'full' });
+  I.aoBatimento(batimento('u2~zz'));
+  S.peers.set('u2~zz', peerFalso('connecting'));   // negociando quando o socket caiu
+  S.presentes.get('u2~zz').visto = Date.now() - 15000;
+  I.varrer();
+  // ICE é P2P: uma negociação em curso pode fechar sozinha mesmo com o canal
+  // fora. Medido: apagão de 45s deixou o canal fora 48,26s. Por isso a carência.
+  assert.equal(S.peers.has('u2~zz'), true, 'matar negociação em curso reinicia tudo do zero à toa');
+  assert.equal(I.contarPresentes(), 1, 'mas ele NÃO é anunciado como presente: não há voz nem batimento');
+
+  // Vencida a carência sem nunca ter virado voz, aí sim desiste.
+  S.presentes.get('u2~zz').ausente = Date.now() - 46000;
+  I.varrer();
+  assert.equal(S.presentes.has('u2~zz'), false);
+  assert.equal(S.peers.has('u2~zz'), false, 'peer que nunca carregou áudio não fica pendurado pra sempre');
+});
+
+test('voltar a bater limpa a marca de ausência sem reconstruir a conexão', () => {
+  const { S, I } = carregarSala();
+  entrarNaSala(S, I);
+  canalDePe(S);
+  S.ids.set('T-u2~zz', { id: 'u2', nome: 'Ana', avatar: null, plano: 'full' });
+  I.aoBatimento(batimento('u2~zz'));
+  const peer = peerFalso('connected');
+  S.peers.set('u2~zz', peer);
+  S.presentes.get('u2~zz').visto = Date.now() - 15000;
+  I.varrer();
+  assert.equal(S.presentes.get('u2~zz').ausente > 0, true);
+
+  // O canal dele voltou (~8s depois da rede, por causa do backoff do SDK).
+  I.aoBatimento(batimento('u2~zz'));
+  assert.equal(S.presentes.get('u2~zz').ausente, 0, 'quem voltou a bater voltou pra lista');
+  assert.equal(S.peers.get('u2~zz'), peer,
+    'e continua sendo O MESMO peer: reconstruir na volta era o que multiplicava conexão');
+});
+
+test('o orçamento de reconstruções NÃO é zerado por sumiço da lista', () => {
+  const { S, I } = carregarSala();
+  entrarNaSala(S, I);
+  canalDePe(S);
+  S.ids.set('T-u2~zz', { id: 'u2', nome: 'Ana', avatar: null, plano: 'full' });
+  I.aoBatimento(batimento('u2~zz'));
+  S.tentativas.set('u2~zz', 2);        // já gastou 2 das 3
+  // Ciclo de sumiço-e-volta, que era o que comprava reconstruções infinitas.
+  S.presentes.get('u2~zz').visto = Date.now() - 15000;
+  I.varrer();
+  I.aoBatimento(batimento('u2~zz'));
+  assert.equal(S.tentativas.get('u2~zz'), 2,
+    'esquecerPar() zerando o teto fazia MAX_TENTATIVAS nunca chegar — rebuild eterno');
+});
+
+test('ausente não me expulsa da sala cheia (nem ocupa vaga no desempate)', () => {
+  const { S, I } = carregarSala();
+  entrarNaSala(S, I);
+  canalDePe(S);
+  // 10 verificados que entraram antes de mim, mas TODOS oscilando: eu seria o
+  // 11º e me retiraria sozinho por causa de gente que talvez nem esteja lá.
+  for (let i = 0; i < 10; i++) {
+    S.ids.set('T-v' + i + '~x', { id: 'v' + i, nome: 'V' + i, avatar: null, plano: 'full' });
+    S.presentes.set('v' + i + '~x', { ticket: 'T-v' + i + '~x', mudo: 0, entrou: 1000 + i, visto: 0, ausente: Date.now() });
+  }
+  I.checarLotacao();
+  assert.equal(S.entrei, true, 'perder a vaga por oscilação de socket dos outros seria expulsão por ruído');
+});
+
+// ═══ RECONEXÃO: reaproveitar o que continua bom ══════════════════════════
+// Mídia é P2P e NÃO passa pelo Realtime: uma conexão de voz atravessa o apagão
+// do canal sem nem saber que ele caiu. Refazer o mesh inteiro na volta do
+// socket era o que multiplicava conexão.
+
+test('socket volta: conexão boa é REAPROVEITADA, só a quebrada é mexida', () => {
+  const { S, I } = carregarSala();
+  entrarNaSala(S, I);
+  const c = canalDePe(S);
+  S.ids.set('T-boa~zz', { id: 'ub', nome: 'Boa', avatar: null, plano: 'full' });
+  S.ids.set('T-a-ruim~zz', { id: 'ur', nome: 'Ruim', avatar: null, plano: 'full' });
+  S.presentes.set('boa~zz', { ticket: 'T-boa~zz', mudo: 0, entrou: 1, visto: Date.now(), ausente: 0 });
+  S.presentes.set('a-ruim~zz', { ticket: 'T-a-ruim~zz', mudo: 0, entrou: 2, visto: Date.now(), ausente: 0 });
+  const boa = peerFalso('connected');
+  const ruim = peerFalso('failed');
+  S.peers.set('boa~zz', boa);
+  S.peers.set('a-ruim~zz', ruim);
+
+  I.revisarPeers();
+
+  assert.equal(S.peers.get('boa~zz'), boa,
+    'renegociar quem já está entregando áudio é justamente o que fazia 4 conexões pra 2 pessoas');
+  assert.equal(S.peers.has('a-ruim~zz'), false, 'a que falhou de verdade tem que ser refeita');
+  assert.equal(c.eventos('opa').length, 1, 'e o lado que não oferta pede a oferta do outro');
+});
+
+test('oferta perdida no apagão é REPETIDA antes de gastar orçamento', () => {
+  const { S, I } = carregarSala();
+  entrarNaSala(S, I);
+  const c = canalDePe(S);
+  const p = peerFalso('connecting');
+  p.pc.signalingState = 'have-local-offer';       // minha oferta está de pé
+  p.pc.localDescription = { type: 'offer', sdp: 'v=0' };
+  S.peers.set('u2~zz', p);
+
+  assert.equal(I.reenviarOferta('u2~zz'), true);
+  const sdps = c.eventos('sdp');
+  assert.equal(sdps.length, 1, 'broadcast não tem replay: a mensagem do apagão simplesmente sumiu');
+  assert.equal(sdps[0].payload.tipo, 'offer');
+  assert.equal(sdps[0].payload.g, p.g, 'repetir a MESMA oferta não muda a geração nem cria peer');
+  assert.equal(S.peers.get('u2~zz'), p, 'e não destrói nada');
+  assert.equal((S.tentativas.get('u2~zz') || 0), 0, 'o caminho barato não pode custar orçamento');
+
+  // Sem oferta pendente não há o que repetir — aí sim os caminhos caros valem.
+  p.pc.signalingState = 'stable';
+  assert.equal(I.reenviarOferta('u2~zz'), false);
+});
+
+// ═══ REPARO POR SINAL DA PRÓPRIA CONEXÃO ════════════════════════════════
+// "faixa recebida: audio · ended · muted=true" com "analisadores: 5, todos rms
+// 0.00000": conexão que se diz 'connected' e não entrega um pacote. Quem manda
+// reparar é a faixa, nunca a lista.
+
+test('conexão que nunca entregou áudio é reparada (e a que entregou, não)', () => {
+  const { S, I } = carregarSala();
+  entrarNaSala(S, I);
+  const c = canalDePe(S);
+  S.presentes.set('a-mudo~zz', { ticket: 'T1', mudo: 0, entrou: 1, visto: Date.now(), ausente: 0 });
+  const p = peerFalso('connected');
+  p.ouvi = 0;                        // a faixa nunca desmutou: rms 0.00000
+  S.peers.set('a-mudo~zz', p);
+  assert.equal(I.ouvindo(p), false);
+
+  I.repararPorAudio('a-mudo~zz', 'teste');
+  assert.equal(c.eventos('opa').length, 1, 'conectado e mudo é defeito, não silêncio');
+
+  // Throttle: um par teimoso não pode virar reparo em loop.
+  I.repararPorAudio('a-mudo~zz', 'teste');
+  assert.equal(c.eventos('opa').length, 1, 'sem throttle o reparo vira o próprio loop que ele conserta');
+
+  // E quem JÁ entregou áudio não é reparado por silêncio: com DTX (usedtx=1) o
+  // silêncio corta o fluxo, e mutar depois de ter falado é normal.
+  const bom = peerFalso('connected');
+  bom.ouvi = Date.now();
+  assert.equal(I.ouvindo(bom), true);
+});
+
+// O sinal de áudio é INDIRETO: navegador que não dispara 'unmute', pessoa que
+// entrou muda, DTX cortando o fluxo. Por isso ele pode insistir no caminho
+// barato, mas NUNCA destruir — derrubar uma conexão possivelmente boa por causa
+// dele seria repetir exatamente o defeito que este conserto existe pra matar.
+test('reparo por áudio tem teto e NUNCA destrói a conexão', () => {
+  const { S, I } = carregarSala();
+  entrarNaSala(S, I);
+  const c = canalDePe(S);
+  S.presentes.set('a-mudo~zz', { ticket: 'T1', mudo: 0, entrou: 1, visto: Date.now(), ausente: 0 });
+  const peer = peerFalso('connected');
+  S.peers.set('a-mudo~zz', peer);
+  for (let i = 0; i < 8; i++) {
+    const reg = S.reparoAudio.get('a-mudo~zz') || { n: 0 };
+    S.reparoAudio.set('a-mudo~zz', { quando: 0, n: reg.n });   // vence o throttle
+    I.repararPorAudio('a-mudo~zz', 'teste');
+  }
+  assert.equal(c.eventos('opa').length, 3, 'insiste no barato até o teto e para');
+  assert.equal(S.peers.get('a-mudo~zz'), peer, 'e não derruba: o sinal pode estar errado');
+  assert.equal(S.semRota.has('a-mudo~zz'), false, 'nem desiste do par por um sinal indireto');
+  assert.equal((S.tentativas.get('a-mudo~zz') || 0), 0, 'orçamento de reconstrução é de outro dono');
+});
+
+test('quem entrou MUDO não é confundido com conexão quebrada', () => {
+  const { S, I } = carregarSala();
+  entrarNaSala(S, I);
+  canalDePe(S);
+  // "Entrar mudo (só ouvir)" é um dos dois botões do modal: sem esta guarda,
+  // metade das entradas viraria alvo de reparo pra sempre.
+  S.presentes.set('a-x~zz', { ticket: 'T1', mudo: true, entrou: 1, visto: Date.now(), ausente: 0 });
+  const p = peerFalso('connected');
+  p.conectouEm = Date.now() - 60000;   // conectado faz um minuto, sem um pacote
+  p.ouvi = 0;
+  S.peers.set('a-x~zz', p);
+  assert.equal(I.ouvindo(p), false, 'de fato não chegou áudio — e está certo assim');
+});
+
+test('faixa viva e não muda vale como prova de áudio (sem depender do evento)', () => {
+  const { I } = carregarSala();
+  const p = peerFalso('connected');
+  p.ouvi = 0;
+  p.remoto = { getAudioTracks: () => [{ readyState: 'live', muted: true }] };
+  assert.equal(I.ouvindo(p), false, 'faixa muda não prova nada');
+  p.remoto = { getAudioTracks: () => [{ readyState: 'live', muted: false }] };
+  assert.equal(I.ouvindo(p), true, 'nem todo navegador dispara unmute de faixa remota');
+  assert.ok(p.ouvi > 0, 'e a prova LATCHA: com DTX o silêncio corta o fluxo e isso é normal');
+});
+
+test('conexão que falhou de par AUSENTE não é reconstruída (não há com quem)', () => {
+  const { S, I } = carregarSala();
+  entrarNaSala(S, I);
+  canalDePe(S);
+  S.presentes.set('a-x~zz', { ticket: 'T1', mudo: 0, entrou: 1, visto: 0, ausente: Date.now() });
+  S.peers.set('a-x~zz', peerFalso('failed'));
+  const c = canalDePe(S);
+  I.revisarPeers();                        // é quem chama recuperar() no 'failed'
+  assert.equal(S.peers.has('a-x~zz'), false, 'a conexão morta é desfeita');
+  assert.equal((S.tentativas.get('a-x~zz') || 0), 0,
+    'mas sem gastar orçamento: o socket do outro está fora, a oferta não chegaria');
+  assert.equal(c.eventos('opa').length, 0, 'e sem cutucar um socket que não existe');
+});
+
+test('reparo por áudio não cutuca par ausente (a mensagem não chegaria)', () => {
+  const { S, I } = carregarSala();
+  entrarNaSala(S, I);
+  const c = canalDePe(S);
+  S.presentes.set('a-x~zz', { ticket: 'T1', mudo: 0, entrou: 1, visto: 0, ausente: Date.now() });
+  S.peers.set('a-x~zz', peerFalso('connected'));
+  I.repararPorAudio('a-x~zz', 'teste');
+  assert.equal(c.eventos('opa').length, 0);
+});
+
+test('reparo não age em par que já desistimos (semRota) nem fora da sala', () => {
+  const { S, I } = carregarSala();
+  entrarNaSala(S, I);
+  const c = canalDePe(S);
+  S.presentes.set('a-x~zz', { ticket: 'T1', mudo: 0, entrou: 1, visto: Date.now(), ausente: 0 });
+  S.peers.set('a-x~zz', peerFalso('connected'));
+  S.semRota.add('a-x~zz');
+  I.repararPorAudio('a-x~zz', 'teste');
+  assert.equal(c.eventos('opa').length, 0, 'a nota "sem conexão direta" tem que ficar estável');
+  S.semRota.delete('a-x~zz');
+  S.entrei = false;
+  I.repararPorAudio('a-x~zz', 'teste');
+  assert.equal(c.eventos('opa').length, 0, 'observador não negocia áudio com ninguém');
+});
+
+// ═══ O send() QUE MENTE ═════════════════════════════════════════════════
+// Medido: com o WebSocket morto o SDK escapa por HTTP e devolve 'ok' (9 de 9
+// sondas). Quando o HTTP também morre — o console do dono — ele pendura 10s
+// (DEFAULT_TIMEOUT) antes de falhar, e o enviarFirme repetia 3x: 30s por
+// candidato ICE. A espera passou a ser nossa.
+
+test('envio que pendura desiste no nosso prazo, não nos 10s do SDK', async () => {
+  const { S, I } = carregarSala();
+  entrarNaSala(S, I);
+  S.canal = { send: () => new Promise(() => {}) };   // nunca resolve: HTTP também fora
+  S.sub = 'on';
+  const t0 = Date.now();
+  const ok = await I.enviar('bat', { k: S.sessao });
+  const levou = Date.now() - t0;
+  assert.equal(ok, false, 'o reenvio precisa saber que não foi');
+  assert.ok(levou < 5000, `esperou ${levou}ms — o ponto era não pendurar 10s por mensagem`);
+});
+
+// A REPRODUÇÃO DO CONSOLE DO DONO, ponta a ponta.
+// Sala de 2 (celular + computador, mesmo Wi-Fi). O socket de A cai — e o escape
+// HTTP do SDK também, que foi o ERR_CONNECTION_TIMED_OUT no /api/broadcast.
+// B nunca caiu, então a lista de B nunca congela e a varredura dele roda o
+// tempo todo. Antes: B expirava A em 14,0s e destruía a conexão; A voltava ~8s
+// depois da rede (backoff) e o mesh reconstruía. ~22s por ciclo, 4 ciclos =
+// "conexões: 4" numa sala de duas pessoas.
+test('sala de 2 com apagão de socket de um lado: UMA conexão, não quatro', () => {
+  const { S, I } = carregarSala();
+  entrarNaSala(S, I);          // eu sou B, o lado que nunca cai
+  canalDePe(S);
+  S.ids.set('T-a~zz', { id: 'ua', nome: 'A', avatar: null, plano: 'full' });
+  I.aoBatimento(batimento('a~zz'));
+  const conexao = peerFalso('connected');
+  S.peers.set('a~zz', conexao);           // voz fluindo nos dois sentidos
+
+  const t0 = Date.now();
+  // Apagão de 28s (o medido pra uma queda de rede de 20s: 20s fora + backoff do
+  // SDK). A varredura de B roda a cada batimento — 7 voltas.
+  for (let i = 1; i <= 7; i++) {
+    S.presentes.get('a~zz').visto = t0 - i * 4000;
+    I.varrer();
+  }
+  assert.equal(S.peers.get('a~zz'), conexao, 'a conexão tem que ATRAVESSAR o apagão inteira');
+  assert.equal(S.presentes.get('a~zz').ausente > 0, true, 'a lista dele marca oscilação');
+  assert.equal(I.contarPresentes(), 2, 'e ele continua contado: eu ainda o ouço');
+
+  // O canal de A volta e ele reanuncia.
+  I.aoBatimento(batimento('a~zz', { novo: 1 }));
+  assert.equal(S.presentes.get('a~zz').ausente, 0);
+  assert.equal(S.peers.get('a~zz'), conexao, 'MESMA conexão: nada foi reconstruído');
+  assert.equal(S.peers.size, 1, 'era exatamente aqui que nasciam as 4 conexões');
+  assert.equal((S.tentativas.get('a~zz') || 0), 0, 'e nenhum orçamento foi gasto');
+
+  // Três ciclos iguais (foi o que o relatório contou): continua UMA conexão.
+  for (let ciclo = 0; ciclo < 3; ciclo++) {
+    for (let i = 1; i <= 7; i++) {
+      S.presentes.get('a~zz').visto = Date.now() - i * 4000;
+      I.varrer();
+    }
+    I.aoBatimento(batimento('a~zz', { novo: 1 }));
+  }
+  assert.equal(S.peers.size, 1, 'conexões: 4 pra 2 pessoas era o sintoma — agora é 1');
+  assert.equal(S.peers.get('a~zz'), conexao);
+});
+
 test('quem bloqueia a tela avisa e ganha prazo longo (não é expulso)', () => {
   const { S, I } = carregarSala();
   entrarNaSala(S, I);
@@ -422,6 +772,26 @@ test('sala vazia: o dono entra, se conta e ganha o próprio card', () => {
   assert.doesNotMatch(card, /não verificado/, 'eu nunca sou fantasma pra mim mesmo');
 });
 
+test('o card mostra a conexão oscilando em vez de sumir com quem se ouve', () => {
+  const { S, I } = carregarSala();
+  entrarNaSala(S, I);
+  canalDePe(S);
+  S.ids.set('T-u2~zz', { id: 'u2', nome: 'Ana', avatar: null, plano: 'full' });
+  I.aoBatimento(batimento('u2~zz'));
+  S.peers.set('u2~zz', peerFalso('connected'));
+  S.presentes.get('u2~zz').visto = Date.now() - 15000;
+  I.varrer();
+
+  const card = I.cardHTML('u2~zz', S.presentes.get('u2~zz'));
+  assert.match(card, /svz-p oscila|oscila/, 'o card tem que dizer que o sinal dela oscila');
+  assert.match(card, /continua ouvindo/, 'e que o áudio segue — é a informação que importa');
+  assert.doesNotMatch(card, /caiu/, 'oscilar não é ter caído: a voz está chegando');
+  assert.match(card, /Ana/);
+
+  // Eu nunca oscilo pra mim mesmo.
+  assert.doesNotMatch(I.cardHTML(S.sessao, S.presentes.get(S.sessao)), /oscila/);
+});
+
 test('sala silenciosa não apaga quem está nela', () => {
   const { S, I } = carregarSala();
   entrarNaSala(S, I);
@@ -454,7 +824,8 @@ test('mesh NÃO poda peer enquanto a lista está congelada', () => {
   const { S, I } = carregarSala();
   entrarNaSala(S, I);
   canalDePe(S);
-  const peer = { pc: { close: () => {}, connectionState: 'connected' }, audio: null, g: 1, desde: Date.now(), tDesc: null };
+  // Peer que nunca conectou: não há voz pra proteger, então é a lista que manda.
+  const peer = { pc: { close: () => {}, connectionState: 'connecting' }, audio: null, g: 1, desde: Date.now(), tDesc: null };
   S.peers.set('u2~zz', peer);          // par que já não está mais na lista
   S.sumido.set('u2~zz', Date.now() - 60000);   // carência já vencida
   S.sub = 'erro';                              // socket piscou
@@ -465,6 +836,60 @@ test('mesh NÃO poda peer enquanto a lista está congelada', () => {
   S.sub = 'on';
   I.mesh();
   assert.equal(S.peers.has('u2~zz'), false, 'peer de quem saiu não pode ficar pendurado pra sempre');
+});
+
+// A REGRA NOVA, e a que este conserto inteiro existe pra impor: mesmo com a
+// lista confiável, mesmo com a carência vencida, mesmo o par tendo sumido do
+// registro — conexão que está ENTREGANDO ÁUDIO não é derrubada por decisão de
+// lista. No teste real do dono foram 4 RTCPeerConnection numa sala de 2 pessoas
+// porque o sumiço do batimento destruía a voz de quem só tinha perdido o socket.
+test('mesh NUNCA poda peer com voz viva, mesmo com a lista confiável', () => {
+  const { S, I } = carregarSala();
+  entrarNaSala(S, I);
+  canalDePe(S);
+  S.peers.set('u2~zz', {
+    pc: { close: () => {}, connectionState: 'connected' },
+    audio: null, g: 1, desde: Date.now(), tDesc: null,
+  });
+  S.sumido.set('u2~zz', Date.now() - 600000);   // carência vencida faz 10 minutos
+  assert.equal(I.listaConfiavel(), true, 'lista confiável: é o pior caso pro peer');
+  I.mesh();
+  assert.equal(S.peers.has('u2~zz'), true, 'a conexão é fato; a lista é boato');
+  assert.equal(I.vozViva('u2~zz'), true);
+});
+
+test("'disconnected' conta como voz viva (oscila e volta sozinho)", () => {
+  const { S, I } = carregarSala();
+  entrarNaSala(S, I);
+  canalDePe(S);
+  const estados = {
+    connected: true, completed: true, disconnected: true,
+    new: false, connecting: false, failed: false, closed: false,
+  };
+  Object.keys(estados).forEach((est) => {
+    S.peers.set('u2~zz', { pc: { close: () => {}, connectionState: est }, audio: null, g: 1, desde: Date.now(), tDesc: null });
+    assert.equal(I.vozViva('u2~zz'), estados[est], `vozViva('${est}') divergiu`);
+  });
+  S.peers.delete('u2~zz');
+  assert.equal(I.vozViva('u2~zz'), false, 'sem peer não há voz');
+});
+
+test("'disconnected' NÃO ganha proteção sem prazo (só quem entrega ganha)", () => {
+  const { S, I } = carregarSala();
+  entrarNaSala(S, I);
+  canalDePe(S);
+  S.ids.set('T-u2~zz', { id: 'u2', nome: 'Ana', avatar: null, plano: 'full' });
+  I.aoBatimento(batimento('u2~zz'));
+  S.peers.set('u2~zz', peerFalso('disconnected'));
+  S.presentes.get('u2~zz').visto = Date.now() - 15000;
+  I.varrer();
+  assert.equal(S.peers.has('u2~zz'), true, 'oscilação de verdade cabe na carência');
+  // Se um navegador segurasse 'disconnected' pra sempre, quem foi embora nunca
+  // sairia da lista. A carência é o teto disso.
+  S.presentes.get('u2~zz').ausente = Date.now() - 46000;
+  I.varrer();
+  assert.equal(S.presentes.has('u2~zz'), false, "'disconnected' eterno não pode virar presença eterna");
+  assert.equal(I.vozEntregando('u2~zz'), false);
 });
 
 test('lista confiável é canal de pé E fora de censo', () => {
