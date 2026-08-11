@@ -845,3 +845,20 @@ test('PERFIL: as versões subiram (cache de 4h)', () => {
   const am = /comunidade-amigos\.js\?v=(\d+)/.exec(HTML);
   assert.ok(am && Number(am[1]) >= 4, 'o de amigos não subiu junto');
 });
+
+test('PERFIL: a chamada usa o envelope que o api() entende ({qs} ou {body})', () => {
+  // O api() do comunidade.js só lê opts.qs e opts.body. Passar { name } direto
+  // faz o parâmetro NUNCA sair do navegador: o servidor procura por undefined
+  // e responde 404 "Não achei esse perfil" — apareceu exatamente assim na tela.
+  const chamadas = [...PERFILJS.matchAll(/api\(\s*'([^']+)'\s*,\s*\{([^}]*)/g)];
+  assert.ok(chamadas.length, 'nenhuma chamada de api() encontrada');
+  for (const [, acao, args] of chamadas) {
+    assert.ok(/\b(qs|body)\s*:/.test(args),
+      `api('${acao}', {${args.trim()}}) não usa qs nem body — o parâmetro não chega no servidor`);
+  }
+});
+
+test('PERFIL: o nome vai codificado na URL (nome com espaço/acento existe)', () => {
+  assert.match(PERFILJS, /encodeURIComponent\(nome\)/,
+    'nome sem encode quebra a querystring em quem tiver espaço ou & no display_name');
+});

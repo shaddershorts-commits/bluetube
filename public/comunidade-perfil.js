@@ -180,7 +180,13 @@
     S.carregando = true;
     S.erro = null;
     var r;
-    try { r = await api('perfil', { name: nome }); } catch (e) { r = { ok: false, status: 0, d: {} }; }
+    // ⚠️ { qs } / { body } — NÃO { name }. O api() do comunidade.js só entende
+    // esses dois envelopes: passar { name } direto faz o nome ficar no
+    // navegador, o servidor procurar por undefined e responder 404 "não achei
+    // esse perfil" — foi exatamente o que apareceu na tela. Aqui vai por
+    // querystring porque é leitura; o de amigos usa body porque escreve.
+    try { r = await api('perfil', { qs: '&name=' + encodeURIComponent(nome) }); }
+    catch (e) { r = { ok: false, status: 0, d: {} }; }
     S.carregando = false;
     if (!r.ok) {
       // Erro é estado PRÓPRIO, com motivo. "Carregando…" pra sempre foi um dos
