@@ -18,6 +18,8 @@
   var _aberto = false;
   var _carregando = false;
   var _lista = [];
+  var _ultimoId = null;   // pra saber o que é NOVO desde a última leitura
+  var _primeira = true;   // na 1ª carga não toca: seria som pro histórico
 
   function token() { try { return localStorage.getItem('bt_token'); } catch (e) { return null; } }
 
@@ -119,6 +121,13 @@
     }
 
     carregar();
+    // Sem isto o sino só atualizava no F5 — e o som nunca tocaria com o site
+    // aberto, que é justamente o pedido. 2 min, e SÓ com a aba visível: aba
+    // em segundo plano não precisa de aviso nem de requisição.
+    if (!montar._loop) {
+      montar._loop = setInterval(function () { if (!document.hidden) carregar(); }, 120000);
+      document.addEventListener('visibilitychange', function () { if (!document.hidden) carregar(); });
+    }
     return true;
   }
 
@@ -150,6 +159,14 @@
       if (!r.ok) throw new Error('http ' + r.status);
       var d = await r.json();
       _lista = d.notificacoes || [];
+      // Som só pra aviso que CHEGOU agora. Na primeira carga da página o
+      // histórico inteiro seria "novo" — tocar ali é barulho sem motivo.
+      var topo = _lista[0] && _lista[0].id;
+      if (!_primeira && topo && topo !== _ultimoId && !_lista[0].lida) {
+        if (window.BTSom) window.BTSom.tocar();
+      }
+      if (topo) _ultimoId = topo;
+      _primeira = false;
       pintar(d.unread || 0);
     } catch (e) {
       // sininho é conforto: falhou, some em silêncio em vez de poluir a nav

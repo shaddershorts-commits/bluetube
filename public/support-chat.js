@@ -514,6 +514,8 @@
             if (!m || m.sender !== 'admin') return; // só nos importa admin
             const exists = state.messages.some(x => x.id === m.id);
             if (!exists) {
+              // mesmo som do sininho: a pessoa aprende UM aviso, não dois
+              if (window.BTSom) window.BTSom.tocar();
               state.messages.push(m);
               renderMessages();
               if (state.open) {

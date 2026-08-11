@@ -732,7 +732,7 @@ async function alertasGatilho(req, res) {
             mensagem: String(v.titulo || '').slice(0, 120),
             dados: {
               youtube_id: v.youtube_id, regra,
-              url: v.url || ('https://youtube.com/shorts/' + v.youtube_id),
+              url: '/virais?v=' + v.youtube_id,
               destaque: R.ouro ? 'ouro' : null,
             },
           }),
