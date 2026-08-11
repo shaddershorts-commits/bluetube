@@ -354,6 +354,58 @@ module.exports = async function handler(req, res) {
 
     // ── AMIZADES (leitura): minhas listas ────────────────────────────────────
     // Uma linha por par, então "amigos" é só status=accepted em qualquer lado.
+    // ── PERFIL PÚBLICO de uma pessoa ─────────────────────────────────────────
+    // Nasceu de uma dor concreta: só dava pra adicionar quem aparecesse no feed
+    // por acaso, e não havia onde clicar num nome. O perfil é o lugar onde a
+    // pessoa vira alguém — e onde o botão de amizade faz sentido.
+    //
+    // Identificado por display_name (que é UNIQUE), igual ao resto das amizades:
+    // assim nenhum uuid de usuário precisa sair daqui pra tela de ninguém.
+    if (action === 'perfil') {
+      const alvo = await acharPorNome(q.name || b.name);
+      if (!alvo) return res.status(404).json({ error: 'Não achei esse perfil.' });
+
+      // Banido some da vitrine pra quem não é moderador — o feed já esconde os
+      // posts dele, e um perfil acessível seria a porta dos fundos disso.
+      if (alvo.banned && !isMod && String(alvo.user_id).toLowerCase() !== meId) {
+        return res.status(404).json({ error: 'Não achei esse perfil.' });
+      }
+
+      const alvoId = String(alvo.user_id).toLowerCase();
+      const souEu = alvoId === meId;
+
+      // Data de entrada e contagem de posts, em paralelo. NENHUMA delas pode
+      // derrubar o perfil: são enfeite, a identidade é o essencial. Por isso
+      // cada uma cai pra null/0 sozinha, sem contaminar a resposta inteira.
+      const [rPerfil, rPosts, linha] = await Promise.all([
+        fetch(`${SU}/rest/v1/community_profiles?user_id=eq.${alvoId}&select=created_at`, { headers: H }),
+        fetch(`${SU}/rest/v1/community_posts?user_id=eq.${alvoId}&select=id`, { headers: { ...H, Prefer: 'count=exact', Range: '0-0' } }),
+        souEu ? Promise.resolve(null) : linhaDoPar(alvoId),
+      ]);
+
+      let desde = null;
+      try { if (rPerfil.ok) desde = ((await rPerfil.json())[0] || {}).created_at || null; } catch (e) {}
+      let posts = null;
+      // O total vem no cabeçalho content-range ("0-0/42"), não no corpo: assim
+      // a contagem não paga o download de todas as linhas. null = "não sei",
+      // que a tela sabe distinguir de zero.
+      try {
+        if (rPosts.ok) {
+          const cr = rPosts.headers.get('content-range') || '';
+          const n = parseInt(String(cr).split('/')[1], 10);
+          if (Number.isFinite(n)) posts = n;
+        }
+      } catch (e) {}
+
+      return res.status(200).json({
+        user: pubPerfil(alvo),
+        eu: souEu,
+        desde,
+        posts,
+        amizade: souEu ? null : AM.estadoParaMim(linha, meId),
+      });
+    }
+
     if (action === 'amizades') {
       const r = await fetch(`${SU}/rest/v1/community_friendships?or=(user_a.eq.${meId},user_b.eq.${meId})&status=in.(${AM.STATUS.ACEITO},${AM.STATUS.PENDENTE})&order=updated_at.desc&limit=500&select=${FCOLS}`, { headers: H });
       // ⚠️ Aqui havia `const rows = r.ok ? await r.json() : []`, e era o defeito

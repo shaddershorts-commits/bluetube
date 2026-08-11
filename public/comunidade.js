@@ -44,7 +44,10 @@
     const core = a.avatar
       ? `<div class="cbt-av${ring}"><img src="${esc(a.avatar)}" alt=""></div>`
       : `<div class="cbt-av${ring}" style="background:hsl(${hue(a.name)},60%,38%)">${esc(initials(a.name))}</div>`;
-    return `<div class="cbt-avwrap">${core}${badge}</div>`;
+    // data-cbp-name deixa a FOTO abrir o perfil também: no celular o alvo do
+    // dedo é ela, não o nome. Quem lê o perfil é /comunidade-perfil.js — se o
+    // arquivo não carregar, isto vira um atributo inerte e nada quebra.
+    return `<div class="cbt-avwrap" data-cbp-name="${esc(a.name)}">${core}${badge}</div>`;
   };
 
   async function api(action, opts = {}) {
@@ -481,7 +484,7 @@
     const imgs = (p.media || []).filter((m) => m.type === 'image').length;
     return `<div class="cbt-card${p.pinned ? ' pin' : ''}" id="post-${p.id}">
       ${train}
-      <div class="cbt-prow">${av}<div><div class="cbt-pname">${esc(a.name)}${a.mod ? '<span class="cbt-modbadge">★ MOD</span>' : ''}${p.pinned ? ' 📌' : ''}</div>
+      <div class="cbt-prow">${av}<div><div class="cbt-pname" data-cbp-name="${esc(a.name)}" title="Ver perfil de ${esc(a.name)}">${esc(a.name)}${a.mod ? '<span class="cbt-modbadge">★ MOD</span>' : ''}${p.pinned ? ' 📌' : ''}</div>
       <div class="cbt-ptime">${timeAgo(p.created_at)}${p.edited_at ? ' · editado' : ''}</div></div>${amigoBtn(p)}${menu}</div>
       ${p.content ? `<div class="cbt-content" id="pc-${p.id}">${esc(p.content)}</div>` : ''}
       ${media ? `<div class="cbt-media${imgs > 1 ? ' g2' : ''}">${media}</div>` : ''}
@@ -590,7 +593,7 @@
       ? `<img class="cbt-cgif" src="${esc(c.content.slice(5))}" loading="lazy" alt="GIF">`
       : esc(c.content);
     return `<div class="cbt-c${isReply ? ' cbt-creply' : ''}${c.pinned ? ' cbt-cpinned' : ''}">${av}<div class="cbt-cbody">
-      <div class="cbt-cname">${esc(a.name)}${a.mod ? '<span class="cbt-modbadge">★ MOD</span>' : ''}${c.pinned ? '<span class="cbt-pinbadge">📌 fixado</span>' : ''}<span class="cbt-ptime">${timeAgo(c.created_at)}</span></div>
+      <div class="cbt-cname" data-cbp-name="${esc(a.name)}" title="Ver perfil de ${esc(a.name)}">${esc(a.name)}${a.mod ? '<span class="cbt-modbadge">★ MOD</span>' : ''}${c.pinned ? '<span class="cbt-pinbadge">📌 fixado</span>' : ''}<span class="cbt-ptime">${timeAgo(c.created_at)}</span></div>
       <div class="cbt-ctext">${body}</div>
       <div class="cbt-cact">
         <button class="cbt-cbtn${c.liked ? ' liked' : ''}" id="cl-${c.id}" onclick="ComunidadeBT.likeComment('${c.id}')">${c.liked ? '❤️' : '🤍'} <span>${c.likes_count || 0}</span></button>

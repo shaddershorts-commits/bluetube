@@ -772,3 +772,76 @@ test('ESTILO: o ?v= subiu junto (cache de 4h da Vercel)', () => {
   assert.ok(m, 'sem ?v=');
   assert.ok(Number(m[1]) >= 3, 'o arquivo mudou e o ?v= não subiu — o conserto não chega em quem já visitou');
 });
+
+// ═══════════════════════════════════════════════════════════════════════════
+// PERFIL — o lugar onde a amizade pode acontecer
+// Nasceu da dor relatada: "não tem nada nos usuários pra adicionar". Só dava
+// pra pedir amizade a quem tivesse post visível no feed naquele instante.
+// ═══════════════════════════════════════════════════════════════════════════
+const PERFILJS = readFileSync(new URL('../../public/comunidade-perfil.js', import.meta.url), 'utf8');
+const COMJS = readFileSync(new URL('../../public/comunidade.js', import.meta.url), 'utf8');
+const API = readFileSync(new URL('../../api/community.js', import.meta.url), 'utf8');
+
+test('PERFIL: nome E foto abrem o perfil (no celular o dedo acerta a foto)', () => {
+  assert.match(COMJS, /class="cbt-pname" data-cbp-name=/, 'o nome do post não abre perfil');
+  assert.match(COMJS, /class="cbt-cname" data-cbp-name=/, 'o nome no comentário não abre perfil');
+  assert.match(COMJS, /class="cbt-avwrap" data-cbp-name=/, 'a foto não abre perfil');
+});
+
+test('PERFIL: o nome escapado NUNCA entra em atributo executável', () => {
+  // data-* é inerte; onclick com nome de outra pessoa dentro seria injeção.
+  assert.equal(/onclick="[^"]*\$\{esc\(a\.name\)/.test(COMJS), false,
+    'nome de usuário foi parar dentro de um onclick');
+  assert.match(COMJS, /data-cbp-name="\$\{esc\(a\.name\)\}"/, 'o nome tem que ir escapado');
+});
+
+test('PERFIL: o CSS entra no arranque, não ao abrir (a lição da pílula)', () => {
+  assert.match(PERFILJS, /function garantirEstilo\(\)/);
+  const i = PERFILJS.indexOf('window.ComunidadePerfil = {');
+  assert.match(PERFILJS.slice(Math.max(0, i - 400), i), /\n\s*garantirEstilo\(\);/,
+    'o estilo voltou a depender de alguém abrir o painel');
+});
+
+test('PERFIL: erro é estado próprio, com motivo e retentativa', () => {
+  assert.match(PERFILJS, /S\.erro = r\.status === 404/, 'todo erro virou a mesma mensagem');
+  assert.match(PERFILJS, /data-cbp-act="retentar"/, 'sem retentativa, um blip vira beco sem saída');
+  assert.equal(/Carregando…'\s*;\s*return;\s*}\s*$/m.test(PERFILJS), false);
+});
+
+test('PERFIL: contagem desconhecida NÃO vira 0 na tela', () => {
+  assert.match(PERFILJS, /typeof d\.posts === 'number'\) \? String\(d\.posts\) : '—'/,
+    'posts null viraria 0 — afirmar "nenhum post" sem ter medido é o defeito que já pegamos duas vezes');
+});
+
+test('PERFIL (API): banido não tem perfil acessível pra quem não é moderador', () => {
+  const i = API.indexOf("if (action === 'perfil')");
+  assert.notEqual(i, -1, 'a ação perfil sumiu');
+  const bloco = API.slice(i, i + 1200);
+  assert.match(bloco, /alvo\.banned && !isMod/,
+    'o feed esconde os posts do banido, mas o perfil seria a porta dos fundos');
+});
+
+test('PERFIL (API): o uuid do alvo não vaza — a busca é por display_name', () => {
+  const i = API.indexOf("if (action === 'perfil')");
+  const bloco = API.slice(i, i + 1800);
+  assert.match(bloco, /acharPorNome\(q\.name \|\| b\.name\)/);
+  assert.equal(/user_id: alvo\.user_id|author_id: alvo/.test(bloco), false,
+    'o perfil passou a devolver uuid de usuário pra tela');
+});
+
+test('PERFIL (API): enfeite que falha não derruba a identidade', () => {
+  const i = API.indexOf("if (action === 'perfil')");
+  const bloco = API.slice(i, i + 2200);
+  // desde/posts são try/catch próprios: uma consulta ruim não pode zerar o perfil.
+  assert.match(bloco, /let desde = null;/);
+  assert.match(bloco, /let posts = null;/);
+  assert.match(bloco, /catch \(e\) \{\}/);
+});
+
+test('PERFIL: as versões subiram (cache de 4h)', () => {
+  assert.match(HTML, /comunidade-perfil\.js\?v=\d+/, 'o perfil entrou sem ?v=');
+  const c = /comunidade\.js\?v=(\d+)/.exec(HTML);
+  assert.ok(c && Number(c[1]) >= 10, 'o comunidade.js mudou (nomes clicáveis) e o ?v= não subiu');
+  const am = /comunidade-amigos\.js\?v=(\d+)/.exec(HTML);
+  assert.ok(am && Number(am[1]) >= 4, 'o de amigos não subiu junto');
+});
