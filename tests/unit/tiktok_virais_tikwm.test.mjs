@@ -195,3 +195,54 @@ test('a hashtag vinda da URL é higienizada (ela vira query string num terceiro)
   assert.ok(orquestra.indexOf('unauthorized') < orquestra.indexOf('req.query.tags'),
     'a autorização vem ANTES de qualquer parâmetro do chamador');
 });
+
+// ═══ 6 — O EMOJI PARTIDO AO MEIO (medido em produção, 12/08/2026) ═══════
+// Uma rodada com 133 vídeos qualificados gravou ZERO e o Postgres devolveu
+// PGRST102 "Empty or invalid json". A causa era UM vídeo: a legenda foi cortada
+// em 500 caracteres bem no meio de um emoji, deixando metade de um par
+// substituto solto. Meio emoji não é UTF-8 válido, e o PostgREST recusa o CORPO
+// INTEIRO — não a linha ruim. 132 vídeos bons perdidos por causa de 1.
+//
+// O corte é NOSSO, então o defeito é NOSSO — e ele existia desde sempre também
+// no caminho do TikAPI, que corta a legenda do mesmo jeito.
+
+test('legenda cortada no meio de um emoji não pode sair do textoSeguro', () => {
+  const fn = FONTE.slice(FONTE.indexOf('function textoSeguro'), FONTE.indexOf('const UPSERT_BLOCO'));
+  // `includes` com texto cru, não regex: escapar barra invertida dentro de
+  // regex dentro de teste foi onde a 1ª versão deste teste se enrolou sozinha.
+  assert.ok(fn.includes('uD800-\\uDBFF](?![\\uDC00-\\uDFFF]'), 'metade de cima sem a de baixo');
+  assert.ok(fn.includes('(?<![\\uD800-\\uDBFF])[\\uDC00-\\uDFFF]'), 'e a de baixo sem a de cima');
+  assert.ok(fn.includes('\\u0000'), 'e o NUL, que o Postgres recusa em coluna de texto');
+
+  // A prova de comportamento: reimplemento a função a partir do próprio fonte e
+  // rodo com a legenda REAL que quebrou a produção.
+  const corpo = fn.slice(fn.indexOf('return String'), fn.lastIndexOf('}'));
+  const textoSeguro = new Function('s', 'max', corpo);
+  const emoji = '👹';                                   // 2 unidades UTF-16
+  const legenda = 'a'.repeat(499) + emoji;              // o corte cai no meio dele
+  const saida = textoSeguro(legenda, 500);
+  assert.equal(/[\uD800-\uDFFF]/.test(saida), false, 'sobrou meio emoji — é isso que derruba o lote');
+  assert.doesNotThrow(() => JSON.parse(JSON.stringify({ caption: saida })));
+  // E o texto normal continua passando inteiro.
+  assert.equal(textoSeguro('vídeo de gato 🐱 #fyp', 500), 'vídeo de gato 🐱 #fyp');
+});
+
+test('os DOIS caminhos usam o textoSeguro (o TikAPI tinha o mesmo defeito)', () => {
+  const tikwm = FONTE.slice(FONTE.indexOf('function linhaDeTikwm'), FONTE.indexOf('async function coletarViaTikWM'));
+  assert.match(tikwm, /caption: textoSeguro\(v\.title, 500\)/);
+  const tikapi = FONTE.slice(FONTE.indexOf('async function coletarViaTikAPI'));
+  assert.match(tikapi, /caption: textoSeguro\(v\.desc, 500\)/,
+    'o caminho pago corta a legenda igual — o defeito era dos dois');
+  assert.equal(/caption: \(v\.desc \|\| ''\)\.slice\(0, 500\)/.test(FONTE), false,
+    'o slice cru não pode voltar');
+});
+
+test('a gravação vai em BLOCOS: uma linha ruim custa o bloco, não a rodada', () => {
+  assert.match(FONTE, /const UPSERT_BLOCO = 50;/);
+  const fn = FONTE.slice(FONTE.indexOf('async function gravarEmBlocos'), FONTE.indexOf('// ── COLETAR'));
+  assert.match(fn, /rows\.slice\(i, i \+ UPSERT_BLOCO\)/);
+  assert.match(fn, /saida\.gravados \+= bloco\.length/, 'bloco que passa CONTA, mesmo se outro falhar');
+  assert.match(fn, /blocos_falha\+\+/, 'e o que falha fica registrado na resposta');
+  // O saneamento mata a causa conhecida; o bloco limita a próxima, desconhecida.
+  assert.ok(FONTE.includes('limita o'), 'o porquê do bloco fica escrito no código');
+});

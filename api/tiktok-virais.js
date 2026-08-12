@@ -158,6 +158,52 @@ async function tikwmGet(caminho, params) {
 
 const pausa = (ms) => new Promise((r) => setTimeout(r, ms));
 
+// ⚠️ UM EMOJI PARTIDO AO MEIO DERRUBA O LOTE INTEIRO. Medido em 12/08/2026:
+// uma rodada com 133 vídeos qualificados gravou ZERO, e o Postgres devolveu
+// `PGRST102 "Empty or invalid json"`. A causa era UM vídeo — legenda cortada em
+// 500 caracteres bem no meio de um emoji ("...Foil 👹👹👹🧚🏼✨ #asmrfa"), deixando
+// metade de um par substituto solto. Meio emoji não é UTF-8 válido, e o
+// PostgREST recusa o CORPO todo, não a linha ruim.
+//
+// Como o corte é NOSSO, o defeito é nosso — e ele existe desde sempre também no
+// caminho do TikAPI, que corta a legenda do mesmo jeito. Por isso esta função é
+// usada nos dois.
+function textoSeguro(s, max) {
+  return String(s == null ? '' : s)
+    // Postgres não aceita NUL em coluna de texto, em hipótese nenhuma.
+    .replace(/\u0000/g, '')
+    .slice(0, max)
+    // Sobras do corte: metade de cima sem a de baixo, e vice-versa.
+    .replace(/[\uD800-\uDBFF](?![\uDC00-\uDFFF])/g, '')
+    .replace(/(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/g, '');
+}
+
+// Grava em blocos. A higienização acima mata a causa CONHECIDA; isto limita o
+// estrago da próxima, que ainda não conhecemos: uma linha ruim custa o bloco
+// dela, não a rodada inteira. Foi assim que 133 vídeos viraram zero.
+const UPSERT_BLOCO = 50;
+
+async function gravarEmBlocos(rows, { SU, h }) {
+  const saida = { gravados: 0, blocos_ok: 0, blocos_falha: 0, erros: [] };
+  for (let i = 0; i < rows.length; i += UPSERT_BLOCO) {
+    const bloco = rows.slice(i, i + UPSERT_BLOCO);
+    try {
+      const up = await fetch(`${SU}/rest/v1/tiktok_virais?on_conflict=tiktok_video_id`, {
+        method: 'POST',
+        headers: { ...h, Prefer: 'resolution=merge-duplicates,return=minimal' },
+        body: JSON.stringify(bloco),
+      });
+      if (up.ok) { saida.gravados += bloco.length; saida.blocos_ok++; continue; }
+      saida.blocos_falha++;
+      saida.erros.push((await up.text()).slice(0, 160));
+    } catch (e) {
+      saida.blocos_falha++;
+      saida.erros.push(String((e && e.message) || e).slice(0, 160));
+    }
+  }
+  return saida;
+}
+
 // A hashtag é buscada por NOME e o TikWM devolve um id numérico; challenge/posts
 // só aceita o id. Resolvido uma vez por rodada e reaproveitado entre páginas.
 async function resolverHashtag(nome) {
@@ -191,9 +237,11 @@ function linhaDeTikwm(v, agoraIso, thumb) {
     tiktok_video_id: id,
     video_url: `https://www.tiktok.com/@${handle || 'tiktok'}/video/${id}`,
     thumbnail_url: thumb || v.cover || v.origin_cover || v.ai_dynamic_cover || null,
-    caption: String(v.title || '').slice(0, 500),
+    // textoSeguro, não slice: legenda e nome de criador são campos cheios de
+    // emoji, e é o corte no meio de um deles que derruba o lote inteiro.
+    caption: textoSeguro(v.title, 500),
     author_handle: handle,
-    author_name: (v.author && v.author.nickname) || null,
+    author_name: textoSeguro((v.author && v.author.nickname) || '', 100) || null,
     author_avatar: (v.author && v.author.avatar) || null,
     likes_count: v.digg_count || 0,
     views_count: v.play_count || 0,
@@ -272,17 +320,14 @@ async function coletarViaTikWM({ SU, SK, h }, tagsPedidas) {
   }));
 
   const rows = qualificados.map((v, i) => linhaDeTikwm(v, agoraIso, thumbs[i]));
-  const up = await fetch(`${SU}/rest/v1/tiktok_virais?on_conflict=tiktok_video_id`, {
-    method: 'POST',
-    headers: { ...h, Prefer: 'resolution=merge-duplicates,return=minimal' },
-    body: JSON.stringify(rows),
-  });
-  if (!up.ok) {
-    stat.erro_upsert = (await up.text()).slice(0, 200);
-    console.error('[tiktok-virais:tikwm] upsert', up.status, stat.erro_upsert);
-    return stat;
+  const g = await gravarEmBlocos(rows, { SU, h });
+  stat.inseridos = g.gravados;
+  stat.blocos_ok = g.blocos_ok;
+  if (g.blocos_falha) {
+    stat.blocos_falha = g.blocos_falha;
+    stat.erro_upsert = g.erros[0];
+    console.error('[tiktok-virais:tikwm] blocos com falha:', g.blocos_falha, g.erros[0]);
   }
-  stat.inseridos = rows.length;
   return stat;
 }
 
@@ -420,9 +465,11 @@ async function coletarViaTikAPI(req, { SU, h, SK, TIKAPI_KEY }) {
         tiktok_video_id: v.id,
         video_url: `https://www.tiktok.com/@${v.author?.uniqueId || 'tiktok'}/video/${v.id}`,
         thumbnail_url: cached[i] || v.video?.cover || v.video?.dynamicCover || null,
-        caption: (v.desc || '').slice(0, 500),
+        // Mesmo defeito de sempre, mesmo conserto: cortar em 500 pode partir um
+        // emoji e derrubar o lote INTEIRO com PGRST102. Vale aqui também.
+        caption: textoSeguro(v.desc, 500),
         author_handle: v.author?.uniqueId || null,
-        author_name: v.author?.nickname || null,
+        author_name: textoSeguro(v.author?.nickname || '', 100) || null,
         author_avatar: v.author?.avatarLarger || v.author?.avatarMedium || null,
         likes_count: v.stats?.diggCount || 0,
         views_count: v.stats?.playCount || 0,
