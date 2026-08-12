@@ -31,7 +31,10 @@ jobs:
           # em vez de bluetubeviral.com pra bypass do Cloudflare (100-120s
           # timeout = HTTP 504). Coleta pode demorar ate 150s pra rodar 22
           # paises com fetchTikAPIWithRetry.
-          HTTP_CODE=$(curl -sS --max-time 180 \
+          # Fix 2026-08-12: --max-time 180 -> 240. A fonte grátis (TikWM) tem
+          # teto INTERNO de 120s de coleta + cache de thumbnail + upsert; 180
+          # ficava sem folga. A função tem maxDuration 300 no vercel.json.
+          HTTP_CODE=$(curl -sS --max-time 240 \
             -w "%{http_code}" \
             -o /tmp/resp.json \
             "https://bluetube-ten.vercel.app/api/tiktok-virais?action=coletar&admin_secret=${{ secrets.ADMIN_SECRET }}")
@@ -44,6 +47,18 @@ jobs:
           # Extrai resumo do JSON
           INSERTED=$(node -e "try{const d=JSON.parse(require('fs').readFileSync('/tmp/resp.json','utf8'));console.log(d.total_inserted||0)}catch(e){console.log('?')}")
           FAILED=$(node -e "try{const d=JSON.parse(require('fs').readFileSync('/tmp/resp.json','utf8'));console.log(d.total_failed||0)}catch(e){console.log('?')}")
+          # ⚠️ CINTO E SUSPENSÓRIO (12/08/2026). O endpoint agora responde 503
+          # quando nenhuma fonte grava nada, e o teste acima já pegaria isso.
+          # Esta segunda guarda existe porque foi EXATAMENTE aqui que a coleta
+          # morreu por 7 dias sem ninguém notar: entre 06/08 e 12/08 rodaram ~40
+          # coletas com "inseridos: 0" e TODAS ficaram VERDES, porque só o
+          # status HTTP era checado. Rodada que não traz vídeo é falha, ponto —
+          # mesmo que o servidor jure que está tudo bem.
+          if [ "$INSERTED" = "0" ] || [ "$INSERTED" = "?" ]; then
+            echo "::error::Coleta devolveu HTTP 200 mas inseriu $INSERTED vídeos — isto é falha, não silêncio."
+            cat /tmp/resp.json | head -c 800
+            exit 1
+          fi
           echo "✓ Coleta OK | inseridos: $INSERTED | falhas país: $FAILED"
           echo "inserted=$INSERTED" >> $GITHUB_OUTPUT
 

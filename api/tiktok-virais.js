@@ -33,6 +33,67 @@ const COUNTRIES = [
 const PARALLEL_CHUNK_SIZE = 2;
 const PARALLEL_CHUNK_DELAY_MS = 1500;
 const MIN_LIKES = 800_000;
+
+// ═══════════════════════════════════════════════════════════════════════════
+// FONTE GRÁTIS (2026-08-12) — TikWM
+// ═══════════════════════════════════════════════════════════════════════════
+// POR QUE MUDOU: o TikAPI ficou caro E parou de entregar. Medido em 12/08: a
+// última inserção real foi 05/08 22:19; desde então ~40 rodadas devolveram
+// `inseridos: 0 | falhas país: 6` — e TODAS apareceram VERDES no GitHub, porque
+// o workflow só considera erro quando o HTTP não é 200. Com a limpeza de 30
+// dias, a aba TikTok esvaziaria sozinha por volta de 04/09.
+//
+// A FONTE: www.tikwm.com — o MESMO espelho grátis que o BaixaBlue já usa em
+// produção pro download de TikTok desde 27/07 (api/_helpers/tiktok-download.js).
+// Não é fornecedor novo: é fornecedor conhecido, num endpoint que ainda não
+// usávamos. Sem chave, sem conta, sem cookie.
+//
+// MEDIDO em 12/08 contra o serviço real:
+//   · challenge/search?keywords=X  → data.challenge_list[0].id
+//   · challenge/posts?challenge_id=N&count=&cursor=  → data.videos (16/página),
+//     data.hasMore, data.cursor. Paginação limpa: 25 páginas seguidas, 389
+//     únicos, ZERO duplicata.
+//   · 45 requisições em 106s → 0 falhas → 626 únicos → 75 acima de 800k likes,
+//     e os 75 eram INÉDITOS no banco. Mediana 1,83M likes / 19,2M views (o
+//     acervo atual é 1,9M / 18,6M — mesma qualidade).
+//
+// ⚠️ AS TRÊS ARMADILHAS MEDIDAS, e como cada uma está tratada aqui:
+//  1) O limite de vazão volta como **HTTP 200 com code:-1**. É EXATAMENTE o
+//     modo de falha que matou esta coleta (7 dias) e a do Instagram (5 dias) em
+//     silêncio. Por isso `tikwmGet` trata `code !== 0` como FALHA, e a rodada
+//     que não grava nada responde 503 — pro cron ficar VERMELHO.
+//  2) `feed/list` (o análogo do explore por país) é instável e seu modo de
+//     falha é um HTTP 531 que demora 34-38s. Por isso a coleta vai por
+//     HASHTAG, que mediu 45/45 de sucesso — e todo fetch tem timeout curto.
+//  3) A Cloudflare já está comendo o TikWM por dentro: feed/search, user/posts
+//     e music/posts já respondem 403. Nada garante que challenge/posts não seja
+//     o próximo — daí o TikAPI CONTINUAR como reserva, nunca removido.
+//
+// O QUE PIORA, dito na cara: por hashtag o acervo fica mais VELHO (mediana de
+// 274 dias na coleta, contra 60 do TikAPI). O feed do TikAPI já era evergreen
+// (77% chegava com +30 dias), então é diferença de grau — mas é 4,5x.
+const TIKWM_BASE = 'https://www.tikwm.com/api';
+// 1,2s entre chamadas: o anunciado é 1 req/s e a 1,2s foram 45 requisições sem
+// um único bloqueio. Não é lugar de economizar 200ms.
+const TIKWM_PAUSA_MS = 1200;
+// Curto DE PROPÓSITO: o modo de falha lento do TikWM devolve 531 em 34-38s.
+// Quatro desses numa rodada estouram o --max-time do workflow.
+const TIKWM_TIMEOUT_MS = 12000;
+// Teto de TEMPO, não de requisições: quando o TikWM está lento a rodada colhe
+// menos em vez de estourar o relógio do cron (--max-time 180 no workflow).
+const TIKWM_TETO_MS = 120000;
+const TIKWM_PAGINAS_POR_TAG = 8;
+const TIKWM_TAGS_POR_RODADA = 6;
+// Onde procurar. Isto NÃO é o filtro do que entra — quem decide é o piso de
+// MIN_LIKES, que continua o mesmo. A lista é grande e a rodada usa uma fatia
+// rotativa, pra duas rodadas seguidas não vasculharem o mesmo lugar e trazerem
+// os mesmos vídeos.
+const TIKWM_HASHTAGS = [
+  'viral', 'fyp', 'foryou', 'trending', 'funny', 'comedy',
+  'dance', 'satisfying', 'football', 'futebol', 'cat', 'dog',
+  'prank', 'edit', 'anime', 'gym', 'cooking', 'magic',
+  'art', 'baby', 'humor', 'skills',
+];
 // 2026-06-29: tentei 30 → 50 mas TikAPI Starter retornou 0.00kb (provavelmente
 // rejeita count > 30 mas conta o req como usado). Voltado pra 30, valor seguro.
 const FETCH_COUNT_PER_COUNTRY = 30;
@@ -69,16 +130,213 @@ module.exports = async function handler(req, res) {
   }
 };
 
-// ── COLETAR (cron 3x/dia) ────────────────────────────────────────────────────
+// ═══════════════════════════════════════════════════════════════════════════
+// FONTE GRÁTIS: TikWM
+// ═══════════════════════════════════════════════════════════════════════════
+
+// ⚠️ A FUNÇÃO MAIS IMPORTANTE DESTE ARQUIVO.
+// O TikWM responde HTTP 200 com `code:-1` quando barra por vazão. Quem olhar só
+// o status HTTP vê 200, insere zero e reporta verde — que é literalmente como
+// esta coleta morreu por 7 dias sem ninguém notar. Aqui `code !== 0` é FALHA,
+// e a falha SOBE (não vira lista vazia silenciosa).
+async function tikwmGet(caminho, params) {
+  const qs = new URLSearchParams(params).toString();
+  const r = await fetch(`${TIKWM_BASE}/${caminho}?${qs}`, {
+    headers: {
+      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0 Safari/537.36',
+      accept: 'application/json',
+    },
+    signal: AbortSignal.timeout(TIKWM_TIMEOUT_MS),
+  });
+  if (!r.ok) return { ok: false, erro: 'http_' + r.status };
+  const d = await r.json().catch(() => null);
+  if (!d) return { ok: false, erro: 'corpo_ilegivel' };
+  // AQUI. `code:-1` com HTTP 200 é o disfarce.
+  if (d.code !== 0) return { ok: false, erro: String(d.msg || 'code_' + d.code).slice(0, 80) };
+  return { ok: true, data: d.data };
+}
+
+const pausa = (ms) => new Promise((r) => setTimeout(r, ms));
+
+// A hashtag é buscada por NOME e o TikWM devolve um id numérico; challenge/posts
+// só aceita o id. Resolvido uma vez por rodada e reaproveitado entre páginas.
+async function resolverHashtag(nome) {
+  const r = await tikwmGet('challenge/search', { keywords: nome, count: 5 });
+  if (!r.ok) return { ok: false, erro: r.erro };
+  const lista = (r.data && r.data.challenge_list) || [];
+  // A busca devolve variações ("fypシ"); a primeira é a de maior alcance.
+  const id = lista[0] && lista[0].id;
+  return id ? { ok: true, id: String(id) } : { ok: false, erro: 'hashtag_sem_id' };
+}
+
+// Rotação: duas rodadas seguidas não vasculham as mesmas hashtags. Sem isto, o
+// cron de 3 em 3 horas traria em boa parte os mesmos vídeos, e o volume DIÁRIO
+// de vídeos únicos seria muito menor que o volume por rodada sugere.
+function fatiaDeHashtags(agora) {
+  const passo = Math.floor(agora / (3 * 3600 * 1000));   // muda a cada 3h, como o cron
+  const inicio = (passo * TIKWM_TAGS_POR_RODADA) % TIKWM_HASHTAGS.length;
+  const fatia = [];
+  for (let i = 0; i < TIKWM_TAGS_POR_RODADA; i++) {
+    fatia.push(TIKWM_HASHTAGS[(inicio + i) % TIKWM_HASHTAGS.length]);
+  }
+  return fatia;
+}
+
+// Um item cru do TikWM vira uma linha do banco. As 17 colunas continuam as
+// mesmas — o front, o Blublu e a limpeza não sabem que a fonte mudou.
+function linhaDeTikwm(v, agoraIso, thumb) {
+  const handle = (v.author && v.author.unique_id) || null;
+  const id = String(v.video_id || v.id || '');
+  return {
+    tiktok_video_id: id,
+    video_url: `https://www.tiktok.com/@${handle || 'tiktok'}/video/${id}`,
+    thumbnail_url: thumb || v.cover || v.origin_cover || v.ai_dynamic_cover || null,
+    caption: String(v.title || '').slice(0, 500),
+    author_handle: handle,
+    author_name: (v.author && v.author.nickname) || null,
+    author_avatar: (v.author && v.author.avatar) || null,
+    likes_count: v.digg_count || 0,
+    views_count: v.play_count || 0,
+    comments_count: v.comment_count || 0,
+    shares_count: v.share_count || 0,
+    // O TikWM diz de que país é CADA vídeo (o TikAPI dizia de que país era a
+    // BUSCA). É um dado melhor: minúsculo pra casar com o filtro do front.
+    country: String(v.region || '').toLowerCase() || null,
+    duration_sec: v.duration || 0,
+    // Obrigatório mesmo o grid não usando: o Blublu filtra o acervo por esta
+    // coluna quando alguém pede janela de tempo (api/blublu-chat.js). Nula, o
+    // vídeo some das respostas dele.
+    tiktok_created_at: v.create_time ? new Date(v.create_time * 1000).toISOString() : null,
+    collected_at: agoraIso,
+    last_seen_at: agoraIso,
+    status: 'active',
+  };
+}
+
+async function coletarViaTikWM({ SU, SK, h }) {
+  const inicio = Date.now();
+  const stat = { fonte: 'tikwm', requisicoes: 0, brutos: 0, unicos: 0, qualificados: 0, inseridos: 0, tags_ok: 0, tags_falhas: {}, parou_por: null };
+  const vistos = new Set();
+  const qualificados = [];
+
+  for (const tag of fatiaDeHashtags(Date.now())) {
+    if (Date.now() - inicio > TIKWM_TETO_MS) { stat.parou_por = 'teto_de_tempo'; break; }
+    stat.requisicoes++;
+    const alvo = await resolverHashtag(tag);
+    await pausa(TIKWM_PAUSA_MS);
+    if (!alvo.ok) { stat.tags_falhas[tag] = alvo.erro; continue; }
+
+    let cursor = 0;
+    let paginasOk = 0;
+    for (let p = 0; p < TIKWM_PAGINAS_POR_TAG; p++) {
+      if (Date.now() - inicio > TIKWM_TETO_MS) { stat.parou_por = 'teto_de_tempo'; break; }
+      stat.requisicoes++;
+      const r = await tikwmGet('challenge/posts', { challenge_id: alvo.id, count: 30, cursor });
+      await pausa(TIKWM_PAUSA_MS);
+      if (!r.ok) { stat.tags_falhas[tag] = r.erro; break; }
+      const videos = (r.data && r.data.videos) || [];
+      stat.brutos += videos.length;
+      for (const v of videos) {
+        const id = String(v.video_id || v.id || '');
+        if (!id || vistos.has(id)) continue;
+        vistos.add(id);
+        if ((v.digg_count || 0) >= MIN_LIKES) qualificados.push(v);
+      }
+      paginasOk++;
+      if (!r.data || !r.data.hasMore) break;
+      cursor = r.data.cursor || cursor + videos.length;
+    }
+    if (paginasOk) stat.tags_ok++;
+  }
+
+  stat.unicos = vistos.size;
+  stat.qualificados = qualificados.length;
+  if (!qualificados.length) return stat;
+
+  // Mesma cache de thumbnail do caminho antigo: a URL do TikTok expira em 3-5
+  // dias e vira 403 na tela. Reuso, não reescrita.
+  const agoraIso = new Date().toISOString();
+  const thumbs = await Promise.all(qualificados.map(async (v) => {
+    const original = v.cover || v.origin_cover || v.ai_dynamic_cover || null;
+    if (!original) return null;
+    try { return await cacheThumbnail(original, String(v.video_id || v.id), { SU, SK }); } catch (e) { return null; }
+  }));
+
+  const rows = qualificados.map((v, i) => linhaDeTikwm(v, agoraIso, thumbs[i]));
+  const up = await fetch(`${SU}/rest/v1/tiktok_virais?on_conflict=tiktok_video_id`, {
+    method: 'POST',
+    headers: { ...h, Prefer: 'resolution=merge-duplicates,return=minimal' },
+    body: JSON.stringify(rows),
+  });
+  if (!up.ok) {
+    stat.erro_upsert = (await up.text()).slice(0, 200);
+    console.error('[tiktok-virais:tikwm] upsert', up.status, stat.erro_upsert);
+    return stat;
+  }
+  stat.inseridos = rows.length;
+  return stat;
+}
+
+// ── COLETAR (cron a cada 3h) ─────────────────────────────────────────────────
+// Cadeia de fontes, no mesmo desenho da cadeia de download do BaixaBlue:
+//   1º TikWM (grátis)  ·  2º TikAPI (pago, RESERVA — nunca removido)
+// A reserva só é acionada quando a primeira não trouxe NADA. Se o TikAPI não
+// estiver configurado, isso não é erro: é a operação normal depois que a
+// assinatura for cancelada.
 async function coletar(req, res, { SU, h, TIKAPI_KEY }) {
   const SK = process.env.SUPABASE_SERVICE_KEY;
   // Auth: cron Vercel ou admin
   const isCron = !!req.headers['x-vercel-cron'];
   const isAdmin = req.query.admin_secret === process.env.ADMIN_SECRET;
   if (!isCron && !isAdmin) return res.status(401).json({ error: 'unauthorized' });
-  if (!TIKAPI_KEY) return res.status(500).json({ error: 'TIKAPI_KEY_missing' });
 
-  const results = { ok: true, by_country: {}, total_inserted: 0, total_skipped: 0, total_failed: 0 };
+  const fontes = [];
+  let tikwm = null;
+  if (process.env.TIKTOK_FONTE_TIKWM !== 'off') {
+    try {
+      tikwm = await coletarViaTikWM({ SU, SK, h });
+    } catch (e) {
+      console.error('[tiktok-virais:tikwm]', e && e.message);
+      tikwm = { fonte: 'tikwm', inseridos: 0, erro: String((e && e.message) || e).slice(0, 120) };
+    }
+    fontes.push(tikwm);
+  }
+
+  // Reserva. Só roda se a fonte grátis não trouxe nada — e só se houver chave.
+  if ((!tikwm || !tikwm.inseridos) && TIKAPI_KEY) {
+    const antigo = await coletarViaTikAPI(req, { SU, h, SK, TIKAPI_KEY });
+    fontes.push(antigo);
+    return responderColeta(res, fontes, antigo.by_country);
+  }
+  if ((!tikwm || !tikwm.inseridos) && !TIKAPI_KEY) {
+    fontes.push({ fonte: 'tikapi', pulado: 'sem_chave' });
+  }
+  return responderColeta(res, fontes, {});
+}
+
+// ⚠️ O CONSERTO DO ALARME, e ele é o motivo de esta função existir.
+// Rodada que não grava NADA responde 503. O workflow do GitHub só marca erro
+// quando o HTTP não é 200 — então, antes disso, ~40 rodadas vazias seguidas
+// apareceram verdes e a coleta ficou 7 dias morta sem ninguém saber.
+// Trocar de fornecedor sem trocar isto só mudaria a data do próximo enterro.
+function responderColeta(res, fontes, byCountry) {
+  const total = fontes.reduce((n, f) => n + (f.inseridos || f.total_inserted || 0), 0);
+  const corpo = {
+    ok: total > 0,
+    total_inserted: total,
+    fontes,
+    by_country: byCountry,
+    timestamp: new Date().toISOString(),
+  };
+  if (total > 0) return res.status(200).json(corpo);
+  corpo.error = 'coleta_vazia';
+  corpo.detalhe = 'Nenhuma fonte gravou vídeo nesta rodada — isto é falha, não silêncio.';
+  return res.status(503).json(corpo);
+}
+
+// ── FONTE RESERVA: TikAPI (o caminho original, intacto) ──────────────────────
+async function coletarViaTikAPI(req, { SU, h, SK, TIKAPI_KEY }) {
+  const results = { fonte: 'tikapi', ok: true, by_country: {}, total_inserted: 0, total_skipped: 0, total_failed: 0 };
 
   // 2026-06-24: chunked parallelization.
   // Primeira tentativa: 17 fetches simultâneos saturava rate per-second do
@@ -230,7 +488,7 @@ async function coletar(req, res, { SU, h, TIKAPI_KEY }) {
     }
   }
 
-  return res.status(200).json({ ...results, timestamp: new Date().toISOString() });
+  return results;
 }
 
 // ── LISTAR (frontend GET) ────────────────────────────────────────────────────
