@@ -90,20 +90,20 @@ html,body{height:100%;background:#000;color:#fff;font-family:-apple-system,'Helv
   .desktop-sidebar{display:flex;z-index:400}
   .topbar{display:none}
   .bottom-nav{display:none}
-  /* Feed: aspect ratio 9:16 exato (nao achata o video portrait).
-     11/08: vídeo estava "achatado"/pequeno no desktop — usa mais altura
-     (98dvh, margens mínimas) e teto de largura maior (620px), aproveitando
-     melhor a tela. Vídeo vertical trava na ALTURA da tela, então este é ~o
-     máximo sem letterbox lateral. */
+  /* Feed: aspect 9:16 (nao achata o portrait). 12/08: dono escolheu "video
+     INTEIRO, melhor posicionado" — altura CHEIA (100dvh) pro maior tamanho
+     possivel e CENTRALIZADO na area de conteudo (a direita da sidebar de
+     240px) via left:calc(50% + 120px) + o translateX(-50%) da base. Nada e
+     cortado; ~600px e o limite fisico do video vertical numa tela deitada. */
   #feed{
-    top:1dvh;bottom:1dvh;left:50%;right:auto;
-    height:98dvh;
-    width:calc(98dvh * 9 / 16);
-    max-width:min(620px, calc(98dvh * 9 / 16));
-    border-radius:18px;overflow:hidden;
-    box-shadow:0 20px 60px rgba(0,0,0,.5)
+    top:0;bottom:0;left:calc(50% + 120px);right:auto;
+    height:100dvh;
+    width:calc(100dvh * 9 / 16);
+    max-width:min(640px, calc(100dvh * 9 / 16));
+    overflow:hidden;
+    box-shadow:0 0 60px rgba(0,0,0,.5)
   }
-  .slide{height:98dvh}
+  .slide{height:100dvh}
   /* Prog bar volta pro fundo do slide no desktop (sem bottom-nav) */
   .prog-bar{bottom:0}
 }
@@ -2008,7 +2008,12 @@ async function loadFeed(){
 // Substitui slides muito distantes do atual por placeholder leve (mesmo height,
 // sem <video>, sem listeners). Libera memoria/CPU sem mudar scroll position.
 // Janela ativa: [current-2, current+4]. Re-hidrata se user faz swipe back.
-const _virtWindow = { back: 2, fwd: 4 };
+// Janela de vídeos com src CARREGADO ao mesmo tempo. No CELULAR o navegador
+// tem pouquíssimos decoders de vídeo (às vezes 2–4) e pouca memória — manter
+// muitos <video> carregados estoura e a tela fica preta / trava (relato
+// 12/08). Janela menor no celular; desktop aguenta mais.
+const _ehCelular = (typeof matchMedia === 'function') && matchMedia('(max-width:1023px)').matches;
+const _virtWindow = _ehCelular ? { back: 1, fwd: 2 } : { back: 2, fwd: 4 };
 function _pruneFarSlides(currentIdx){
   if (!Number.isFinite(currentIdx) || currentIdx < 0) return;
   const slides = document.querySelectorAll('#feed .slide');
@@ -2043,6 +2048,41 @@ function _rehydrateSlide(sl){
   sl.replaceWith(fresh);
   delete fresh.dataset.placeholder;
   if (obs) obs.observe(fresh);
+}
+
+// ── PODA QUE SEGUE O SCROLL (fix 12/08: celular travava/preto ao rolar) ─────
+// Antes a poda só rodava no IntersectionObserver. Em rolagem RÁPIDA no celular
+// o navegador engole/atrasa esses eventos: os vídeos que passam voando não
+// eram descarregados e ACUMULAVAM até estourar (tudo preto/lento). Este
+// podador segue o SCROLL, com throttle (~6x/s via rAF), então o
+// descarregamento sempre acompanha por mais rápido que se role — e não pesa a
+// CPU (a versão antiga varria todos os slides a cada evento do observer, que
+// dispara dezenas de vezes por segundo, ficando O(n) e lento com o feed grande).
+let _pruneRaf = 0, _pruneLast = 0;
+function _feedIdxAtual(feed){
+  const ch = feed.clientHeight || 1;
+  return Math.max(0, Math.round(feed.scrollTop / ch));
+}
+function agendarPoda(){
+  if (_pruneRaf) return;
+  _pruneRaf = requestAnimationFrame(() => {
+    _pruneRaf = 0;
+    const now = Date.now();
+    if (now - _pruneLast < 160) return; // throttle: no máximo ~6x/s
+    _pruneLast = now;
+    const feed = document.getElementById('feed');
+    if (!feed || feed.classList.contains('explore-view')) return;
+    _pruneFarSlides(_feedIdxAtual(feed));
+  });
+}
+let _podaLigada = false;
+function ligarPodaScroll(){
+  if (_podaLigada) return;
+  const feed = document.getElementById('feed');
+  if (!feed) return;
+  _podaLigada = true;
+  // #feed é persistente (só o innerHTML muda), então liga uma vez só.
+  feed.addEventListener('scroll', agendarPoda, { passive: true });
 }
 
 // ── PROFILE CACHE client-side (2026-06-23) ──────────────────────────────────
@@ -2368,6 +2408,7 @@ function onTU(vid,id){
 // Com array de elementos: observa SO esses (modo loadMoreFeed — evita re-observar
 // todos a cada batch, que matava+criava observer toda hora).
 function setupObs(newSlides){
+  ligarPodaScroll(); // podador por scroll (uma vez só) — anti-acúmulo no celular
   if(!obs){
     obs=new IntersectionObserver(entries=>{
     entries.forEach(e=>{
@@ -2417,14 +2458,11 @@ function setupObs(newSlides){
           if(nxt){const ns=document.getElementById('s-'+nxt.id);if(ns){const nv=ns.querySelector('video');if(nv){if(!nv.src&&nv.dataset.src)nv.src=nv.dataset.src;nv.preload=n===1?'auto':'metadata';}}}
         }
 
-        // Unload videos far away to free memory (>5 slides away)
-        for(let d of[-6,-7,-8,6,7,8]){
-          const far=videos[idx+d];
-          if(far){const fs=document.getElementById('s-'+far.id);if(fs){const fv=fs.querySelector('video');if(fv&&fv.src){fv.dataset.src=fv.src;fv.removeAttribute('src');fv.load();}}}
-        }
-        // Virtualizacao: troca slides muito distantes por placeholder
-        // (janela ativa = idx-2 a idx+4). Se user voltar, re-hidrata.
-        _pruneFarSlides(idx);
+        // Descarregar/podar slides distantes agora é do podador throttled que
+        // segue o scroll (agendarPoda) — cobre a rolagem rápida no celular, que
+        // engolia os eventos do observer e deixava os vídeos acumularem (preto/
+        // travamento). _pruneFarSlides sozinho já cobre a janela virtual.
+        agendarPoda();
       } else {
         if(vid&&!vid.paused)vid.pause();
         // Video saiu da tela — flush do signal final se ainda nao flushou
