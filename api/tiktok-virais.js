@@ -213,13 +213,22 @@ function linhaDeTikwm(v, agoraIso, thumb) {
   };
 }
 
-async function coletarViaTikWM({ SU, SK, h }) {
+// `tagsPedidas` só vem do disparo MANUAL do admin (?tags=cat,dog). O cron nunca
+// passa nada e continua usando a fatia rotativa do relógio.
+//
+// Por que isso existe: a rotação é calculada pela HORA, então disparar a coleta
+// quatro vezes seguidas dentro da mesma janela de 3h vasculharia as MESMAS seis
+// hashtags e traria quase os mesmos vídeos. Pra encher o acervo de uma vez —
+// depois de uma parada longa, por exemplo — é preciso poder dizer onde procurar.
+async function coletarViaTikWM({ SU, SK, h }, tagsPedidas) {
   const inicio = Date.now();
   const stat = { fonte: 'tikwm', requisicoes: 0, brutos: 0, unicos: 0, qualificados: 0, inseridos: 0, tags_ok: 0, tags_falhas: {}, parou_por: null };
   const vistos = new Set();
   const qualificados = [];
 
-  for (const tag of fatiaDeHashtags(Date.now())) {
+  const tags = (tagsPedidas && tagsPedidas.length) ? tagsPedidas : fatiaDeHashtags(Date.now());
+  stat.tags = tags;
+  for (const tag of tags) {
     if (Date.now() - inicio > TIKWM_TETO_MS) { stat.parou_por = 'teto_de_tempo'; break; }
     stat.requisicoes++;
     const alvo = await resolverHashtag(tag);
@@ -290,11 +299,20 @@ async function coletar(req, res, { SU, h, TIKAPI_KEY }) {
   const isAdmin = req.query.admin_secret === process.env.ADMIN_SECRET;
   if (!isCron && !isAdmin) return res.status(401).json({ error: 'unauthorized' });
 
+  // Hashtags escolhidas à mão (só no disparo manual do admin). Higienizadas: o
+  // valor vira query string numa chamada a terceiro, então só letra e número
+  // passam. Teto de 12 pra uma rodada manual não estourar o relógio.
+  const tagsPedidas = String(req.query.tags || '')
+    .split(',')
+    .map((t) => t.trim().toLowerCase().replace(/[^a-z0-9]/g, ''))
+    .filter(Boolean)
+    .slice(0, 12);
+
   const fontes = [];
   let tikwm = null;
   if (process.env.TIKTOK_FONTE_TIKWM !== 'off') {
     try {
-      tikwm = await coletarViaTikWM({ SU, SK, h });
+      tikwm = await coletarViaTikWM({ SU, SK, h }, tagsPedidas);
     } catch (e) {
       console.error('[tiktok-virais:tikwm]', e && e.message);
       tikwm = { fonte: 'tikwm', inseridos: 0, erro: String((e && e.message) || e).slice(0, 120) };

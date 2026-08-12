@@ -175,3 +175,23 @@ test('a coleta para pelo RELÓGIO, não por um número fixo de requisições', (
   assert.match(fn, /Date\.now\(\) - inicio > TIKWM_TETO_MS/);
   assert.match(fn, /parou_por = 'teto_de_tempo'/, 'e o motivo fica registrado na resposta');
 });
+
+// ═══ 5 — DISPARO MANUAL POR HASHTAG (backfill) ══════════════════════════
+
+test('o admin pode escolher as hashtags; o cron continua na rotação do relógio', () => {
+  const orquestra = FONTE.slice(FONTE.indexOf('async function coletar(req, res'), FONTE.indexOf('function responderColeta'));
+  assert.match(orquestra, /req\.query\.tags/, 'sem isto, disparar 4x na mesma janela de 3h traz os mesmos vídeos');
+  assert.match(orquestra, /coletarViaTikWM\(\{ SU, SK, h \}, tagsPedidas\)/);
+  // O cron não passa nada, então cai na fatia rotativa.
+  const coletor = FONTE.slice(FONTE.indexOf('async function coletarViaTikWM'), FONTE.indexOf('// ── COLETAR'));
+  assert.match(coletor, /\(tagsPedidas && tagsPedidas\.length\) \? tagsPedidas : fatiaDeHashtags/);
+});
+
+test('a hashtag vinda da URL é higienizada (ela vira query string num terceiro)', () => {
+  const orquestra = FONTE.slice(FONTE.indexOf('async function coletar(req, res'), FONTE.indexOf('function responderColeta'));
+  assert.match(orquestra, /replace\(\/\[\^a-z0-9\]\/g, ''\)/, 'só letra e número passam');
+  assert.match(orquestra, /\.slice\(0, 12\)/, 'e um teto pra rodada manual não estourar o relógio');
+  // O disparo manual continua atrás do mesmo portão de admin.
+  assert.ok(orquestra.indexOf('unauthorized') < orquestra.indexOf('req.query.tags'),
+    'a autorização vem ANTES de qualquer parâmetro do chamador');
+});
