@@ -1905,13 +1905,31 @@ function _syncTabsVisual(){
   if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',init);
   else init();
 })();
+// Fecha as views/overlays sobrepostas (perfil e player de vídeo) antes de
+// abrir outra coisa. Nasceu do bug 12/08: a navegação travava — um overlay
+// ficava "preso" por baixo/por cima e o clique seguinte não ia pra lugar
+// nenhum. `except` evita fechar justamente a view que está sendo aberta.
+// O player de vídeo (pfOverlay) fecha via closePfOverlay pra PAUSAR o vídeo
+// (antes só sumia a tela e o áudio continuava tocando ao fundo).
+function closeOverlays(except){
+  if(except!=='profile'){const p=document.getElementById('profPage');if(p)p.classList.remove('open');}
+  if(except!=='video'){
+    const o=document.getElementById('pfOverlay');
+    if(o&&o.classList.contains('open')){try{closePfOverlay();}catch(e){o.classList.remove('open');}}
+  }
+}
+
 function switchFeedMode(mode){
   if(mode==='following'&&!TOKEN){toast(t('toast_login_required_following','Faça login pra ver quem você segue'));return;}
-  // Fecha overlays antes de trocar feed (evita ficar preso no perfil/video).
-  ['profPage','pfOverlay'].forEach(id=>{const el=document.getElementById(id);if(el)el.classList.remove('open');});
+  // Estava no Explorar? Então PRECISA recarregar o feed (o conteúdo do #feed
+  // foi trocado pela grade do Explorar) — senão clicar "Para você"/"Seguindo"
+  // não saía de lá. Detecta ANTES de fechar os overlays.
+  const _f=document.getElementById('feed');
+  const _eraExplorar = !!(_f && _f.classList.contains('explore-view'));
+  closeOverlays();
   // Se URL eh de perfil/video, volta pra /blue
   try { if (window.BlueRouter && /^\/blue\/(?:@|v\/|hashtag\/)/.test(window.location.pathname)) BlueRouter.push('/blue', {}, 'Blue'); } catch(e) {}
-  if(mode===_feedMode){scrollToFeedTop();return;}
+  if(mode===_feedMode && !_eraExplorar){scrollToFeedTop();return;}
   _feedMode=mode;
   localStorage.setItem('bl_feed_mode',mode);
   _syncTabsVisual();
@@ -2642,6 +2660,7 @@ window.voltarParaFeed = voltarParaFeed;
 // ── PROFILE ───────────────────────────────────────────────────────────────────
 function openProfile(){
   haptic('light');
+  closeOverlays('profile'); // fecha player de vídeo aberto (evita empilhar)
   TOKEN=localStorage.getItem('bt_token');
   document.getElementById('profPage').classList.add('open');
   // Show analytics tab for own profile
@@ -5253,8 +5272,8 @@ async function openHashtagFeed(tag){
 // inteira (dá pra rolar como no feed), não 1 vídeo isolado.
 let _exploreVids = [];
 async function openTrending(){
-  // Fecha overlays (perfil, video player, etc)
-  ['profPage','pfOverlay'].forEach(id=>{const el=document.getElementById(id);if(el)el.classList.remove('open');});
+  // Fecha perfil/player de vídeo abertos (pausa o vídeo) antes de mostrar a grade.
+  closeOverlays();
   // Esconde mensagem "Nenhum video ainda" caso o feed estivesse vazio antes —
   // senao ela vaza visualmente sobre o grid do Explorar.
   const _empty=document.getElementById('empty');
