@@ -90,16 +90,20 @@ html,body{height:100%;background:#000;color:#fff;font-family:-apple-system,'Helv
   .desktop-sidebar{display:flex;z-index:400}
   .topbar{display:none}
   .bottom-nav{display:none}
-  /* Feed: aspect ratio 9:16 exato (nao achata o video portrait) */
+  /* Feed: aspect ratio 9:16 exato (nao achata o video portrait).
+     11/08: vídeo estava "achatado"/pequeno no desktop — usa mais altura
+     (98dvh, margens mínimas) e teto de largura maior (620px), aproveitando
+     melhor a tela. Vídeo vertical trava na ALTURA da tela, então este é ~o
+     máximo sem letterbox lateral. */
   #feed{
-    top:4dvh;bottom:4dvh;left:50%;right:auto;
-    height:92dvh;
-    width:calc(92dvh * 9 / 16);
-    max-width:min(560px, calc(92dvh * 9 / 16));
+    top:1dvh;bottom:1dvh;left:50%;right:auto;
+    height:98dvh;
+    width:calc(98dvh * 9 / 16);
+    max-width:min(620px, calc(98dvh * 9 / 16));
     border-radius:18px;overflow:hidden;
     box-shadow:0 20px 60px rgba(0,0,0,.5)
   }
-  .slide{height:92dvh}
+  .slide{height:98dvh}
   /* Prog bar volta pro fundo do slide no desktop (sem bottom-nav) */
   .prog-bar{bottom:0}
 }
@@ -285,9 +289,14 @@ body::before{content:'';position:fixed;inset:0;background:#0a0a0a;z-index:-1}
   .pstat{text-align:left}
   .pstat-n{font-size:20px}
   .pstat-l{font-size:13px;color:#999}
-  .prof-bio{padding:18px 32px 0;font-size:15px;max-width:820px}
-  #profActRow{margin:22px 32px 0 !important; max-width:820px}
-  .prof-edit-btn{padding:11px 22px;font-size:14px}
+  /* Alinhamento consistente no desktop (fix 11/08): bio e a linha de botões
+     usavam 820px + margem esquerda fixa, enquanto header/tabs/grid usavam
+     1100px centralizado — cada bloco começava num x diferente ("bagunçado").
+     Agora TODOS: 1100px, centralizados, mesmo recuo de 32px → mesma borda
+     esquerda. E o "Editar perfil" para de esticar a linha inteira. */
+  .prof-bio{padding:18px 32px 0;font-size:15px}
+  #profActRow{margin:22px auto 0 !important; max-width:1100px; padding:0 32px}
+  .prof-edit-btn{padding:11px 22px;font-size:14px;width:auto !important;flex:0 1 auto !important;min-width:180px;max-width:300px}
   .prof-tabs{padding:0 32px;margin-top:28px;justify-content:flex-start;gap:0}
   .prof-tab{flex:0 0 auto;padding:13px 28px;font-size:14px}
   .prof-sort{padding:12px 32px}
@@ -1930,6 +1939,11 @@ async function loadFeed(){
   // Remove view Explorar (caso esteja vindo de openTrending) pra voltar pro
   // layout TikTok de coluna centralizada.
   feed.classList.remove('explore-view');
+  // Restaura a barra de stories ao voltar do Explorar (o observer de scroll
+  // re-esconde sozinho se o usuário rolar pra baixo; se não tiver stories, ela
+  // já é display:none e isto não força nada).
+  const _sbFeed=document.getElementById('storiesBar');
+  if(_sbFeed) _sbFeed.classList.remove('hidden');
   // Se usuario nao tem token e escolheu following antes, volta pra foryou
   if(_feedMode==='following'&&!TOKEN){_feedMode='foryou';}
   _syncTabsVisual();
@@ -2299,7 +2313,15 @@ function toggleSound(vid,id){
 
 function onTU(vid,id){
   if(!vid.duration)return;
-  const el=document.getElementById('pf-'+id);
+  // Barra de progresso: procura DENTRO do próprio slide (por classe), não por
+  // getElementById('pf-'+id). Motivo (fix 11/08): no pf-overlay (abrir vídeo
+  // pelo explorar/perfil) o openProfileFeed renomeia IDs e o SLIDE passa a ter
+  // id 'pf-'+id — então o getElementById devolvia o SLIDE e o onTU definia a
+  // LARGURA DO SLIDE = % de reprodução: o vídeo "abria aos poucos acompanhando
+  // a barra". Escopo por .prog-fill do slide funciona nos dois e nunca acerta
+  // o slide por engano.
+  const _sl=vid.closest('.slide');
+  const el=_sl?_sl.querySelector('.prog-fill'):document.getElementById('pf-'+id);
   if(el)el.style.width=(vid.currentTime/vid.duration*100)+'%';
   // Aos 50% do vídeo atual, promove o 2º próximo de 'metadata' pra 'auto'
   // pra absorver swipes duplos sem buffering (estilo Reels/TikTok). Respeita
@@ -5227,6 +5249,9 @@ async function openHashtagFeed(tag){
   }catch(e){feed.innerHTML='<div style="height:60dvh;display:flex;align-items:center;justify-content:center;color:rgba(150,190,230,.5)">Erro ao carregar</div>';}
 }
 
+// Lista atual do Explorar — guardada pra que abrir um vídeo abra a LISTA
+// inteira (dá pra rolar como no feed), não 1 vídeo isolado.
+let _exploreVids = [];
 async function openTrending(){
   // Fecha overlays (perfil, video player, etc)
   ['profPage','pfOverlay'].forEach(id=>{const el=document.getElementById(id);if(el)el.classList.remove('open');});
@@ -5234,6 +5259,10 @@ async function openTrending(){
   // senao ela vaza visualmente sobre o grid do Explorar.
   const _empty=document.getElementById('empty');
   if(_empty) _empty.classList.remove('on');
+  // Esconde a barra de stories (é position:fixed, z-index 90) — senão ela fica
+  // flutuando por cima do grid do Explorar (fix 11/08). loadFeed restaura.
+  const _sbEx=document.getElementById('storiesBar');
+  if(_sbEx) _sbEx.classList.add('hidden');
   const feed=document.getElementById('feed');
   // Expande #feed pra caber grid 3-col (caso contrario fica espremido
   // na coluna 412px desenhada pra feed vertical tipo TikTok).
@@ -5247,6 +5276,7 @@ async function openTrending(){
     const topD = topR.ok ? await topR.json() : { videos: [] };
     const tagsD = tagsR.ok ? await tagsR.json() : { hashtags: [] };
     const topVids = topD.videos || [];
+    _exploreVids = topVids.filter(v => v && v.video_url);
     const tags = (tagsD.hashtags || []).slice(0, 8);
 
     feed.innerHTML = '';
@@ -5295,17 +5325,23 @@ async function openTrending(){
 // Abre o video clicado no explorar — usa o pf-overlay (mesmo player do perfil)
 async function abrirVideoExplorar(videoId, userId){
   if (!videoId) return;
-  // Busca o video pra alimentar o player
+  // Caminho normal: veio do grid do Explorar → abre a LISTA inteira começando
+  // no vídeo tocado, pra rolar como no feed (antes abria 1 vídeo isolado e
+  // "travava" ali). openProfileFeed já rola pro startId e monta o observer.
+  const clicado = _exploreVids.find(v => v.id === videoId);
+  if (clicado && _exploreVids.length) {
+    openProfileFeed(_exploreVids, videoId, clicado.creator?.username || 'Explorar');
+    return;
+  }
+  // Fallback (deep-link / lista perdida): busca o vídeo isolado
   try {
     const r = await fetch('/api/blue-feed?limit=1&video_id=' + encodeURIComponent(videoId));
-    // Fallback: usa o video_id pra abrir via openProfileFeed com 1 item
     let vid = null;
     if (r.ok) {
       const d = await r.json();
       vid = (d.videos || []).find(x => x.id === videoId);
     }
     if (!vid && userId) {
-      // Busca via perfil
       const pr = await fetch('/api/blue-profile?action=user-videos&user_id=' + encodeURIComponent(userId));
       if (pr.ok) {
         const pd = await pr.json();
@@ -5326,12 +5362,13 @@ function _bpWasShown(t){try{return(JSON.parse(localStorage.getItem(_BP_KEY)||'[]
 function _bpMarkShown(t){try{const a=JSON.parse(localStorage.getItem(_BP_KEY)||'[]');if(!a.includes(t)){a.push(t);localStorage.setItem(_BP_KEY,JSON.stringify(a));}}catch(e){}}
 
 function _bpCheck(){
+  // UM popup na vida do usuário (pedido do dono 11/08): assim que QUALQUER um
+  // aparece, nenhum outro aparece de novo. Antes eram três (2/8/15 vídeos),
+  // cada um 1x — mas o usuário sentia como "fica aparecendo". A trava por
+  // localStorage já existia por-popup; agora é global.
+  try { if((JSON.parse(localStorage.getItem(_BP_KEY)||'[]')).length) return; } catch(e){}
   // 2 videos: intro suave (stats do Blue) — cria curiosidade
-  if(_bpWatched===2&&!_bpWasShown('futuro')){_bpLoadStats();setTimeout(()=>_bpShow('futuro'),800);}
-  // 8 videos: R$1.000 hook — usuario ja esta engajado, hora da oferta forte
-  if(_bpWatched===8&&!_bpWasShown('pioneiro'))setTimeout(()=>_bpShow('pioneiro'),800);
-  // 15 videos: monetizacao / waitlist
-  if(_bpWatched===15&&!_bpWasShown('monetizacao'))setTimeout(()=>_bpShow('monetizacao'),800);
+  if(_bpWatched>=2&&!_bpWasShown('futuro')){_bpLoadStats();setTimeout(()=>_bpShow('futuro'),800);}
 }
 
 function _bpShow(tipo){
