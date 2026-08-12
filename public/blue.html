@@ -250,6 +250,9 @@ body::before{content:'';position:fixed;inset:0;background:#0a0a0a;z-index:-1}
   cursor:pointer;border-bottom:2px solid transparent}
 .prof-tab.on{color:#fff;border-bottom-color:#3b82f6}
 .prof-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:4px;padding:4px;background:#0a0a0a;min-height:200px}
+#colBody{background:#0a0a0a;min-height:calc(100dvh - 60px)}
+.col-mes{color:#fff;font-size:14px;font-weight:800;padding:16px 14px 6px;text-transform:capitalize}
+@media (min-width:1024px){ .col-mes{max-width:1100px;margin:0 auto;padding:20px 32px 8px} #colBody{padding-bottom:40px} }
 .pg{position:relative;aspect-ratio:9/16;background:#111;overflow:hidden;cursor:pointer;-webkit-tap-highlight-color:transparent;border-radius:6px;transition:transform .18s ease}
 .pg img{width:100%;height:100%;object-fit:cover;display:block}
 .pg-ph{width:100%;height:100%;display:flex;align-items:center;justify-content:center;font-size:24px;color:#333}
@@ -1256,6 +1259,33 @@ video::cue{background-color:rgba(0,0,0,.75);color:#fff;font-size:14px;font-famil
   <div id="shopPanel" style="display:none"></div>
 </div>
 
+<!-- COLEÇÃO (Salvos / Sua atividade) — grade de vídeos, reusa .prof-page/.prof-grid -->
+<div class="prof-page" id="colPage">
+  <div class="prof-nav">
+    <button class="prof-back" onclick="closeCol()">←</button>
+    <div class="prof-nav-name" id="colTitle">Salvos</div>
+  </div>
+  <div id="colBody"><div class="pg-empty">Carregando…</div></div>
+</div>
+
+<!-- SHARE SHEET — enviar vídeo pra uma conversa recente do chat -->
+<div class="bt-modal-overlay" id="shareSheet" style="display:none">
+  <div class="bt-modal">
+    <div class="bt-modal-handle"></div>
+    <div class="bt-modal-body" style="padding:8px 20px 20px">
+      <div style="font-size:16px;font-weight:800;margin-bottom:2px">Compartilhar vídeo</div>
+      <div style="font-size:12px;color:#7a8ba0;margin-bottom:8px">Enviar pra uma conversa recente</div>
+      <div id="shareConvs" style="max-height:42vh;overflow-y:auto"></div>
+      <div style="border-top:1px solid rgba(0,170,255,.08);margin-top:4px">
+        <button class="bt-menu-item" onclick="_shareExterno()">
+          <div class="bt-menu-icon">🔗</div>
+          <div class="bt-menu-text"><div class="title">Copiar link / compartilhar fora</div><div class="subtitle">WhatsApp, Instagram, etc.</div></div>
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
 <!-- PROFILE MENU (⋮ do proprio perfil — compartilhar, config, sair) -->
 <div class="bt-modal-overlay" id="profMenu" style="display:none">
   <div class="bt-modal">
@@ -1264,6 +1294,14 @@ video::cue{background-color:rgba(0,0,0,.75);color:#fff;font-size:14px;font-famil
       <button class="bt-menu-item" onclick="shareMyProfile()">
         <div class="bt-menu-icon">🔗</div>
         <div class="bt-menu-text"><div class="title" data-i18n="menu_share_profile">Compartilhar perfil</div><div class="subtitle" data-i18n="menu_share_profile_sub">Copia o link do seu perfil</div></div>
+      </button>
+      <button class="bt-menu-item" onclick="openSalvos()">
+        <div class="bt-menu-icon">🔖</div>
+        <div class="bt-menu-text"><div class="title">Salvos</div><div class="subtitle">Vídeos que você salvou</div></div>
+      </button>
+      <button class="bt-menu-item" onclick="openAtividade()">
+        <div class="bt-menu-icon">❤️</div>
+        <div class="bt-menu-text"><div class="title">Sua atividade</div><div class="subtitle">Vídeos que você curtiu, por mês</div></div>
       </button>
       <a class="bt-menu-item" href="/blue-analytics" style="text-decoration:none">
         <div class="bt-menu-icon">📊</div>
@@ -1912,7 +1950,10 @@ function _syncTabsVisual(){
 // O player de vídeo (pfOverlay) fecha via closePfOverlay pra PAUSAR o vídeo
 // (antes só sumia a tela e o áudio continuava tocando ao fundo).
 function closeOverlays(except){
-  if(except!=='profile'){const p=document.getElementById('profPage');if(p)p.classList.remove('open');}
+  if(except!=='profile'){
+    const p=document.getElementById('profPage');if(p)p.classList.remove('open');
+    const c=document.getElementById('colPage');if(c)c.classList.remove('open'); // Salvos/Atividade
+  }
   if(except!=='video'){
     const o=document.getElementById('pfOverlay');
     if(o&&o.classList.contains('open')){try{closePfOverlay();}catch(e){o.classList.remove('open');}}
@@ -2526,24 +2567,56 @@ function doSave(id){
     localStorage.setItem('bl_saved',JSON.stringify([...saved]));
   });
 }
+// Compartilhar: logado abre o SHEET com as conversas recentes do chat (pedido
+// do dono 12/08 — espelha o app). Visitante vai direto pro compartilhar do
+// sistema. O envio pro chat manda o link do vídeo como mensagem.
+let _shareVid=null, _shareUrl='';
 async function doShare(url,title){
   const vid=_curVideo?.id;
-  const shareUrl=vid?window.location.origin+'/blue-video?v='+vid:url;
-  if(navigator.share){try{await navigator.share({title:title||'Blue',url:shareUrl});}catch(e){}}
-  else{await navigator.clipboard.writeText(shareUrl).catch(()=>{});toast(t('toast_link_copied','🔗 Link copiado!'));}
-  if(vid){
-    trackSignal(vid,{compartilhou:true});
-    // Notifica o dono via blue-interact (cria notificacao 'share')
-    try {
-      const tk=localStorage.getItem('bt_token');
-      if(tk && myProfile?.user_id){
-        fetch('/api/blue-interact',{method:'POST',headers:{'Content-Type':'application/json'},
-          body:JSON.stringify({type:'share',video_id:vid,user_id:myProfile.user_id,session_id:SID})
-        }).catch(()=>{});
-      }
-    } catch(e){}
-  }
+  _shareVid=vid||null;
+  _shareUrl=vid?(window.location.origin+'/blue-video?v='+vid):url;
+  const tk=localStorage.getItem('bt_token');
+  if(!tk){ _shareExterno(); return; }
+  btModalOpen('shareSheet');
+  const box=document.getElementById('shareConvs');
+  box.innerHTML='<div class="pg-empty" style="padding:22px">Carregando conversas…</div>';
+  try{
+    const r=await fetch('/api/blue-chat?action=conversations&token='+encodeURIComponent(tk));
+    const d=await r.json();
+    const convs=(d.conversations||d.conversas||[]).slice(0,15);
+    if(!convs.length){ box.innerHTML='<div class="pg-empty" style="padding:16px">Sem conversas recentes.<br>Use o link abaixo pra compartilhar.</div>'; return; }
+    box.innerHTML=convs.map(cv=>{
+      const o=cv.other||cv.other_user||{};
+      const nome=esc(o.display_name||o.username||'Usuário');
+      const ini=(nome.charAt(0)||'?').toUpperCase();
+      const av=o.avatar_url?'<img src="'+esc(o.avatar_url)+'" style="width:100%;height:100%;object-fit:cover">':ini;
+      return '<button class="bt-menu-item" onclick="_shareParaChat(\''+esc(o.user_id||'')+'\',this)"><div class="bt-menu-icon" style="border-radius:50%;overflow:hidden">'+av+'</div><div class="bt-menu-text"><div class="title">'+nome+'</div><div class="subtitle">Enviar este vídeo</div></div></button>';
+    }).join('');
+  }catch(e){ box.innerHTML='<div class="pg-empty" style="padding:16px">Erro ao carregar conversas.</div>'; }
 }
+function _shareRegistrar(){
+  if(!_shareVid)return;
+  try{ trackSignal(_shareVid,{compartilhou:true}); }catch(e){}
+  try{ ping('share',_shareVid,{user_id:(myProfile&&myProfile.user_id)||undefined}); }catch(e){}
+}
+async function _shareParaChat(userId,btn){
+  const tk=localStorage.getItem('bt_token'); if(!userId||!tk)return;
+  if(btn){ btn.style.pointerEvents='none'; const s=btn.querySelector('.subtitle'); if(s)s.textContent='Enviando…'; }
+  try{
+    const r=await fetch('/api/blue-chat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'send',token:tk,to_user_id:userId,text:_shareUrl})});
+    if(!r.ok) throw new Error('http '+r.status);
+    if(btn){ const s=btn.querySelector('.subtitle'); if(s)s.textContent='✓ Enviado'; }
+    _shareRegistrar();
+    setTimeout(()=>{ btModalClose('shareSheet'); toast('✓ Vídeo enviado no chat!'); },450);
+  }catch(e){ if(btn){ btn.style.pointerEvents='auto'; const s=btn.querySelector('.subtitle'); if(s)s.textContent='Erro — tenta de novo'; } }
+}
+function _shareExterno(){
+  const u=_shareUrl; btModalClose('shareSheet');
+  if(navigator.share){ navigator.share({title:'Blue',url:u}).catch(()=>{}); }
+  else{ navigator.clipboard.writeText(u).catch(()=>{}); toast(t('toast_link_copied','🔗 Link copiado!')); }
+  _shareRegistrar();
+}
+window._shareParaChat=_shareParaChat; window._shareExterno=_shareExterno;
 
 // ── COMMENTS ──────────────────────────────────────────────────────────────────
 let _curCmtVid=null;
@@ -2723,6 +2796,68 @@ function closeProfile(){
 // ── PROFILE MENU (⋮ do proprio perfil) ───────────────────────────────────────
 function openProfMenu(){ btModalOpen('profMenu'); }
 function closeProfMenu(){ btModalClose('profMenu'); }
+
+// ── COLEÇÕES: Salvos e Sua atividade (espelha o app) ────────────────────────
+// Reusa a tela .prof-page (#colPage) e a grade .prof-grid. Toque num vídeo
+// abre no mesmo player do perfil/explorar (openProfileFeed), com a lista toda
+// pra rolar. Backend: blue-interact?meus-salvos e blue-profile?my-likes.
+let _colVids = [];
+function closeCol(){ const el=document.getElementById('colPage'); if(el) el.classList.remove('open'); }
+function _colLoading(titulo){
+  document.getElementById('colTitle').textContent=titulo;
+  document.getElementById('colBody').innerHTML='<div class="pg-empty"><div style="width:26px;height:26px;border:2px solid rgba(255,255,255,.08);border-top-color:#3b82f6;border-radius:50%;animation:spin .8s linear infinite;margin:30px auto"></div></div>';
+  closeOverlays('profile'); // pausa/fecha player de vídeo aberto
+  document.getElementById('colPage').classList.add('open');
+}
+function _colVazio(msg){ const b=document.getElementById('colBody'); if(b) b.innerHTML='<div class="pg-empty">'+esc(msg)+'</div>'; }
+function _pgCard(v){
+  const thumb=v.thumbnail_url?'<img src="'+esc(v.thumbnail_url)+'" style="width:100%;height:100%;object-fit:cover" loading="lazy" onerror="this.style.display=\'none\'">':'<div class="pg-ph">▶</div>';
+  return '<div class="pg" onclick="_colAbrir(\''+esc(v.id)+'\')">'+thumb+'<div class="pg-ov"></div><div class="pg-v">▶ '+fmt(v.views||0)+'</div></div>';
+}
+function _colAbrir(id){ const v=_colVids.find(x=>x.id===id); if(v) openProfileFeed(_colVids, id, (v.creator&&v.creator.username)||''); }
+
+async function openSalvos(){
+  closeProfMenu();
+  const tk=localStorage.getItem('bt_token'); if(!tk){ if(typeof openAuthOnly==='function') openAuthOnly(); return; }
+  _colLoading('🔖 Salvos');
+  try{
+    const r=await fetch('/api/blue-interact',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'meus-salvos',token:tk})});
+    const d=await r.json();
+    _colVids=((d&&d.salvos)||[]).map(s=>s.video).filter(v=>v&&v.video_url);
+    if(!_colVids.length){_colVazio('Você ainda não salvou nenhum vídeo.\\nToque em 💾 num vídeo pra guardar aqui.');return;}
+    document.getElementById('colBody').innerHTML='<div class="prof-grid">'+_colVids.map(_pgCard).join('')+'</div>';
+  }catch(e){_colVazio('Erro ao carregar seus salvos.');}
+}
+
+const _COL_MESES=['janeiro','fevereiro','março','abril','maio','junho','julho','agosto','setembro','outubro','novembro','dezembro'];
+async function openAtividade(){
+  closeProfMenu();
+  const tk=localStorage.getItem('bt_token'); if(!tk){ if(typeof openAuthOnly==='function') openAuthOnly(); return; }
+  _colLoading('❤️ Sua atividade');
+  try{
+    const r=await fetch('/api/blue-profile?action=my-likes&token='+encodeURIComponent(tk));
+    const d=await r.json();
+    _colVids=((d&&d.videos)||[]).filter(v=>v&&v.video_url);
+    if(!_colVids.length){_colVazio('Você ainda não curtiu nenhum vídeo.\\nToque em ❤️ num vídeo pra ele aparecer aqui.');return;}
+    // Agrupa por mês/ano pela data da curtida (curtido_em); sem ela, cai na
+    // data do vídeo. Mais recente primeiro. (Mesma lógica do app.)
+    const agora=new Date(); const grupos=[]; const porChave={};
+    for(const v of _colVids){
+      const bruto=v.curtido_em||v.created_at; const dt=bruto?new Date(bruto):null;
+      const ok=dt&&!isNaN(dt.getTime());
+      const chave=ok?(dt.getFullYear()+'-'+String(dt.getMonth()).padStart(2,'0')):'antes';
+      if(!porChave[chave]){
+        const mesmoAno=ok&&dt.getFullYear()===agora.getFullYear();
+        porChave[chave]={titulo:ok?(mesmoAno?_COL_MESES[dt.getMonth()]:_COL_MESES[dt.getMonth()]+' de '+dt.getFullYear()):'Antes',ordem:ok?dt.getTime():0,itens:[]};
+        grupos.push(porChave[chave]);
+      }
+      porChave[chave].itens.push(v);
+    }
+    grupos.sort((a,b)=>b.ordem-a.ordem);
+    document.getElementById('colBody').innerHTML=grupos.map(g=>'<div class="col-mes">'+esc(g.titulo)+'</div><div class="prof-grid">'+g.itens.map(_pgCard).join('')+'</div>').join('');
+  }catch(e){_colVazio('Erro ao carregar sua atividade.');}
+}
+window.openSalvos=openSalvos; window.openAtividade=openAtividade; window.closeCol=closeCol; window._colAbrir=_colAbrir;
 
 // ═══════════════════════════════════════════════════════════════════════════
 // SELETOR DE IDIOMA (i18n) — Fase 2 bloco 1
