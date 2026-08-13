@@ -325,6 +325,9 @@ nav{position:fixed;top:0;left:0;right:0;z-index:100;display:flex;align-items:cen
 .tk-card-thumb{position:relative;width:100%;aspect-ratio:9/16;background:linear-gradient(135deg,#0a1628,#020817);overflow:hidden}
 .tk-card-thumb img{width:100%;height:100%;object-fit:cover;display:block}
 .tk-fallback{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;background:linear-gradient(135deg,rgba(0,170,255,0.10),rgba(0,0,0,0.5));padding:16px;text-align:center}
+/* Mesma capa de reserva, mas para <img> que não vive dentro de um wrapper
+   posicionado (o card do Blublu). Aqui ela SUBSTITUI a imagem no fluxo. */
+.tk-fallback.solta{position:static;width:100%;height:100%;min-height:120px}
 .tk-fb-inner{display:flex;flex-direction:column;align-items:center;gap:10px}
 .tk-fb-icon{font-size:38px;opacity:0.7;filter:drop-shadow(0 2px 8px rgba(0,170,255,0.3))}
 .tk-fb-caption{font-family:var(--font-mono,monospace);font-size:11px;color:rgba(150,190,230,0.7);line-height:1.4;max-width:160px;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden}
@@ -986,7 +989,7 @@ function renderVideos(videos) {
     return `
     <a class="short-card" href="${v.url}" target="_blank" rel="noopener" data-vid="${escHtml(v.id||'')}">
       <div class="card-thumb-wrap">
-        <img class="card-thumb" src="${v.thumbnail}" alt="${escHtml(v.title)}" loading="lazy" onerror="this.style.display='none'"/>
+        <img class="card-thumb" src="${v.thumbnail}" alt="${escHtml(v.title)}" loading="lazy" data-cap="${escHtml(v.title||'')}" onload="btCapaMorta(this)" onerror="btCapaMorta(this)"/>
         <div class="card-overlay">
           <span class="card-views">${v.viewsFormatted} views</span>
         </div>
@@ -1056,6 +1059,42 @@ function timeAgo(dateStr) {
 function escHtml(s) {
   return (s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
+
+// ── CAPA QUE NÃO EXISTE MAIS ────────────────────────────────────────────────
+// MEDIDO em 12/08/2026, depois de o dono ver quadrados cinzas nas respostas do
+// Blublu: quando o vídeo é removido do YouTube, o i.ytimg.com responde
+// **HTTP 404 com um JPEG cinza de 120x90 dentro** (1.097 bytes). Vale pra TODAS
+// as resoluções — maxres, sd, hq e mq devolvem o mesmo cinza.
+//
+// E aqui está o motivo de o conserto anterior (`onerror="this.style.display=
+// 'none'"`) nunca ter funcionado: o corpo é um JPEG válido, então o navegador
+// DECODIFICA e considera a imagem carregada. O onerror não dispara. O que
+// aparece é o cinza do YouTube, não um erro.
+//
+// A única marca confiável é o TAMANHO: a capa de verdade vem 1280x720 (ou
+// 480x360 no hq); o aviso de "vídeo indisponível" vem sempre 120x90.
+//
+// Isto NÃO tira o vídeo do acervo — ele continua lá, clicável, com título,
+// canal e views. O que muda é a capa: em vez de um retângulo cinza sem
+// explicação, um cartão desenhado dizendo que a capa saiu do ar.
+window.btCapaMorta = function (img) {
+  try {
+    // 120x90 é exatamente o aviso do YouTube. Largura 0 = erro de rede/404 sem
+    // corpo (aí o onerror já teria disparado, mas cobrir os dois é barato).
+    var placeholder = img.naturalWidth <= 120 && img.naturalHeight <= 90;
+    if (img.naturalWidth !== 0 && !placeholder) return;   // capa boa: não mexe
+    var pai = img.parentElement;
+    if (!pai || pai.querySelector('.tk-fallback')) { img.style.display = 'none'; return; }
+    var solta = getComputedStyle(pai).position === 'static';
+    var d = document.createElement('div');
+    d.className = 'tk-fallback' + (solta ? ' solta' : '');
+    var t = String(img.getAttribute('data-cap') || '').slice(0, 60);
+    d.innerHTML = '<div class="tk-fb-inner"><div class="tk-fb-icon">🎬</div>'
+      + '<div class="tk-fb-caption">' + escHtml(t) + '</div></div>';
+    img.style.display = 'none';
+    pai.appendChild(d);
+  } catch (e) { try { img.style.display = 'none'; } catch (_) {} }
+};
 
 // ── INIT ─────────────────────────────────────────────────────────────────────
 if (plan === 'master' || plan === 'full') {
@@ -1280,7 +1319,7 @@ async function carregarHistorico(pagina){
         return `
         <a class="short-card" href="${url}" target="_blank" rel="noopener" data-vid="${escHtml(v.youtube_id)}">
           <div class="card-thumb-wrap">
-            ${thumb ? `<img class="card-thumb" src="${thumb}" alt="${escHtml(title)}" loading="lazy" onerror="this.style.display='none'"/>` : ''}
+            ${thumb ? `<img class="card-thumb" src="${thumb}" alt="${escHtml(title)}" loading="lazy" data-cap="${escHtml(title||'')}" onload="btCapaMorta(this)" onerror="btCapaMorta(this)"/>` : ''}
             <div class="card-overlay"><span class="card-views">${viewsFormatted} views</span></div>
             <div class="play-btn"><svg width="16" height="16" viewBox="0 0 24 24" fill="white"><path d="M8 5v14l11-7z"/></svg></div>
             <div class="card-rank">#${rank}</div>
@@ -2466,7 +2505,7 @@ function igFomoClose(e){
         const cit = Math.max(0, parseInt(v.citado_em_s)||0);
         return `
         <a class="bb-vcard" href="${escHtml(v.url || 'https://youtube.com/shorts/'+vid)}" target="_blank" rel="noopener" onclick="bbEvento('clique','${vid || 'tt'}')">
-          ${v.thumbnail_url ? `<img class="bb-vthumb" src="${escHtml(v.thumbnail_url)}" loading="lazy" alt="" onerror="this.style.display='none'"/>` : '<div class="bb-vthumb"></div>'}
+          ${v.thumbnail_url ? `<img class="bb-vthumb" src="${escHtml(v.thumbnail_url)}" loading="lazy" alt="" data-cap="${escHtml(v.titulo||'')}" onload="btCapaMorta(this)" onerror="btCapaMorta(this)"/>` : `<div class="bb-vthumb"></div>`}
           <div class="bb-vinfo">
             <div class="bb-vtit">${escHtml(v.titulo || '')}</div>
             <div class="bb-vmeta">
@@ -2660,7 +2699,7 @@ function igFomoClose(e){
         const url = v.url || `https://youtube.com/shorts/${v.youtube_id}`;
         return `<a class="short-card" href="${url}" target="_blank" rel="noopener" data-vid="${escHtml(v.youtube_id)}" style="border-color:rgba(251,191,36,.35)">
           <div class="card-thumb-wrap">
-            ${v.thumbnail_url?`<img class="card-thumb" src="${v.thumbnail_url}" alt="${escHtml(v.titulo||'')}" loading="lazy" onerror="this.style.display='none'"/>`:''}
+            ${v.thumbnail_url?`<img class="card-thumb" src="${v.thumbnail_url}" alt="${escHtml(v.titulo||'')}" loading="lazy" data-cap="${escHtml(v.titulo||'')}" onload="btCapaMorta(this)" onerror="btCapaMorta(this)"/>`:''}
             <div class="card-overlay"><span class="card-views">${vf} views</span></div>
             <div class="play-btn"><svg width="16" height="16" viewBox="0 0 24 24" fill="white"><path d="M8 5v14l11-7z"/></svg></div>
             <div class="card-rank" style="background:linear-gradient(135deg,#92400e,#fbbf24)">🔮 #${i+1}</div>
