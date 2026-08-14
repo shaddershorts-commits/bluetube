@@ -36,6 +36,7 @@ if ('serviceWorker' in navigator) {
     { id:'score',    icon:'📊', label:'BlueScore',     href:'/blueScore' },
     { id:'lens',     icon:'🔍', label:'BlueLens',      href:'/blueLens' },
     { id:'virais',   icon:'🔥', label:'Virais',        href:'/virais' },
+    { id:'longos',   icon:'🎞️', label:'Longos',        href:'/longos' },
     { id:'baixa',    icon:'⬇️', label:'BaixaBlue',     href:'/baixaBlue' },
     { id:'editor',   icon:'✨', label:'BlueEditor',    href:'/blueEditor' },
     { id:'clean',    icon:'🧹', label:'BlueClean',      href:'/blueClean' },
