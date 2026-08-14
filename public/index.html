@@ -694,7 +694,7 @@ height="0" width="0" style="display:none;visibility:hidden"></iframe></noscript>
         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
         <span class="nav-tool-tip">📊 BlueScore</span>
       </button>
-      <button class="nav-tool-btn" onclick="window.location.href='/blueEditor'" style="background:linear-gradient(135deg,rgba(251,191,36,.15),rgba(255,140,0,.08));border-color:rgba(251,191,36,.35);color:#fbbf24" title="BlueEditor · em breve">
+      <button class="nav-tool-btn" onclick="window.location.href='/blueEditor'" style="background:linear-gradient(135deg,rgba(251,191,36,.15),rgba(255,140,0,.08));border-color:rgba(251,191,36,.35);color:#fbbf24" title="BlueEditor">
         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2"/></svg>
         <span class="nav-tool-tip">✨ BlueEditor</span>
       </button>
@@ -742,7 +742,7 @@ height="0" width="0" style="display:none;visibility:hidden"></iframe></noscript>
         </button>
         <button class="mobile-tool-item" onclick="window.location.href='/blueEditor';closeMobileTools()">
           <div class="tool-icon"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#fbbf24" stroke-width="2"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2"/></svg></div>
-          <div><span style="color:#fbbf24">BlueEditor</span><span class="mobile-tool-item-sub">Editor completo · Em breve</span></div>
+          <div><span style="color:#fbbf24">BlueEditor</span><span class="mobile-tool-item-sub">Editor completo · NOVO</span></div>
         </button>
         <button class="mobile-tool-item" onclick="openMasterTool('bluelens');closeMobileTools()">
           <div class="tool-icon" style="background:rgba(167,139,250,.15);border-color:rgba(167,139,250,.3)">
@@ -822,7 +822,7 @@ height="0" width="0" style="display:none;visibility:hidden"></iframe></noscript>
         <div class="master-unlimited-badge">ILIMITADO</div>
         <div class="plan-badge gold">👑 Master</div>
         <div class="plan-price" id="modalMasterPrice"><span style="color:#fbbf24;font-size:22px;font-weight:800">R$67,49</span><span style="color:#fbbf24">/mês</span><br><span style="font-family:var(--font-mono);font-size:10px;color:var(--text-dim)">R$809,88 cobrado anualmente</span></div>
-        <div class="plan-features">✓ Roteiros ilimitados<br>✓ BlueVoice ilimitado<br>✓ BlueClean (remove overlays)<br>✓ BaixaBlue · BlueEditor (em breve)<br>✓ BlueScore · BlueLens<br>✓ Buscador de Virais</div>
+        <div class="plan-features">✓ Roteiros ilimitados<br>✓ BlueVoice ilimitado<br>✓ BlueClean (remove overlays)<br>✓ BaixaBlue · BlueEditor<br>✓ BlueScore · BlueLens<br>✓ Buscador de Virais</div>
       </div>
     </div>
     <button class="modal-cta" id="upgradeModalCta" onclick="handleUpgradeClick()">Quero acesso agora →</button>
@@ -852,7 +852,7 @@ height="0" width="0" style="display:none;visibility:hidden"></iframe></noscript>
       <div class="plan-card" onclick="selectPlan('master')">
         <div class="plan-badge gold">👑 Master</div>
         <div class="plan-price">R$89,99<span>/mês</span></div>
-        <div class="plan-features">✓ Roteiros ilimitados<br>✓ BlueVoice ilimitado<br>✓ BlueClean · BlueEditor (em breve)</div>
+        <div class="plan-features">✓ Roteiros ilimitados<br>✓ BlueVoice ilimitado<br>✓ BlueClean · BlueEditor</div>
       </div>
     </div>
     <button class="modal-cta" onclick="handleUpgradeClick()">Desbloquear todos os idiomas →</button>
@@ -1347,7 +1347,7 @@ height="0" width="0" style="display:none;visibility:hidden"></iframe></noscript>
       <div class="feat-card"><div class="feat-icon">⬇️</div><div class="feat-title">Download HD sem marca d'água</div><div class="feat-desc">Baixe qualquer vídeo do TikTok, Instagram e YouTube em alta qualidade para reutilizar legalmente.</div></div>
       <div class="feat-card" style="border-color:rgba(167,139,250,.3);background:rgba(167,139,250,.04);cursor:pointer" onclick="window.location.href='/blueLens'"><div class="feat-icon">🔍</div><div class="feat-title" style="color:#a78bfa">BlueLens — Rastreador de origem</div><div class="feat-desc">Descubra de onde veio qualquer Short. Detecte reposts, encontre o criador original e proteja seu conteúdo contra cópias não autorizadas.</div></div>
       <div class="feat-card"><div class="feat-icon">🎬</div><div class="feat-title">Roteirizar do Zero</div><div class="feat-desc">Responda 3 perguntas e a IA cria um roteiro viral 100% original para o seu nicho. Escolha sentimento, estilo e idioma. Sem precisar de referência.</div></div>
-      <div class="feat-card" style="border-color:rgba(251,191,36,.3);background:rgba(251,191,36,.04);cursor:pointer;position:relative" onclick="window.location.href='/blueEditor'"><div style="position:absolute;top:12px;right:12px;font-size:9px;background:linear-gradient(135deg,#6b4ee6,#a855f7);color:#fff;padding:2px 7px;border-radius:100px;font-weight:700;letter-spacing:.05em">EM BREVE</div><div class="feat-icon">✨</div><div class="feat-title" style="color:#fbbf24">BlueEditor — Editor nativo do BlueTube</div><div class="feat-desc">Timeline profissional, Blublu sugerindo cortes, score de viralidade em tempo real, legenda automática com Whisper e export 9:16 otimizado. Tudo sem sair do BlueTube. Masters ativos travam o preço atual antes do lançamento.</div></div>
+      <div class="feat-card" style="border-color:rgba(251,191,36,.3);background:rgba(251,191,36,.04);cursor:pointer;position:relative" onclick="window.location.href='/blueEditor'"><div style="position:absolute;top:12px;right:12px;font-size:9px;background:linear-gradient(135deg,#6b4ee6,#a855f7);color:#fff;padding:2px 7px;border-radius:100px;font-weight:700;letter-spacing:.05em">NOVO</div><div class="feat-icon">✨</div><div class="feat-title" style="color:#fbbf24">BlueEditor — Editor nativo do BlueTube</div><div class="feat-desc">Timeline profissional, Blublu sugerindo cortes, score de viralidade em tempo real, legenda automática com Whisper e export 9:16 otimizado. Tudo sem sair do BlueTube. Primeira versão já disponível — melhorias chegando toda semana.</div></div>
       <div class="feat-card" style="border-color:rgba(34,197,94,.3);background:rgba(34,197,94,.04);cursor:pointer" onclick="window.location.href='/blueClean'"><div class="feat-icon">🧹</div><div class="feat-title" style="color:#22c55e">BlueClean — Vídeo limpo com IA <span style="font-size:10px;background:rgba(34,197,94,.2);border-radius:6px;padding:2px 8px;margin-left:6px">NOVO</span></div><div class="feat-desc">Remove legendas, setas, marcas d'água e qualquer overlay de vídeos automaticamente. Dois modos: padrão e agressivo. Exclusivo Master.</div></div>
       <div class="feat-card" style="border-color:rgba(0,170,255,.4);background:linear-gradient(135deg,rgba(0,170,255,.06),rgba(107,78,230,.04));cursor:pointer;position:relative" onclick="window.location.href='/bluetendencias'">
         <div style="position:absolute;top:12px;right:12px;font-size:9px;background:linear-gradient(135deg,#0066ff,#00aaff);color:#fff;padding:2px 7px;border-radius:100px;font-weight:700;letter-spacing:.05em">NOVO</div>
@@ -1454,7 +1454,7 @@ height="0" width="0" style="display:none;visibility:hidden"></iframe></noscript>
           <li>BlueVoice ilimitado (narração IA)</li>
           <li>BlueClean (remove overlays)</li>
           <li>BaixaBlue (download HD)</li>
-          <li>BlueEditor <span style="font-size:10px;color:#fbbf24">(em breve · lock-in garantido)</span></li>
+          <li>BlueEditor <span style="font-size:10px;color:#fbbf24">(primeira versão disponível)</span></li>
           <li style="background:linear-gradient(90deg,rgba(251,191,36,.18),transparent);border-radius:6px;padding:4px 8px;margin:2px -8px"><b style="color:#fbbf24">✨ BlueTendências</b> <span style="font-size:10px;background:#fbbf24;color:#0a0a0a;padding:1px 6px;border-radius:6px;font-weight:800;margin-left:4px;vertical-align:middle">NOVO</span><br><span style="font-size:11px;color:var(--text-dim,rgba(150,190,230,.55))">Descubra tendências antes de todo mundo</span></li>
           <li>BlueScore · BlueLens · Virais</li>
           <li>Comunidade exclusiva</li>
