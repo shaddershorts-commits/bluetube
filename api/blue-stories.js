@@ -340,6 +340,40 @@ module.exports = async function handler(req, res) {
     }
   }
 
+  // ── POST votar-enquete: vota (ou troca o voto) numa camada de enquete ────
+  if (req.method === 'POST' && action === 'votar-enquete') {
+    if (!userId) return res.status(401).json({ error: 'Login necessário' });
+    const { story_id, overlay_id, opcao } = req.body || {};
+    if (!story_id || !overlay_id || (opcao !== 0 && opcao !== 1)) {
+      return res.status(400).json({ error: 'story_id, overlay_id e opcao (0|1) obrigatórios' });
+    }
+    try {
+      // upsert: 1 voto por pessoa por enquete; re-votar troca a opção
+      await fetch(`${SU}/rest/v1/blue_story_votos?on_conflict=overlay_id,user_id`, {
+        method: 'POST',
+        headers: { ...H, Prefer: 'resolution=merge-duplicates,return=minimal' },
+        body: JSON.stringify({ story_id, overlay_id, user_id: userId, opcao }),
+      });
+      const cR = await fetch(`${SU}/rest/v1/blue_story_votos?overlay_id=eq.${encodeURIComponent(overlay_id)}&select=opcao`, { headers: H });
+      const votos = cR.ok ? await cR.json() : [];
+      const contagem = [votos.filter(v => v.opcao === 0).length, votos.filter(v => v.opcao === 1).length];
+      return res.status(200).json({ ok: true, contagem, minha: opcao });
+    } catch (e) { return res.status(500).json({ error: e.message }); }
+  }
+
+  // ── GET enquete-resultado: contagem + meu voto de uma camada de enquete ──
+  if (req.method === 'GET' && action === 'enquete-resultado') {
+    const overlay_id = req.query?.overlay_id;
+    if (!overlay_id) return res.status(400).json({ error: 'overlay_id obrigatório' });
+    try {
+      const cR = await fetch(`${SU}/rest/v1/blue_story_votos?overlay_id=eq.${encodeURIComponent(overlay_id)}&select=opcao,user_id`, { headers: H });
+      const votos = cR.ok ? await cR.json() : [];
+      const contagem = [votos.filter(v => v.opcao === 0).length, votos.filter(v => v.opcao === 1).length];
+      const minha = userId ? (votos.find(v => v.user_id === userId)?.opcao ?? null) : null;
+      return res.status(200).json({ contagem, minha });
+    } catch (e) { return res.status(200).json({ contagem: [0, 0], minha: null }); }
+  }
+
   // ── POST reagir: toggle/update reação ────────────────────────────────────
   if (req.method === 'POST' && action === 'reagir') {
     const { story_id, emoji } = req.body;
