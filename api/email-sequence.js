@@ -20,7 +20,7 @@
 //   - Filtro plano: full/master ativos NUNCA recebem sequencia free
 //   - Filtro recovery: users em checkout_recovery pendente NAO recebem
 
-const { barrarSeDesligado } = require('./_helpers/emailGate.js');
+const { barrarSeDesligado, abrirCota } = require('./_helpers/emailGate.js');
 
 const { signToken } = require('./_helpers/unsub-token');
 const { signTrialToken } = require('./_helpers/trial-token');
@@ -120,6 +120,11 @@ module.exports = async function handler(req, res) {
 
   // Corte de marketing (10/08/2026): cota do Resend caiu pra 200/dia.
   if (barrarSeDesligado(res, 'email-sequence')) return;
+
+  // Teto diário COMPARTILHADO entre todos os jobs de marketing — sem isso
+  // cada um respeitaria "30 por dia" e o total viraria 8 × 30, estourando a
+  // cota do Resend e derrubando o código de cadastro. Ver _helpers/emailGate.js.
+  const cota = abrirCota('email-sequence');
 
   const SU = process.env.SUPABASE_URL;
   const SK = process.env.SUPABASE_SERVICE_KEY;
@@ -268,6 +273,9 @@ module.exports = async function handler(req, res) {
 
       const { subject, html, text } = buildEmail(template, user, vars);
 
+      // acabou a cota do dia: para AQUI, no envio exato (o teto não depende
+      // de o job ter cortado a lista direito lá em cima).
+      if (!(await cota.pegarUm())) break;
       try {
         const sr = await fetch('https://api.resend.com/emails', {
           method: 'POST',

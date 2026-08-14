@@ -3,7 +3,7 @@
 // to avoid inbox-duplicate spam detection.
 
 // ── 3 VARIAÇÕES DE COPY — rotacionadas para evitar duplicata visual ──
-const { barrarSeDesligado } = require('./_helpers/emailGate.js');
+const { barrarSeDesligado, abrirCota } = require('./_helpers/emailGate.js');
 
 const VARIANTS = [
   {
@@ -59,6 +59,11 @@ module.exports = async function handler(req, res) {
   // Corte de marketing (10/08/2026): cota do Resend caiu pra 200/dia.
   if (barrarSeDesligado(res, 'reactivation-emails')) return;
 
+  // Teto diário COMPARTILHADO entre todos os jobs de marketing — sem isso
+  // cada um respeitaria "30 por dia" e o total viraria 8 × 30, estourando a
+  // cota do Resend e derrubando o código de cadastro. Ver _helpers/emailGate.js.
+  const cota = abrirCota('reactivation-emails');
+
   const SU = process.env.SUPABASE_URL;
   const SK = process.env.SUPABASE_SERVICE_KEY;
   const RESEND_KEY = process.env.RESEND_API_KEY;
@@ -111,6 +116,9 @@ module.exports = async function handler(req, res) {
 
       // Envia a variante da semana
       const { subject, html } = renderEmail(variant, todayScripts);
+      // acabou a cota do dia: para AQUI, no envio exato (o teto não depende
+      // de o job ter cortado a lista direito lá em cima).
+      if (!(await cota.pegarUm())) break;
       try {
         const sendRes = await fetch('https://api.resend.com/emails', {
           method: 'POST',

@@ -1,7 +1,7 @@
 // api/milestone-emails.js — Cron: 0 9 * * * (daily 9am)
 // Sends milestone emails at 10, 50, 100 roteiros
 
-const { barrarSeDesligado } = require('./_helpers/emailGate.js');
+const { barrarSeDesligado, abrirCota } = require('./_helpers/emailGate.js');
 
 const { signToken } = require('./_helpers/unsub-token');
 
@@ -11,6 +11,11 @@ module.exports = async function handler(req, res) {
 
   // Corte de marketing (10/08/2026): cota do Resend caiu pra 200/dia.
   if (barrarSeDesligado(res, 'milestone-emails')) return;
+
+  // Teto diário COMPARTILHADO entre todos os jobs de marketing — sem isso
+  // cada um respeitaria "30 por dia" e o total viraria 8 × 30, estourando a
+  // cota do Resend e derrubando o código de cadastro. Ver _helpers/emailGate.js.
+  const cota = abrirCota('milestone-emails');
 
   const SU = process.env.SUPABASE_URL;
   const SK = process.env.SUPABASE_SERVICE_KEY;
@@ -47,6 +52,9 @@ module.exports = async function handler(req, res) {
         const perWeek = daysSince > 0 ? ((u.total_roteiros / daysSince) * 7).toFixed(1) : u.total_roteiros;
         const unsubToken = signToken(u.email);
 
+        // acabou a cota do dia: para AQUI, no envio exato (o teto não depende
+        // de o job ter cortado a lista direito lá em cima).
+        if (!(await cota.pegarUm())) break;
         try {
           await fetch('https://api.resend.com/emails', {
             method: 'POST',

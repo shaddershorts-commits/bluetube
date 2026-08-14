@@ -4,7 +4,7 @@
 // Audiência: master + full (quem tem acesso à Comunidade). Free fica fora (cota Resend).
 // Mesmo padrão do blublu-emails: preview/teste/disparar + guarda anti-reenvio.
 
-const { barrarSeDesligado } = require('./_helpers/emailGate.js');
+const { barrarSeDesligado, abrirCota } = require('./_helpers/emailGate.js');
 
 const SITE = 'https://www.bluetubeviral.com';
 const unsub = (email) => `${SITE}/api/unsubscribe?token=${Buffer.from(email).toString('base64url')}`;
@@ -81,6 +81,11 @@ module.exports = async function handler(req, res) {
   // Corte de marketing (10/08/2026): cota do Resend caiu pra 200/dia.
   if (barrarSeDesligado(res, 'comunidade-emails')) return;
 
+  // Teto diário COMPARTILHADO entre todos os jobs de marketing — sem isso
+  // cada um respeitaria "30 por dia" e o total viraria 8 × 30, estourando a
+  // cota do Resend e derrubando o código de cadastro. Ver _helpers/emailGate.js.
+  const cota = abrirCota('comunidade-emails');
+
   const SU = process.env.SUPABASE_URL;
   const SK = process.env.SUPABASE_SERVICE_KEY;
   const ADMIN_SECRET = process.env.ADMIN_SECRET;
@@ -132,6 +137,9 @@ module.exports = async function handler(req, res) {
 
       const resultados = { enviados: 0, falhas: 0 };
       for (const s of subs) {
+        // acabou a cota do dia: para AQUI, no envio exato (o teto não depende
+        // de o job ter cortado a lista direito lá em cima).
+        if (!(await cota.pegarUm())) break;
         try {
           const r = await fetch('https://api.resend.com/emails', {
             method: 'POST', headers: { Authorization: `Bearer ${RESEND_KEY}`, 'Content-Type': 'application/json' },
