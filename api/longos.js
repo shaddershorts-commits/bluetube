@@ -150,7 +150,8 @@ module.exports = async function handler(req, res) {
     if (action === 'canais') return await canais(req, res, { SU, h });
     if (action === 'limpar') return await limpar(req, res, { SU, h });
     if (action === 'faxina') return await faxina(req, res, { SU, h });
-    return res.status(400).json({ error: 'action_invalida', actions: ['listar', 'canais', 'coletar', 'limpar', 'faxina'] });
+    if (action === 'metricas') return await metricas(req, res, { SU, h });
+    return res.status(400).json({ error: 'action_invalida', actions: ['listar', 'canais', 'coletar', 'limpar', 'faxina', 'metricas'] });
   } catch (e) {
     console.error('[longos]', action, e && e.message);
     return res.status(500).json({ error: String((e && e.message) || e).slice(0, 200) });
@@ -368,7 +369,9 @@ function responder(res, stat, motivo) {
 // ── LISTAR (a aba Virais) ──────────────────────────────────────────────────
 async function listar(req, res, { SU, h }) {
   const piso = PISOS.includes(parseInt(req.query.piso, 10)) ? parseInt(req.query.piso, 10) : PISOS[0];
-  const ordem = req.query.ordem === 'ratio' ? 'views_por_inscrito' : req.query.ordem === 'recentes' ? 'collected_at' : 'views';
+  const ordem = req.query.ordem === 'ratio' ? 'views_por_inscrito'
+    : req.query.ordem === 'ritmo' ? 'views_por_hora'
+      : req.query.ordem === 'recentes' ? 'collected_at' : 'views';
   const limit = Math.min(60, parseInt(req.query.limit, 10) || 24);
   const offset = Math.max(0, parseInt(req.query.offset, 10) || 0);
 
@@ -376,7 +379,7 @@ async function listar(req, res, { SU, h }) {
   // Filtro por canal: é o que faz a aba Canais levar de volta pros vídeos dele.
   if (req.query.canal) url += `&canal_id=eq.${encodeURIComponent(String(req.query.canal))}`;
   url += `&order=${ordem}.desc.nullslast&limit=${limit}&offset=${offset}`;
-  url += '&select=youtube_id,titulo,thumbnail_url,url,canal_id,canal_nome,canal_inscritos,views,likes,duracao_segundos,views_por_inscrito,termo,publicado_em,collected_at';
+  url += '&select=youtube_id,titulo,thumbnail_url,url,canal_id,canal_nome,canal_inscritos,views,likes,duracao_segundos,views_por_inscrito,views_por_hora,termo,publicado_em,collected_at';
 
   const r = await fetch(url, { headers: { ...h, Prefer: 'count=exact' } });
   if (!r.ok) return res.status(500).json({ error: 'query_failed' });
@@ -390,12 +393,19 @@ async function listar(req, res, { SU, h }) {
 // teto de 70 mil. Guardar isso transforma um dado que seria descartado numa
 // aba inteira — "quem são os criadores dark que estão acertando".
 async function canais(req, res, { SU, h }) {
-  const ordem = req.query.ordem === 'inscritos' ? 'inscritos' : req.query.ordem === 'novos' ? 'primeiro_visto' : 'melhor_views';
+  const ordem = req.query.ordem === 'inscritos' ? 'inscritos'
+    : req.query.ordem === 'novos' ? 'primeiro_visto'
+      : req.query.ordem === 'ritmo' ? 'views_por_hora' : 'melhor_views';
   const limit = Math.min(60, parseInt(req.query.limit, 10) || 24);
   const offset = Math.max(0, parseInt(req.query.offset, 10) || 0);
 
+  // Faixa de ritmo: é o filtro pedido pro Canais (canais fazendo X views
+  // por hora). Vem do parâmetro pra as faixas serem calibradas com dado
+  // real depois da 1ª medição, em vez de chutadas agora.
+  const rmin = parseInt(req.query.ritmo_min, 10);
   const url = `${SU}/rest/v1/longos_canais?order=${ordem}.desc.nullslast&limit=${limit}&offset=${offset}`
-    + '&select=channel_id,nome,thumbnail_url,inscritos,pais,melhor_video_id,melhor_views,melhor_titulo,primeiro_visto,ultimo_visto';
+    + (Number.isFinite(rmin) && rmin > 0 ? `&views_por_hora=gte.${rmin}` : '')
+    + '&select=channel_id,nome,thumbnail_url,inscritos,pais,melhor_video_id,melhor_views,melhor_titulo,views_por_hora,ritmo_medido_em,primeiro_visto,ultimo_visto';
   const r = await fetch(url, { headers: { ...h, Prefer: 'count=exact' } });
   if (!r.ok) return res.status(500).json({ error: 'query_failed' });
   const items = await r.json();
@@ -415,6 +425,98 @@ async function canais(req, res, { SU, h }) {
     } catch (e) {}
   }
   return res.status(200).json({ ok: true, total, ordem, items });
+}
+
+// ── MÉTRICAS: o RITMO REAL, que é a diferença entre duas medições ──────────
+// ⚠️ POR QUE NÃO É "views ÷ idade do vídeo". Medido em 14/08, antes de escrever
+// uma linha: pelo cálculo de média de vida o acervo INTEIRO ficava abaixo de
+// 1.526 views/hora, e nenhuma faixa de ritmo faria sentido. O motivo é que a
+// média dilui — a idade mediana do acervo é 174 dias, então um vídeo com 1
+// milhão de views em 120 dias marca 362/h mesmo que esteja fazendo 5 mil/h
+// AGORA. Média de vida responde "como foi", e a pergunta é "como ESTÁ".
+//
+// A diferença entre duas medições responde a pergunta certa. E custa quase
+// nada: `videos.list` é 1 unidade a cada 50 vídeos — o acervo inteiro cabe em
+// uma chamada. Nada perto das ~100 buscas/dia que a coleta consome.
+//
+// A primeira passada não produz ritmo nenhum (não há com o que comparar), e
+// isso é dito na resposta em vez de virar zero silencioso.
+async function metricas(req, res, { SU, h }) {
+  if (req.query.admin_secret !== process.env.ADMIN_SECRET) {
+    return res.status(401).json({ error: 'unauthorized' });
+  }
+  const stat = { lidos: 0, atualizados: 0, com_ritmo: 0, primeira_medicao: 0, sumidos: 0, chamadas_api: 0, erros: [] };
+
+  const r = await fetch(`${SU}/rest/v1/longos_virais?ativo=eq.true&select=youtube_id,canal_id,views,views_anterior,medido_em&limit=2000`, { headers: h });
+  if (!r.ok) return res.status(500).json({ error: 'list_failed' });
+  const atuais = await r.json();
+  stat.lidos = atuais.length;
+  if (!atuais.length) return res.status(200).json({ ok: true, ...stat, detalhe: 'acervo vazio' });
+
+  const agora = Date.now();
+  const agoraIso = new Date(agora).toISOString();
+  const novos = {};
+  for (let i = 0; i < atuais.length; i += 50) {
+    const ids = atuais.slice(i, i + 50).map((v) => v.youtube_id);
+    try {
+      const rv = await youtubeRequest('videos', { part: 'statistics', id: ids.join(','), maxResults: 50 });
+      stat.chamadas_api++;
+      for (const v of (rv && rv.items) || []) novos[v.id] = Number((v.statistics && v.statistics.viewCount) || 0);
+    } catch (e) {
+      stat.erros.push(String(e.message || e).slice(0, 120));
+    }
+  }
+
+  const linhas = [];
+  const ritmoPorCanal = new Map();
+  for (const v of atuais) {
+    const agoraViews = novos[v.youtube_id];
+    // Vídeo que sumiu do YouTube não é vídeo com zero views: sem número, não se
+    // escreve número. Ele fica como está e é contado à parte.
+    if (agoraViews == null) { stat.sumidos++; continue; }
+
+    const linha = {
+      youtube_id: v.youtube_id,
+      views: agoraViews,
+      views_anterior: v.views,
+      medido_em: agoraIso,
+    };
+    // Só há ritmo se houve medição anterior COM data. A primeira passada grava
+    // a base e devolve views_por_hora nulo — dizer 0 seria inventar.
+    if (v.medido_em) {
+      const horas = (agora - new Date(v.medido_em).getTime()) / 36e5;
+      // Janela curta demais transforma ruído de arredondamento do YouTube em
+      // "ritmo". Meia hora é o mínimo pra o número significar algo.
+      if (horas >= 0.5) {
+        const delta = Math.max(0, agoraViews - (v.views || 0));
+        linha.views_por_hora = +(delta / horas).toFixed(2);
+        stat.com_ritmo++;
+        const m = ritmoPorCanal.get(v.canal_id) || 0;
+        if (linha.views_por_hora > m) ritmoPorCanal.set(v.canal_id, linha.views_por_hora);
+      }
+    } else {
+      stat.primeira_medicao++;
+    }
+    linhas.push(linha);
+  }
+
+  stat.atualizados = await gravar(`${SU}/rest/v1/longos_virais?on_conflict=youtube_id`, linhas, h, stat);
+
+  // O ritmo do CANAL é o do melhor vídeo dele. Somar diluiria: canal com 10
+  // vídeos velhos ficaria à frente de um com 1 vídeo estourando agora, que é
+  // exatamente o oposto da pergunta "quem está acertando?".
+  if (ritmoPorCanal.size) {
+    const canaisLinhas = [...ritmoPorCanal.entries()].map(([channel_id, vph]) => ({
+      channel_id, views_por_hora: vph, ritmo_medido_em: agoraIso,
+    }));
+    stat.canais_atualizados = await gravar(`${SU}/rest/v1/longos_canais?on_conflict=channel_id`, canaisLinhas, h, stat);
+  }
+
+  return res.status(200).json({
+    ok: true, ...stat,
+    detalhe: stat.com_ritmo ? null
+      : 'primeira medição: a base foi gravada, o ritmo aparece na próxima passada (mín. 30 min)',
+  });
 }
 
 // ── FAXINA: aplica as regras ATUAIS ao que já está no banco ────────────────

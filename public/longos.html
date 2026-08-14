@@ -93,6 +93,10 @@ h1 em{font-style:normal;background:linear-gradient(135deg,#00aaff,#5cffd0);-webk
 .canal-s{font-family:var(--mono);font-size:9.5px;color:var(--text-dim)}
 .metas{display:flex;gap:10px;font-family:var(--mono);font-size:10.5px;color:var(--text-sec);flex-wrap:wrap}
 .metas b{color:var(--neon);font-weight:700}
+/* Ritmo: views por hora medidas entre duas passadas. Verde porque é o número
+   do "agora", diferente das views totais, que são do passado acumulado. */
+.metas .vh{color:var(--verde);border:1px solid rgba(92,255,208,.3);border-radius:100px;padding:1px 8px}
+.metas .vh b{color:var(--verde)}
 
 /* ── ESTADOS ─────────────────────────────────────────────────────────── */
 .aviso{background:var(--card);border:1px solid var(--blue-border);border-radius:16px;padding:34px 26px;text-align:center;font-family:var(--mono);font-size:12.5px;color:var(--text-sec);line-height:1.8}
@@ -143,6 +147,7 @@ h1 em{font-style:normal;background:linear-gradient(135deg,#00aaff,#5cffd0);-webk
       <div class="chips" id="chipsOrdem">
         <button class="chip on" data-ordem="views">mais vistos</button>
         <button class="chip" data-ordem="ratio">mais estouraram</button>
+        <button class="chip" data-ordem="ritmo">mais rápidos agora</button>
         <button class="chip" data-ordem="recentes">recentes</button>
       </div>
     </div>
@@ -153,6 +158,7 @@ h1 em{font-style:normal;background:linear-gradient(135deg,#00aaff,#5cffd0);-webk
       <span class="grupo-tit">ordenar</span>
       <div class="chips" id="chipsCanais">
         <button class="chip on" data-ordem="melhor">maior sucesso</button>
+        <button class="chip" data-ordem="ritmo">mais rápidos agora</button>
         <button class="chip" data-ordem="inscritos">mais inscritos</button>
         <button class="chip" data-ordem="novos">descobertos agora</button>
       </div>
@@ -210,7 +216,8 @@ function cardVideo(v){
     + '<span class="dur">'+dur(v.duracao_segundos)+'</span>'
     + '</div><div class="card-b">'
     + '<div class="tit">'+esc(v.titulo)+'</div>'
-    + '<div class="metas"><span><b>'+num(v.views)+'</b> views</span><span>'+num(v.likes)+' likes</span></div>'
+    + '<div class="metas"><span><b>'+num(v.views)+'</b> views</span><span>'+num(v.likes)+' likes</span>'
+    + (v.views_por_hora!=null ? '<span class="vh">'+num(Math.round(v.views_por_hora))+'/h</span>' : '') + '</div>'
     + '<div class="canal"><div><div class="canal-n">'+esc(v.canal_nome||'')+'</div>'
     + '<div class="canal-s">'+num(v.canal_inscritos)+' inscritos</div></div></div>'
     + '</div></a>';
@@ -222,7 +229,9 @@ function cardCanal(c){
     + (c.thumbnail_url ? '<img src="'+esc(c.thumbnail_url)+'" loading="lazy" alt="" style="width:74px;height:74px;border-radius:50%;object-fit:cover" data-cap="'+esc(c.nome||'')+'" onload="capa(this)" onerror="capa(this)"/>' : '<div class="ic" style="font-size:38px">📡</div>')
     + '</div><div class="card-b">'
     + '<div class="tit">'+esc(c.nome||'canal')+'</div>'
-    + '<div class="metas"><span><b>'+num(c.inscritos)+'</b> inscritos</span>'
+    + '<div class="metas">'
+    + (c.views_por_hora!=null ? '<span class="vh"><b>'+num(Math.round(c.views_por_hora))+'</b>/h</span>' : '')
+    + '<span><b>'+num(c.inscritos)+'</b> inscritos</span>'
     + '<span>'+(c.videos_no_acervo||0)+' no acervo</span>'
     + (c.pais ? '<span>'+esc(c.pais)+'</span>' : '') + '</div>'
     + (c.melhor_titulo ? '<div class="canal"><div><div class="canal-s">melhor vídeo · '+num(c.melhor_views)+' views</div>'

@@ -59,6 +59,20 @@ create table if not exists longos_virais (
   -- views ÷ inscritos, gravado na coleta pra a listagem poder ORDENAR por ele
   -- sem calcular linha a linha.
   views_por_inscrito numeric(10,2),
+  -- ── RITMO REAL (14/08) ───────────────────────────────────────────────────
+  -- MEDIDO antes de existir: calcular ritmo como "views ÷ idade do vídeo" dá
+  -- número errado, porque dilui. A idade mediana do acervo é 174 dias — um
+  -- vídeo com 1 milhão de views em 120 dias marca 362/h na média de vida
+  -- mesmo que esteja fazendo 5 mil/h AGORA. Pelo cálculo de média, o acervo
+  -- inteiro ficava abaixo de 1.526/h e nenhum filtro de ritmo faria sentido.
+  --
+  -- O ritmo honesto é a DIFERENÇA entre duas medições. Estas três colunas são
+  -- o que permite isso: guarda-se o valor anterior e quando ele foi medido, e
+  -- o ritmo sai da subtração. Custa 1 unidade de API a cada 50 vídeos.
+  views_anterior     bigint,
+  medido_em          timestamptz,
+  -- views por HORA, da última janela medida. Null = ainda só foi visto uma vez.
+  views_por_hora     numeric(12,2),
   -- Qual termo do vocabulário achou este vídeo. Serve pra saber qual termo
   -- rende e qual só gasta cota.
   termo              text,
@@ -120,7 +134,18 @@ do $$ begin
 exception when duplicate_object then null; end $$;
 
 
+-- Colunas do ritmo em bases que já tinham a tabela (idempotência de verdade).
+alter table longos_virais add column if not exists views_anterior bigint;
+alter table longos_virais add column if not exists medido_em      timestamptz;
+alter table longos_virais add column if not exists views_por_hora numeric(12,2);
+-- O ritmo do canal é o do MELHOR vídeo dele — é a pergunta "esse canal está
+-- acertando agora?", e a soma diluiria isso num canal com muitos vídeos velhos.
+alter table longos_canais add column if not exists views_por_hora numeric(12,2);
+alter table longos_canais add column if not exists ritmo_medido_em timestamptz;
+
 -- ── Índices: as três perguntas que a página faz ─────────────────────────────
+create index if not exists idx_longos_ritmo on longos_virais (ativo, views_por_hora desc nulls last);
+create index if not exists idx_longos_canais_ritmo on longos_canais (views_por_hora desc nulls last);
 -- 1) "os mais vistos acima do piso X"
 create index if not exists idx_longos_views on longos_virais (ativo, views desc);
 -- 2) "os que mais estouraram pro tamanho do canal"

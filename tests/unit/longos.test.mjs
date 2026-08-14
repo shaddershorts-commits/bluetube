@@ -278,3 +278,62 @@ test('faxina: apaga em BLOCOS (URL com 2000 ids não passa)', () => {
   const fn = API.slice(API.indexOf('async function faxina'), API.indexOf('// ── LIMPAR'));
   assert.match(fn, /i \+= 40/);
 });
+
+// ═══ 7 — O RITMO (14/08) ════════════════════════════════════════════════
+// O dono pediu faixas de "views por hora" na aba Canais. MEDIDO antes de
+// construir: calculando ritmo como views ÷ idade do vídeo, o acervo INTEIRO
+// ficava abaixo de 1.526/h — as faixas pedidas (10k/20k/30k por hora)
+// mostrariam página vazia. O motivo é que a média dilui: a idade mediana do
+// acervo é 174 dias, então 1 milhão de views em 120 dias marca 362/h mesmo
+// que o vídeo esteja fazendo 5 mil/h AGORA.
+// O ritmo honesto é a DIFERENÇA entre duas medições.
+
+const METRICAS = API.slice(API.indexOf('async function metricas'), API.indexOf('// ── FAXINA'));
+
+test('o ritmo vem da DIFERENÇA entre duas medições, não de views ÷ idade', () => {
+  assert.match(METRICAS, /const delta = Math\.max\(0, agoraViews - \(v\.views \|\| 0\)\)/);
+  assert.match(METRICAS, /linha\.views_por_hora = \+\(delta \/ horas\)\.toFixed\(2\)/);
+  // E o porquê fica escrito, senão alguém "simplifica" pra média de vida.
+  assert.match(API, /POR QUE NÃO É "views ÷ idade do vídeo"/);
+});
+
+test('a primeira medição NÃO inventa ritmo — ela grava a base e diz isso', () => {
+  assert.match(METRICAS, /if \(v\.medido_em\) \{/, 'sem medição anterior não há o que comparar');
+  assert.match(METRICAS, /stat\.primeira_medicao\+\+/);
+  assert.match(METRICAS, /primeira medição: a base foi gravada/,
+    'devolver 0 seria inventar um número que ninguém mediu');
+});
+
+test('janela curta demais não vira ritmo (ruído de arredondamento)', () => {
+  assert.match(METRICAS, /if \(horas >= 0\.5\)/,
+    'meia hora é o mínimo pra a diferença significar algo');
+});
+
+test('vídeo que sumiu do YouTube não vira "zero views"', () => {
+  assert.match(METRICAS, /if \(agoraViews == null\) \{ stat\.sumidos\+\+; continue; \}/,
+    'sem número não se escreve número — zerar as views apagaria o histórico do vídeo');
+});
+
+test('o ritmo do CANAL é o do melhor vídeo, não a soma', () => {
+  assert.match(METRICAS, /if \(linha\.views_por_hora > m\) ritmoPorCanal\.set/);
+  assert.match(API, /Somar diluiria/,
+    'canal com 10 vídeos velhos passaria à frente de um com 1 vídeo estourando agora');
+});
+
+test('medir custa 1 unidade por 50 vídeos e NÃO usa busca', () => {
+  assert.match(METRICAS, /youtubeRequest\('videos', \{ part: 'statistics'/);
+  assert.equal(/youtubeRequest\('search'/.test(METRICAS), false,
+    'busca é ~100/dia por chave; medir de hora em hora com busca estouraria a cota');
+  const WFM = readFileSync(new URL('../../.github/workflows/longos-metricas.yml', import.meta.url), 'utf8');
+  assert.match(WFM, /cron: '41 \* \* \* \*'/, 'de hora em hora');
+  assert.match(WFM, /NÃO usa busca/);
+});
+
+test('a página mostra e ordena por ritmo nas duas abas', () => {
+  assert.match(HTML, /data-ordem="ritmo"/);
+  assert.match(HTML, /views_por_hora/);
+  assert.match(API, /req\.query\.ordem === 'ritmo' \? 'views_por_hora'/);
+  // E o filtro de faixa existe no backend, pra as faixas serem calibradas com
+  // dado real depois da 1ª medição em vez de chutadas agora.
+  assert.match(API, /req\.query\.ritmo_min/);
+});
