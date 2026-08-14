@@ -153,7 +153,11 @@ module.exports = async function handler(req, res) {
       // `order=date` + janela recente inverte isso: traz o que é NOVO, e quem
       // decide se é viral passa a ser o piso de views. Canal de 20 mil
       // inscritos com 300 mil views em 30 dias é a assinatura do dark.
-      const ordem = req.query.order === 'viewCount' ? 'viewCount' : 'date';
+      // `relevance` é o terceiro caminho e o mais promissor: é a mistura do
+      // próprio YouTube, que não devolve nem o gigante de sempre (viewCount)
+      // nem o recém-publicado sem audiência (date).
+      const ORDENS = ['date', 'viewCount', 'relevance', 'rating'];
+      const ordem = ORDENS.includes(req.query.order) ? req.query.order : 'date';
       const dias = Math.max(0, parseInt(req.query.dias || '90', 10));
       try {
         const params = {
