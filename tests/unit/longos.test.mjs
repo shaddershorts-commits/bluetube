@@ -186,8 +186,8 @@ test('SQL: a regra central (canal pequeno) tem rede no banco também', () => {
 
 // ═══ 5 — OS TRÊS FILTROS PEDIDOS DEPOIS DA 1ª COLETA (14/08) ════════════
 
-test('canal MORTO não entra: precisa ter postado nos últimos 2 dias', () => {
-  assert.equal(I.DIAS_CANAL_VIVO, 2);
+test('canal MORTO não entra: precisa ter postado nos últimos 3 dias', () => {
+  assert.equal(I.DIAS_CANAL_VIVO, 3);
   const bloco = API.slice(API.indexOf('// ── 3.5) CANAL VIVO'), API.indexOf('const linhas = []'));
   // O sinal sai da playlist de uploads, e custa 1 unidade — não 100 como a busca.
   assert.match(bloco, /youtubeRequest\('playlistItems'/);
@@ -232,4 +232,49 @@ test('o vocabulário é o TETO da página, e está dimensionado', () => {
   assert.ok(I.TERMOS.length >= 70, `${I.TERMOS.length} termos — a busca é estável, então repetir termo não traz vídeo novo`);
   assert.match(API, /O TAMANHO DESTA LISTA É O TETO DA PÁGINA/,
     'quem for encher a página depois precisa saber que o caminho é ACRESCENTAR TERMO, não rodar mais vezes');
+});
+
+// ═══ 6 — A FAXINA (14/08) ═══════════════════════════════════════════════
+// As regras foram apertadas com o banco JÁ cheio. Sem faxina, a página fica
+// com duas leis ao mesmo tempo — o que entrou antes seguiu regra frouxa — e
+// ninguém consegue julgar o resultado.
+
+test('a faxina existe, é do admin, e tem ensaio antes de apagar', () => {
+  const fn = API.slice(API.indexOf('async function faxina'), API.indexOf('// ── LIMPAR'));
+  assert.match(fn, /req\.query\.admin_secret !== process\.env\.ADMIN_SECRET/);
+  assert.match(fn, /const dry = req\.query\.dry === '1';/,
+    'operação que APAGA precisa de um modo que só mostra o que sairia');
+  assert.match(fn, /if \(dry \|\| !condenados\.length\) return res\.status\(200\)\.json\(relatorio\)/);
+});
+
+test('a faxina usa AS MESMAS regras da coleta, não uma cópia divergente', () => {
+  const fn = API.slice(API.indexOf('async function faxina'), API.indexOf('// ── LIMPAR'));
+  for (const c of ['DUR_MIN_S', 'DUR_MAX_S', 'MAX_INSCRITOS', 'PISOS[0]', 'DIAS_CANAL_VIVO', 'PAISES']) {
+    assert.ok(fn.includes(c), `a faxina não usa ${c} — duas leis diferentes pro mesmo acervo`);
+  }
+});
+
+test('faxina: falha de rede NÃO conta como canal morto (não apaga dado bom)', () => {
+  const fn = API.slice(API.indexOf('async function faxina'), API.indexOf('// ── LIMPAR'));
+  assert.match(fn, /vivo\[id\] = Date\.now\(\);/,
+    'apagar por soluço de rede seria destruir acervo por engano');
+});
+
+test('faxina: diz o MOTIVO de cada exclusão', () => {
+  const fn = API.slice(API.indexOf('async function faxina'), API.indexOf('// ── LIMPAR'));
+  for (const m of ['fora_da_duracao', 'canal_grande', 'abaixo_do_piso', 'canal_morto', 'pais_fora', 'sem_pais']) {
+    assert.ok(fn.includes(m), `o relatório não conta "${m}"`);
+  }
+  assert.match(fn, /motivos, canais_checados/, 'e os motivos saem na resposta');
+});
+
+test('faxina: canal que ficou sem vídeo sai da aba Canais', () => {
+  const fn = API.slice(API.indexOf('async function faxina'), API.indexOf('// ── LIMPAR'));
+  assert.match(fn, /const orfaos = idsCanais\.filter\(\(id\) => !aindaTem\.has\(id\)\)/,
+    'a aba Canais não pode listar quem não tem mais nada no acervo');
+});
+
+test('faxina: apaga em BLOCOS (URL com 2000 ids não passa)', () => {
+  const fn = API.slice(API.indexOf('async function faxina'), API.indexOf('// ── LIMPAR'));
+  assert.match(fn, /i \+= 40/);
 });

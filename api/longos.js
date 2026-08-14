@@ -40,7 +40,7 @@ const RETENCAO_DIAS = 90;
 // Canal precisa ter postado nos últimos N dias pra entrar. Pedido do dono em
 // 14/08, depois de ver o acervo enchendo de canal que estourou uma vez e
 // parou: viral de canal abandonado não serve pra estudar formato.
-const DIAS_CANAL_VIVO = 2;
+const DIAS_CANAL_VIVO = 3;
 // Só canal destes países (pedido do dono em 14/08). Entram em DOIS lugares:
 //  · no `regionCode` da busca, pra a descoberta já mirar esses mercados;
 //  · no filtro final, conferindo o país DECLARADO do canal.
@@ -149,7 +149,8 @@ module.exports = async function handler(req, res) {
     if (action === 'listar') return await listar(req, res, { SU, h });
     if (action === 'canais') return await canais(req, res, { SU, h });
     if (action === 'limpar') return await limpar(req, res, { SU, h });
-    return res.status(400).json({ error: 'action_invalida', actions: ['listar', 'canais', 'coletar', 'limpar'] });
+    if (action === 'faxina') return await faxina(req, res, { SU, h });
+    return res.status(400).json({ error: 'action_invalida', actions: ['listar', 'canais', 'coletar', 'limpar', 'faxina'] });
   } catch (e) {
     console.error('[longos]', action, e && e.message);
     return res.status(500).json({ error: String((e && e.message) || e).slice(0, 200) });
@@ -414,6 +415,102 @@ async function canais(req, res, { SU, h }) {
     } catch (e) {}
   }
   return res.status(200).json({ ok: true, total, ordem, items });
+}
+
+// ── FAXINA: aplica as regras ATUAIS ao que já está no banco ────────────────
+// As regras foram apertadas depois que o acervo já tinha conteúdo (país e canal
+// vivo entraram em 14/08, com o banco cheio). Sem isto, a página fica com duas
+// leis ao mesmo tempo: o que entrou antes seguiu regra frouxa, o que entra
+// agora segue regra apertada — e ninguém consegue julgar o resultado.
+//
+// ⚠️ APAGA DE VERDADE. Por isso `?dry=1` existe e é o caminho recomendado:
+// primeiro se olha o que sairia, depois se executa. E o motivo de cada exclusão
+// vai no relatório — faxina que não diz o que jogou fora é faxina que ninguém
+// consegue auditar depois.
+async function faxina(req, res, { SU, h }) {
+  if (req.query.admin_secret !== process.env.ADMIN_SECRET) {
+    return res.status(401).json({ error: 'unauthorized' });
+  }
+  const dry = req.query.dry === '1';
+  const diasVivo = Math.max(1, parseInt(req.query.dias_vivo || String(DIAS_CANAL_VIVO), 10));
+  const paisesAceitos = String(req.query.paises || PAISES.join(',')).toUpperCase().split(',').map((p) => p.trim()).filter(Boolean);
+  const corteVivo = Date.now() - diasVivo * 864e5;
+
+  const rv = await fetch(`${SU}/rest/v1/longos_virais?select=youtube_id,canal_id,canal_inscritos,views,duracao_segundos&limit=2000`, { headers: h });
+  if (!rv.ok) return res.status(500).json({ error: 'list_failed' });
+  const videos = await rv.json();
+
+  const rc = await fetch(`${SU}/rest/v1/longos_canais?select=channel_id,pais,inscritos&limit=2000`, { headers: h });
+  const canaisInfo = {};
+  for (const c of (rc.ok ? await rc.json() : [])) canaisInfo[c.channel_id] = c;
+
+  // Canal vivo só pode ser checado na API, e custa 1 unidade por canal. Só os
+  // canais que ainda têm vídeo no acervo são consultados.
+  const idsCanais = [...new Set(videos.map((v) => v.canal_id).filter(Boolean))];
+  const vivo = {};
+  for (const id of idsCanais) {
+    try {
+      const r = await youtubeRequest('channels', { part: 'contentDetails', id, maxResults: 1 });
+      const up = r && r.items && r.items[0] && r.items[0].contentDetails
+        && r.items[0].contentDetails.relatedPlaylists && r.items[0].contentDetails.relatedPlaylists.uploads;
+      if (!up) { vivo[id] = 0; continue; }   // canal sumiu: não tem como estar vivo
+      const p = await youtubeRequest('playlistItems', { part: 'contentDetails', playlistId: up, maxResults: 1 });
+      const q = p && p.items && p.items[0] && p.items[0].contentDetails && p.items[0].contentDetails.videoPublishedAt;
+      vivo[id] = q ? new Date(q).getTime() : 0;
+    } catch (e) {
+      // Igual à coleta: não conseguir checar NÃO é o mesmo que estar morto.
+      // Apagar por soluço de rede seria destruir dado bom.
+      vivo[id] = Date.now();
+    }
+  }
+
+  const motivos = { fora_da_duracao: 0, canal_grande: 0, abaixo_do_piso: 0, canal_morto: 0, pais_fora: 0, sem_pais: 0 };
+  const condenados = [];
+  for (const v of videos) {
+    const c = canaisInfo[v.canal_id] || {};
+    let motivo = null;
+    if (v.duracao_segundos < DUR_MIN_S || v.duracao_segundos > DUR_MAX_S) motivo = 'fora_da_duracao';
+    else if ((v.canal_inscritos || 0) > MAX_INSCRITOS) motivo = 'canal_grande';
+    else if ((v.views || 0) < PISOS[0]) motivo = 'abaixo_do_piso';
+    else if (!c.pais) motivo = 'sem_pais';
+    else if (paisesAceitos.indexOf(String(c.pais).toUpperCase()) < 0) motivo = 'pais_fora';
+    else if ((vivo[v.canal_id] || 0) < corteVivo) motivo = 'canal_morto';
+    if (motivo) { motivos[motivo]++; condenados.push(v.youtube_id); }
+  }
+
+  const relatorio = {
+    ok: true, dry, regras: { duracao: `${DUR_MIN_S / 60}-${DUR_MAX_S / 60}min`, max_inscritos: MAX_INSCRITOS, piso: PISOS[0], dias_vivo: diasVivo, paises: paisesAceitos },
+    total_no_banco: videos.length, a_remover: condenados.length, sobram: videos.length - condenados.length,
+    motivos, canais_checados: idsCanais.length,
+  };
+  if (dry || !condenados.length) return res.status(200).json(relatorio);
+
+  // Apaga em blocos — URL com 2000 ids não passa.
+  let apagados = 0;
+  for (let i = 0; i < condenados.length; i += 40) {
+    const lote = condenados.slice(i, i + 40).map((id) => `"${id}"`).join(',');
+    const r = await fetch(`${SU}/rest/v1/longos_virais?youtube_id=in.(${lote})`, {
+      method: 'DELETE', headers: { ...h, Prefer: 'return=representation' },
+    });
+    if (r.ok) apagados += (await r.json()).length;
+  }
+  relatorio.apagados = apagados;
+
+  // Canal que ficou sem nenhum vídeo sai junto: a aba Canais não pode listar
+  // quem não tem mais nada no acervo.
+  const rest = await fetch(`${SU}/rest/v1/longos_virais?select=canal_id&limit=2000`, { headers: h });
+  const aindaTem = new Set((rest.ok ? await rest.json() : []).map((x) => x.canal_id));
+  const orfaos = idsCanais.filter((id) => !aindaTem.has(id));
+  let canaisApagados = 0;
+  for (let i = 0; i < orfaos.length; i += 40) {
+    const lote = orfaos.slice(i, i + 40).map((id) => `"${id}"`).join(',');
+    const r = await fetch(`${SU}/rest/v1/longos_canais?channel_id=in.(${lote})`, {
+      method: 'DELETE', headers: { ...h, Prefer: 'return=representation' },
+    });
+    if (r.ok) canaisApagados += (await r.json()).length;
+  }
+  relatorio.canais_apagados = canaisApagados;
+  return res.status(200).json(relatorio);
 }
 
 // ── LIMPAR (cron diário) ───────────────────────────────────────────────────
