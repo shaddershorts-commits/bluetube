@@ -85,7 +85,7 @@ module.exports = async function handler(req, res) {
       const now = new Date().toISOString();
       const idsParam = targetIds.map(id => `"${id}"`).join(',');
       let sR = await fetch(
-        `${SU}/rest/v1/blue_stories?user_id=in.(${idsParam})&audience=eq.${feedMode}&expirado_em=gt.${now}&order=user_id,created_at.asc&select=id,user_id,tipo,media_url,texto,cor_fundo,duracao,visto_por,created_at,expirado_em,audience,video_id`,
+        `${SU}/rest/v1/blue_stories?user_id=in.(${idsParam})&audience=eq.${feedMode}&expirado_em=gt.${now}&order=user_id,created_at.asc&select=id,user_id,tipo,media_url,texto,cor_fundo,duracao,visto_por,created_at,expirado_em,audience,video_id,overlays,musica_url,filtro`,
         { headers: H }
       );
       // Retrocompat: coluna audience/video_id ainda não criada (sql/status_bluechat_v1.sql)
@@ -282,7 +282,7 @@ module.exports = async function handler(req, res) {
 
   // ── POST criar: cria novo story ──────────────────────────────────────────
   if (req.method === 'POST' && action === 'criar') {
-    const { tipo, media_url, texto, cor_fundo, duracao, audience, video_id } = req.body;
+    const { tipo, media_url, texto, cor_fundo, duracao, audience, video_id, overlays, musica_url, filtro } = req.body;
     if (!['imagem', 'video', 'texto', 'video_share'].includes(tipo)) {
       return res.status(400).json({ error: 'tipo inválido (imagem|video|texto|video_share)' });
     }
@@ -305,10 +305,20 @@ module.exports = async function handler(req, res) {
         duracao: duracaoFinal,
         visto_por: []
       };
+      // Camadas do editor (texto/figurinha/menção/desenho), música e filtro de
+      // cor. Sanitiza overlays: no máx 40 camadas, cada uma um objeto simples.
+      const overlaysFinal = Array.isArray(overlays) ? overlays.slice(0, 40).filter(o => o && typeof o === 'object') : [];
       let r = await fetch(`${SU}/rest/v1/blue_stories`, {
         method: 'POST',
         headers: { ...H, Prefer: 'return=representation' },
-        body: JSON.stringify({ ...basePayload, audience: audienceFinal, video_id: video_id || null })
+        body: JSON.stringify({
+          ...basePayload,
+          audience: audienceFinal,
+          video_id: video_id || null,
+          overlays: overlaysFinal,
+          musica_url: musica_url || null,
+          filtro: filtro || null,
+        })
       });
       // Retrocompat: colunas novas ainda não criadas → tenta shape antigo
       // (só pra stories comuns; video_share EXIGE as colunas do SQL novo)
