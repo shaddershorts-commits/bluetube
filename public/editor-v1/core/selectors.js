@@ -2,7 +2,7 @@
 // Consultas derivadas do estado. UNICO lugar com o mapeamento tempo
 // virtual (timeline) <-> tempo source (arquivo). Modulo puro.
 
-import { TEXT_SIZE_PCT } from './schema.js';
+import { TEXT_SIZE_PCT, FORMATO_PADRAO } from './schema.js';
 import { layoutDoTexto } from './text-layout.js';
 // módulo puro (sem DOM), apesar de morar em preview/: é lá que a correção de
 // cor é definida, e o payload precisa dos MESMOS números que desenham a tela
@@ -404,6 +404,22 @@ export function textsAt(state, t) {
  *  A regra é DERIVADA (nada novo no estado): proporção da mídia difere do
  *  quadro além de 5% → 'contain'. Preview e export usam ESTA mesma função —
  *  é o que garante WYSIWYG. Devolve null = segue o padrão do projeto. */
+/** Formato EFETIVO do projeto: {id, w, h, ar}. 'original' deriva das
+ *  dimensões da mídia principal na hora (vídeo trocado = formato acompanha);
+ *  os demais já viajam resolvidos no estado. Preview, fitDaCena e export usam
+ *  ESTA função — um só ponto de verdade pra proporção. */
+export function formatoDoProjeto(state) {
+  const f = state.formato || FORMATO_PADRAO;
+  if (f.id === 'original') {
+    const v = state.video;
+    const ok = v && v.width > 0 && v.height > 0;
+    const w = ok ? Math.round(v.width / 2) * 2 : FORMATO_PADRAO.w;
+    const h = ok ? Math.round(v.height / 2) * 2 : FORMATO_PADRAO.h;
+    return { id: 'original', w, h, ar: w / h };
+  }
+  return { id: f.id, w: f.w, h: f.h, ar: f.w / f.h };
+}
+
 export function fitDaCena(state, seg) {
   if (!seg) return null;
   const c = seg.clip;
@@ -412,7 +428,7 @@ export function fitDaCena(state, seg) {
     : state.video;
   if (!m || !(m.width > 0) || !(m.height > 0)) return null;
   const arM = m.width / m.height;
-  const arP = 9 / 16;   // o quadro do projeto é vertical
+  const arP = formatoDoProjeto(state).ar;   // o quadro do PROJETO (9:16, 16:9…)
   return Math.abs(arM - arP) / arP > 0.05 ? 'contain' : null;
 }
 
@@ -496,7 +512,10 @@ export function exportPayload(state) {
       // quebra de linha + posicao presa no quadro decididas AQUI e enviadas
       // prontas: o drawtext do ffmpeg nao quebra linha sozinho, entao sem isto
       // a legenda sai do quadro no arquivo final (bug 2026-07-29)
-      const lay = layoutDoTexto(t, TEXT_SIZE_PCT[t.size]);
+      // no quadro DO PROJETO: o prender-na-borda depende da proporção (16:9
+      // tem menos altura relativa que 9:16); a quebra de linha é invariante
+      const fpTxt = formatoDoProjeto(state);
+      const lay = layoutDoTexto(t, TEXT_SIZE_PCT[t.size], fpTxt.w, fpTxt.h);
       return {
       content: t.content,
       lines: lay.linhas,          // o render desenha ESTAS linhas

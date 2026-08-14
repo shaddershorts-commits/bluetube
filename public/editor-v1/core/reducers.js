@@ -6,7 +6,7 @@
 // Estado e imutavel: cada action retorna um objeto novo.
 
 import { A } from './actions.js';
-import { createInitialState, normalizeLoadedState, createFullClip, clamp, clamp01, MIN_CLIP_DURATION, MIN_TEXT_DURATION, TEXT_FONTS, TEXT_SIZES, clampLane, TEXT_DEFAULT_LANE, OVERLAY_DEFAULT_LANE, MAX_LANE, MAX_AUDIO_LANE, MAX_EXTRA_LANES } from './schema.js';
+import { createInitialState, normalizeLoadedState, validarFormato, createFullClip, clamp, clamp01, MIN_CLIP_DURATION, MIN_TEXT_DURATION, TEXT_FONTS, TEXT_SIZES, clampLane, TEXT_DEFAULT_LANE, OVERLAY_DEFAULT_LANE, MAX_LANE, MAX_AUDIO_LANE, MAX_EXTRA_LANES } from './schema.js';
 import { transicaoPorId } from './transitions.js';
 import { timelineSegments, segmentAt, mainTrackItems, clipSpeed, clipTimelineDur, audioTimelineDur, overlayTimelineDur, audioLaneMap, captionAudioPlan } from './selectors.js';
 // REGRAS DE CAMADA (2026-07-29): faixa de texto so aceita texto, dois itens
@@ -1476,6 +1476,14 @@ export function reduce(state, action) {
       const intensidade = action.intensity != null ? clamp(Number(action.intensity), 0, 100) : 50;
       transitions.push({ between, type: def.id, xfade: def.xfade, duration, intensity: intensidade });
       return touch({ ...state, transitions });
+    }
+
+    case A.SET_FORMATO: {
+      const novo = validarFormato(action.formato);
+      if (!novo) return state;   // id desconhecido ou dims fora da régua: ignora
+      const f = state.formato || {};
+      if (f.id === novo.id && f.w === novo.w && f.h === novo.h) return state;
+      return touch({ ...state, formato: novo });
     }
 
     case A.SET_ASPECT: {

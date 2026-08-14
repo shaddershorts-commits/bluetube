@@ -14,6 +14,41 @@ export const TEXT_FONTS = ['Anton', 'Bebas Neue', 'Oswald'];
 
 export const TRANSITION_TYPES = ['cut', 'fade'];
 
+// ── FORMATO DO PROJETO (proporção do preview E do arquivo exportado) ────────
+// Tabela fechada estilo CapCut (user 14/08). Dimensões SEMPRE pares (h264
+// yuv420p exige) e com lado maior 1920/2340 — o /edit-v0 aceita output
+// arbitrário (medido: 720x1280 e 1920x1080 saem exatos).
+// 'original' não tem dims aqui: deriva das dimensões da mídia principal na
+// hora do uso (formatoDoProjeto). 'custom' guarda o que o user digitou.
+export const FORMATOS = [
+  { id: 'original', nome: 'Original',       w: null, h: null },
+  { id: 'custom',   nome: 'Personalizado',  w: null, h: null },
+  { id: '16:9',     nome: '16:9',           w: 1920, h: 1080 },
+  { id: '4:3',      nome: '4:3',            w: 1440, h: 1080 },
+  { id: '2.35:1',   nome: '2.35:1',         w: 1920, h: 816 },
+  { id: '2:1',      nome: '2:1',            w: 1920, h: 960 },
+  { id: '1.85:1',   nome: '1.85:1',         w: 1920, h: 1038 },
+  { id: '9:16',     nome: '9:16',           w: 1080, h: 1920 },
+  { id: '3:4',      nome: '3:4',            w: 1080, h: 1440 },
+  { id: '5.8',      nome: '5,8 polegadas',  w: 1080, h: 2340 },
+  { id: '1:1',      nome: '1:1',            w: 1080, h: 1080 },
+];
+export const FORMATO_PADRAO = { id: '9:16', w: 1080, h: 1920 };
+const par = (n) => Math.round(Number(n) / 2) * 2;
+/** Valida um formato vindo de fora (action ou projeto salvo). null = inválido. */
+export function validarFormato(f) {
+  if (!f || typeof f.id !== 'string') return null;
+  const cat = FORMATOS.find(x => x.id === f.id);
+  if (!cat) return null;
+  if (cat.id === 'original') return { id: 'original', w: null, h: null };
+  if (cat.id === 'custom') {
+    const w = par(f.w), h = par(f.h);
+    if (!(w >= 128 && h >= 128 && w <= 4320 && h <= 4320)) return null;
+    return { id: 'custom', w, h };
+  }
+  return { id: cat.id, w: cat.w, h: cat.h };
+}
+
 export const MIN_CLIP_DURATION = 0.1; // segundos — reducers nunca deixam menor
 // Texto não decodifica mídia: pode ser bem mais curto que um clipe. Uma legenda
 // palavra-a-palavra tem ~0,25s, e exigir 0,1s de cada lado tornava o corte
@@ -91,6 +126,7 @@ export function createInitialState() {
     transitions: [],      // [{ between, type, duration }]
     volumes: { video: 1, audio_extra: 1 },
     aspect_strategy: 'crop_center',
+    formato: { ...FORMATO_PADRAO },   // proporção do preview + export (SET_FORMATO)
     created_at: null,
     updated_at: null,
   };
@@ -173,6 +209,8 @@ export function normalizeLoadedState(raw) {
     })) : [];
   s.transitions = Array.isArray(raw.transitions) ? raw.transitions : [];
   s.volumes = { video: 1, audio_extra: 1, ...(raw.volumes || {}) };
+  // projeto salvo antes do formato existir → padrão 9:16 (sem migração)
+  s.formato = validarFormato(raw.formato) || { ...FORMATO_PADRAO };
   s.extra_overlay_lanes = Number.isInteger(raw.extra_overlay_lanes) ? Math.max(0, Math.min(MAX_EXTRA_LANES, raw.extra_overlay_lanes)) : 0;
   s.extra_audio_lanes = Number.isInteger(raw.extra_audio_lanes) ? Math.max(0, Math.min(MAX_EXTRA_LANES, raw.extra_audio_lanes)) : 0;
   s.hidden_overlay_lanes = Array.isArray(raw.hidden_overlay_lanes) ? raw.hidden_overlay_lanes.filter(Number.isInteger) : [];

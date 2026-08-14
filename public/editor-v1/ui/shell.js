@@ -4,8 +4,8 @@
 // com cabecalhos de track. Store continua a unica fonte de verdade.
 
 import * as act from '../core/actions.js';
-import { totalDuration, canExport, timelineSegments, captionAudioPlan, mainTrackItems, compoundTemAudio, propriedadeDaCena, segmentAt, mediaUrlFor, fitDaCena } from '../core/selectors.js';
-import { TEXT_FONTS, TEXT_SIZES, MAX_AUDIO_LANE } from '../core/schema.js';
+import { totalDuration, canExport, timelineSegments, captionAudioPlan, mainTrackItems, compoundTemAudio, propriedadeDaCena, segmentAt, mediaUrlFor, fitDaCena, formatoDoProjeto } from '../core/selectors.js';
+import { TEXT_FONTS, TEXT_SIZES, MAX_AUDIO_LANE, FORMATOS } from '../core/schema.js';
 import { ANIMACOES } from '../core/text-anim.js';
 import { agruparFrases, normalizarIdioma, podeMudarCaixa } from '../core/idioma.js';
 import { arquivoParaTimeline } from '../core/caption-sync.js';
@@ -233,6 +233,19 @@ export function mountEditor(root, store, opts = {}) {
       ? state.audio_clips.length + ' áudio(s) na timeline'
       : 'Nenhum áudio adicional';
     $('#beAspect').value = state.aspect_strategy;
+    // PROPORÇÃO DO PROJETO (user 14/08): o palco segue o formato escolhido —
+    // e o export usa as MESMAS dimensões (formatoDoProjeto é o ponto único).
+    const fp = formatoDoProjeto(state);
+    const arStr = fp.ar.toFixed(5);
+    const stageEl = $('#beStage');
+    if (stageEl.style.getPropertyValue('--be-arn') !== arStr) {
+      stageEl.style.setProperty('--be-arn', arStr);
+    }
+    const fmtDef = FORMATOS.find(x => x.id === fp.id);
+    $('#beFormatoBtn').textContent = (fp.ar > 1.02 ? '▭ ' : fp.ar < 0.98 ? '▯ ' : '□ ')
+      + (fp.id === 'original' || fp.id === 'custom' ? (fmtDef?.nome || fp.id) : fp.id);
+    $('#beProjSaida').textContent = `Saída: ${fp.w}×${fp.h} `
+      + (fp.ar > 1.02 ? 'horizontal' : fp.ar < 0.98 ? 'vertical' : 'quadrado');
     // WYSIWYG do formato: letterbox = video inteiro com barras (contain).
     // aplica nos DOIS elementos do double-buffer.
     const fit = state.aspect_strategy === 'letterbox' ? 'contain' : 'cover';
@@ -1214,6 +1227,57 @@ export function mountEditor(root, store, opts = {}) {
 
   // ── transporte ──
   $('#bePlayBtn').addEventListener('click', () => player.toggle());
+
+  // ── PROPORÇÃO DO PROJETO (menu estilo CapCut sob o preview, user 14/08) ───
+  // Ícone de cada item = retângulo na proporção real (largura fixa, altura
+  // proporcional) — bate o olho e reconhece o formato, como no CapCut.
+  {
+    const btn = $('#beFormatoBtn'), menu = $('#beFormatoMenu');
+    const icone = (ar) => {
+      const w = ar >= 1 ? 18 : Math.max(7, Math.round(14 * ar));
+      const h = ar >= 1 ? Math.max(7, Math.round(18 / ar)) : 14;
+      return `<span class="be-formato-ico"><i style="width:${w}px;height:${h}px"></i></span>`;
+    };
+    const render = () => {
+      const st = store.getState();
+      const atual = st.formato?.id || '9:16';
+      menu.innerHTML = FORMATOS.map(f => {
+        const dims = f.id === 'original' || f.id === 'custom'
+          ? (f.id === atual ? `${formatoDoProjeto(st).w}×${formatoDoProjeto(st).h}` : '')
+          : `${f.w}×${f.h}`;
+        const ar = f.w ? f.w / f.h : (f.id === atual ? formatoDoProjeto(st).ar : 1);
+        return `<button type="button" class="be-formato-item${f.id === atual ? ' active' : ''}" data-fmt="${f.id}">
+          ${icone(ar)}<span>${f.nome}</span><span class="be-formato-dims">${dims}</span>
+        </button>`;
+      }).join('');
+    };
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const aberto = menu.style.display !== 'none';
+      if (aberto) { menu.style.display = 'none'; return; }
+      render(); menu.style.display = 'block';
+    });
+    document.addEventListener('click', (e) => {
+      if (menu.style.display !== 'none' && !menu.contains(e.target)) menu.style.display = 'none';
+    });
+    menu.addEventListener('click', (e) => {
+      const it = e.target.closest('[data-fmt]');
+      if (!it) return;
+      const id = it.dataset.fmt;
+      if (id === 'custom') {
+        const resp = prompt('Tamanho personalizado (largura×altura em pixels):', '1920x1080');
+        if (resp == null) return;
+        const m = /^\s*(\d{3,4})\s*[x×:]\s*(\d{3,4})\s*$/.exec(resp);
+        if (!m) { toast('Formato inválido — use largura×altura, ex.: 1920x1080.', true); return; }
+        store.dispatch(act.setFormato({ id: 'custom', w: +m[1], h: +m[2] }));
+      } else {
+        store.dispatch(act.setFormato({ id }));
+      }
+      menu.style.display = 'none';
+      const fp = formatoDoProjeto(store.getState());
+      toast(`Formato do projeto: ${fp.w}×${fp.h}`);
+    });
+  }
   $('#beProjectName').addEventListener('change', (e) => store.dispatch(act.renameProject(e.target.value)));
   // ← voltar pra tela inicial (projetos): garante o salvamento antes de sair
   $('#beBackHome')?.addEventListener('click', () => {
@@ -2051,6 +2115,13 @@ export function mountEditor(root, store, opts = {}) {
     } catch { /* fallback = link visível "⬇ Baixar vídeo" */ }
   }
   // 1) clicar em Exportar abre as OPÇÕES (nome/resolução/formato) — CapCut
+  // Dimensões da EXPORTAÇÃO a partir do formato do projeto. 720p mantém a
+  // proporção (fator 2/3 do tier 1080); tudo par, h264 yuv420p exige.
+  function dimsDoExport(fp, res) {
+    const fator = res === 720 ? 2 / 3 : 1;
+    const par = (n) => Math.max(128, Math.round(n * fator / 2) * 2);
+    return { w: par(fp.w), h: par(fp.h) };
+  }
   $('#beExportBtn').addEventListener('click', () => {
     const st = store.getState();
     if (!canExport(st)) { toast('Adicione um vídeo com pelo menos 0,5s pra exportar.', true); return; }
@@ -2061,13 +2132,18 @@ export function mountEditor(root, store, opts = {}) {
     }
     const dur = totalDuration(st);
     $('#beExportEst').textContent = `Duração: ${Math.floor(dur / 60)}m ${Math.round(dur % 60)}s`;
+    // resoluções REAIS deste projeto (o formato manda; 720p = mesma proporção)
+    const fp = formatoDoProjeto(st);
+    const d720 = dimsDoExport(fp, 720);
+    $('#beExportRes option[value="1080"]').textContent = `1080p (Full HD) · ${fp.w}×${fp.h}`;
+    $('#beExportRes option[value="720"]').textContent = `720p · ${d720.w}×${d720.h}`;
     showExportStep('beExportOptions');
     exportModal.classList.add('open');
   });
   // 2) confirmar dispara a exportação com as opções + baixa ao terminar
   $('#beExportStart').addEventListener('click', () => {
     const res = parseInt($('#beExportRes').value, 10) || 1080;
-    const dims = res === 720 ? { w: 720, h: 1280 } : { w: 1080, h: 1920 };
+    const dims = dimsDoExport(formatoDoProjeto(store.getState()), res);
     const fname = (($('#beExportName').value || 'meu-video').trim() || 'meu-video')
       .replace(/[\/\\:*?"<>|]+/g, '_').slice(0, 80);
     showExportStep('beExportProgress');
@@ -2680,6 +2756,12 @@ function buildTemplate() {
     <div class="be-transport">
       <button id="bePlayBtn" class="be-play-btn">▶</button>
       <span id="beTimeLabel" class="be-time">0:00 / 0:00</span>
+      <!-- PROPORÇÃO do projeto (user 14/08): ajusta o preview E o arquivo
+           exportado — vídeo horizontal/"longo" deixa de ser gambiarra em 9:16 -->
+      <div class="be-formato-wrap">
+        <button id="beFormatoBtn" class="be-formato-btn" title="Proporção do vídeo (muda o preview e a exportação)">▯ 9:16</button>
+        <div id="beFormatoMenu" class="be-formato-menu" style="display:none"></div>
+      </div>
     </div>
   </div>
 
@@ -2704,11 +2786,11 @@ function buildTemplate() {
       <div class="be-side-title">Projeto</div>
       <label class="be-field">Formato de saída
         <select id="beAspect" class="be-select">
-          <option value="crop_center">Preencher 9:16 (corta bordas)</option>
+          <option value="crop_center">Preencher o quadro (corta bordas)</option>
           <option value="letterbox">Caber inteiro (barras)</option>
         </select>
       </label>
-      <div class="be-dim">Saída: 1080×1920 vertical</div>
+      <div class="be-dim" id="beProjSaida">Saída: 1080×1920 vertical</div>
       <div class="be-sep"></div>
       <div class="be-side-title">Áudio</div>
       <button id="beAddAudio2" class="be-tool-btn">🎵 Adicionar música/narração</button>

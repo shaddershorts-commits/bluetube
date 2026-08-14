@@ -60,7 +60,7 @@ export function createOverlay(container, store, player, onEditRequest) {
       // ── o texto NAO pode passar da borda do quadro ──
       // Mesma funcao que o exportPayload usa: as linhas e a posicao presa no
       // quadro sao IDENTICAS na tela e no arquivo (nao ha dois algoritmos).
-      const lay = layoutDoTexto(txt, TEXT_SIZE_PCT[txt.size]);
+      const lay = layoutDoTexto(txt, TEXT_SIZE_PCT[txt.size], box.width || 1080, box.height || 1920);
       const fsPx = lay.fontePct * box.width;
       el.textContent = lay.linhas.join('\n');
       el.style.left = (lay.xPct * 100) + '%';

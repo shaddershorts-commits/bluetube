@@ -59,6 +59,7 @@ export const A = {
   SET_VOLUME: 'SET_VOLUME',
   SET_TRANSITION: 'SET_TRANSITION',
   SET_ASPECT: 'SET_ASPECT',
+  SET_FORMATO: 'SET_FORMATO',
   // compostos (CapCut Alt+G)
   TOGGLE_MULTI_SELECT: 'TOGGLE_MULTI_SELECT',
   SELECT_ALL: 'SELECT_ALL',
@@ -135,6 +136,7 @@ export const UNDOABLE = {
   [A.SET_VOLUME]: U,
   [A.SET_TRANSITION]: U,
   [A.SET_ASPECT]: U,
+  [A.SET_FORMATO]: U,
   [A.CREATE_COMPOUND]: U,
   [A.UNGROUP_COMPOUND]: U,
   [A.UPDATE_COMPOUND]: U,
@@ -217,6 +219,7 @@ export const setVolume = (track, value) => ({ type: A.SET_VOLUME, track, value }
 // ttype = id do catalogo (core/transitions.js) ou null/cut pra remover
 export const setTransition = (between, ttype, duration, intensity) => ({ type: A.SET_TRANSITION, between, ttype, duration, intensity });
 export const setAspect = (strategy) => ({ type: A.SET_ASPECT, strategy });
+export const setFormato = (formato) => ({ type: A.SET_FORMATO, formato });
 export const setProjectId = (id) => ({ type: A.SET_PROJECT_ID, id });
 export const toggleMultiSelect = (itemType, id) => ({ type: A.TOGGLE_MULTI_SELECT, itemType, id });
 export const selectAll = () => ({ type: A.SELECT_ALL });

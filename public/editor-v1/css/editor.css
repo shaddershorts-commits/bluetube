@@ -286,11 +286,16 @@ body {
   overflow: hidden;
   border: 1px solid var(--blue-border);
   display: flex; align-items: center; justify-content: center;
+  container-type: size;  /* cqw/cqh do palco medem O FRAME (formato dinâmico) */
 }
-/* palco: mantém as camadas (vídeo + overlay) juntas, no formato 9:16 do vídeo */
+/* palco: mantém as camadas (vídeo + overlay) juntas, na PROPORÇÃO DO PROJETO.
+   --be-arn (número, ex. 1.7778) vem do sync(); o min() de cqw/cqh encaixa o
+   palco inteiro no frame nos DOIS eixos — 9:16 encosta em altura, 16:9 em
+   largura. max-width sozinho quebrava o aspecto quando prendia (h fixa). */
 .be-stage {
   position: relative;
-  height: 100%; width: auto; aspect-ratio: 9 / 16; max-width: 100%;
+  width: min(100cqw, calc(100cqh * var(--be-arn, 0.5625)));
+  height: min(100cqh, calc(100cqw / var(--be-arn, 0.5625)));
 }
 .be-preview-frame video {
   position: absolute; inset: 0;   /* double-buffer: 2 vídeos empilhados */
@@ -439,7 +444,8 @@ body {
 .be-preview-frame:fullscreen::backdrop { background: #000; }
 .be-preview-frame:fullscreen .be-stage {
   position: relative; inset: auto;
-  height: 100%; width: auto; aspect-ratio: 9 / 16; max-width: 100%;
+  width: min(100cqw, calc(100cqh * var(--be-arn, 0.5625)));
+  height: min(100cqh, calc(100cqw / var(--be-arn, 0.5625)));
 }
 .be-preview-frame:fullscreen video { object-fit: cover; }
 .be-preview-frame:fullscreen .be-fs-bar {
@@ -454,7 +460,35 @@ body {
 .be-fs-progress { flex: 1; height: 6px; background: rgba(255,255,255,.25); border-radius: 3px; cursor: pointer; }
 .be-fs-fill, #beFsFill { height: 100%; width: 0; background: var(--neon); border-radius: 3px; }
 .be-fs-time { color: #fff; font-family: var(--mono); font-size: 13px; min-width: 96px; text-align: right; }
-.be-transport { display: flex; align-items: center; gap: 12px; }
+.be-transport { display: flex; align-items: center; gap: 12px; width: 100%; padding: 0 4px; }
+/* seletor de PROPORÇÃO sob o preview (estilo CapCut, user 14/08) */
+.be-formato-wrap { position: relative; margin-left: auto; }
+.be-formato-btn {
+  background: rgba(0,229,255,.06); border: 1px solid var(--blue-border);
+  color: var(--text-dim); font-size: 12px; padding: 5px 10px; border-radius: 8px;
+  cursor: pointer; display: flex; align-items: center; gap: 6px; white-space: nowrap;
+}
+.be-formato-btn:hover { border-color: var(--neon); color: var(--text); }
+.be-formato-menu {
+  position: absolute; bottom: calc(100% + 8px); right: 0; z-index: 60;
+  min-width: 190px; max-height: 320px; overflow-y: auto;
+  background: #071224; border: 1px solid var(--blue-border); border-radius: 10px;
+  box-shadow: 0 10px 30px rgba(0,0,0,.55); padding: 6px;
+}
+.be-formato-item {
+  display: flex; align-items: center; gap: 10px; width: 100%;
+  background: none; border: 0; color: var(--text-dim); font-size: 12.5px;
+  padding: 7px 10px; border-radius: 7px; cursor: pointer; text-align: left;
+}
+.be-formato-item:hover { background: rgba(0,229,255,.08); color: var(--text); }
+.be-formato-item.active { color: var(--neon); }
+.be-formato-ico {
+  width: 22px; height: 16px; display: inline-flex; align-items: center; justify-content: center;
+}
+.be-formato-ico i {
+  display: block; border: 1.5px solid currentColor; border-radius: 2px;
+}
+.be-formato-dims { margin-left: auto; font-size: 11px; opacity: .6; }
 .be-play-btn {
   width: 40px; height: 40px; border-radius: 50%;
   background: linear-gradient(135deg, #1a6bff, var(--neon));
