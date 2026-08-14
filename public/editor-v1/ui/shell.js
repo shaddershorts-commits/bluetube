@@ -170,9 +170,10 @@ export function mountEditor(root, store, opts = {}) {
   const frameUI = createFrameUI($('#beStage'), store, player);
   // efeito da transicao rodando no player (progresso vem do relogio do player)
   const fxTransicao = createTransitionFx($('#beStage'), store, player);
-  // AUTORREPARADOR (user 15/08): watchdog do relógio + sentinela do estado +
-  // recuperação de sessão em chuva de erros — toda ação dele é visível (🩹)
-  const guardiao = criarGuardiao({ store, player, toast });
+  // AUTORREPARADOR (user 15/08, v2): watchdog do relógio + sentinela
+  // CIRÚRGICA do estado — 100% em background (pedido do user: nada na tela),
+  // nunca remove conteúdo, tudo logado com [guardião] no console
+  const guardiao = criarGuardiao({ store, player });
   fxTransicao.registrarCatalogo(TRANSICOES);
   const exporter = createExporter(store);
   const autosave = createAutosave(store, (s, detail) => {
