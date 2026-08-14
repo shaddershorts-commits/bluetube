@@ -37,6 +37,27 @@ module.exports = async function handler(req, res) {
     }
   }
 
+  // ── GET gifs: proxy de busca no GIPHY. PÚBLICO (não precisa de login) —
+  // vem ANTES da trava de token porque é só um proxy de busca, sem dado do user.
+  if (req.method === 'GET' && action === 'gifs') {
+    const q = (req.query?.q || '').trim();
+    const GIPHY_KEY = process.env.GIPHY_API_KEY || 'DIBKjyVEsRV2iQVo0lhBXVPap71dVsnD';
+    try {
+      const rota = q ? 'search' : 'trending';
+      const url = `https://api.giphy.com/v1/gifs/${rota}?api_key=${GIPHY_KEY}&limit=24&rating=pg-13${q ? '&q=' + encodeURIComponent(q) : ''}`;
+      const r = await fetch(url);
+      const d = r.ok ? await r.json() : { data: [] };
+      const gifs = (d.data || []).map((g) => ({
+        id: g.id,
+        url: g.images?.fixed_height?.url || g.images?.original?.url,
+        preview: g.images?.fixed_height_small?.url || g.images?.preview_gif?.url || g.images?.fixed_height?.url,
+        w: parseInt(g.images?.fixed_height?.width) || 0,
+        h: parseInt(g.images?.fixed_height?.height) || 0,
+      })).filter((g) => g.url);
+      return res.status(200).json({ gifs, giphy_status: d.meta?.status || (r.ok ? 200 : r.status) });
+    } catch (e) { return res.status(200).json({ gifs: [], erro: e.message }); }
+  }
+
   // ── Auth check — todas as outras actions requerem token
   const token = req.method === 'GET' ? req.query.token : req.body?.token;
   if (!token) return res.status(401).json({ error: 'Login necessário' });
@@ -372,26 +393,6 @@ module.exports = async function handler(req, res) {
       const minha = userId ? (votos.find(v => v.user_id === userId)?.opcao ?? null) : null;
       return res.status(200).json({ contagem, minha });
     } catch (e) { return res.status(200).json({ contagem: [0, 0], minha: null }); }
-  }
-
-  // ── GET gifs: proxy de busca no GIPHY (chave fica no servidor) ───────────
-  if (req.method === 'GET' && action === 'gifs') {
-    const q = (req.query?.q || '').trim();
-    const GIPHY_KEY = process.env.GIPHY_API_KEY || 'DIBKjyVEsRV2iQVo0lhBXVPap71dVsnD';
-    try {
-      const rota = q ? 'search' : 'trending';
-      const url = `https://api.giphy.com/v1/gifs/${rota}?api_key=${GIPHY_KEY}&limit=24&rating=pg-13${q ? '&q=' + encodeURIComponent(q) : ''}`;
-      const r = await fetch(url);
-      const d = r.ok ? await r.json() : { data: [] };
-      const gifs = (d.data || []).map((g) => ({
-        id: g.id,
-        url: g.images?.fixed_height?.url || g.images?.original?.url,
-        preview: g.images?.fixed_height_small?.url || g.images?.preview_gif?.url || g.images?.fixed_height?.url,
-        w: parseInt(g.images?.fixed_height?.width) || 0,
-        h: parseInt(g.images?.fixed_height?.height) || 0,
-      })).filter((g) => g.url);
-      return res.status(200).json({ gifs });
-    } catch (e) { return res.status(200).json({ gifs: [] }); }
   }
 
   // ── POST reagir: toggle/update reação ────────────────────────────────────
