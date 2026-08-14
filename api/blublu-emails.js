@@ -13,7 +13,7 @@
 // Espelha as proteções do email-campanha.js: throttle 150ms (10/s do Resend),
 // log em email_campanhas, unsubscribe em todos.
 
-const { barrarSeDesligado } = require('./_helpers/emailGate.js');
+const { barrarSeDesligado, abrirCota } = require('./_helpers/emailGate.js');
 
 const SITE = 'https://www.bluetubeviral.com';
 
@@ -133,6 +133,11 @@ module.exports = async function handler(req, res) {
   // Corte de marketing (10/08/2026): cota do Resend caiu pra 200/dia.
   if (barrarSeDesligado(res, 'blublu-emails')) return;
 
+  // Teto diário COMPARTILHADO entre todos os jobs de marketing — sem isso
+  // cada um respeitaria "30 por dia" e o total viraria 8 × 30, estourando a
+  // cota do Resend e derrubando o código de cadastro. Ver _helpers/emailGate.js.
+  const cota = abrirCota('blublu-emails');
+
   const SU = process.env.SUPABASE_URL;
   const SK = process.env.SUPABASE_SERVICE_KEY;
   const ADMIN_SECRET = process.env.ADMIN_SECRET;
@@ -193,6 +198,9 @@ module.exports = async function handler(req, res) {
 
       const resultados = { enviados: 0, falhas: 0 };
       for (const s of subs) {
+        // acabou a cota do dia: para AQUI, no envio exato (o teto não depende
+        // de o job ter cortado a lista direito lá em cima).
+        if (!(await cota.pegarUm())) break;
         try {
           const e = render('master', s.email); // 2026-08-02: Full ganhou o Blublu — copy única de USO pra todos
           const r = await fetch('https://api.resend.com/emails', {

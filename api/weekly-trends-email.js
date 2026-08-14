@@ -1,7 +1,7 @@
 // api/weekly-trends-email.js — Cron: 0 8 * * 1 (Monday 8am)
 // Generates weekly trends via AI and emails all active users
 
-const { barrarSeDesligado } = require('./_helpers/emailGate.js');
+const { barrarSeDesligado, abrirCota } = require('./_helpers/emailGate.js');
 
 const { signToken } = require('./_helpers/unsub-token');
 
@@ -11,6 +11,11 @@ module.exports = async function handler(req, res) {
 
   // Corte de marketing (10/08/2026): cota do Resend caiu pra 200/dia.
   if (barrarSeDesligado(res, 'weekly-trends-email')) return;
+
+  // Teto diário COMPARTILHADO entre todos os jobs de marketing — sem isso
+  // cada um respeitaria "30 por dia" e o total viraria 8 × 30, estourando a
+  // cota do Resend e derrubando o código de cadastro. Ver _helpers/emailGate.js.
+  const cota = abrirCota('weekly-trends-email');
 
   const SU = process.env.SUPABASE_URL;
   const SK = process.env.SUPABASE_SERVICE_KEY;
@@ -118,6 +123,9 @@ Responda APENAS com JSON array: [{"nicho":"...","motivo":"...","tipo_conteudo":"
       if (!u.email) continue;
       const unsubToken = signToken(u.email);
 
+      // acabou a cota do dia: para AQUI, no envio exato (o teto não depende
+      // de o job ter cortado a lista direito lá em cima).
+      if (!(await cota.pegarUm())) break;
       try {
         await fetch('https://api.resend.com/emails', {
           method: 'POST',

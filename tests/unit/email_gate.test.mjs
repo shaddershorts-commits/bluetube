@@ -121,3 +121,111 @@ test('o helper explica como religar (senão vira mistério em duas semanas)', ()
   assert.match(fonte, /EMAILS_MARKETING=on/);
   assert.match(fonte, /deploy novo/, 'env nova só vale em deploy novo — já nos mordeu antes');
 });
+
+// ═══ TETO DIÁRIO (14/08/2026) ════════════════════════════════════════════════
+//
+// O dono mandou religar o marketing com no máximo ~30 envios/dia, porque a cota
+// do Resend precisa sobrar pro código de cadastro. O interruptor sozinho não
+// resolve isso: ele é binário, e os 8 jobs não se conhecem — cada um
+// respeitando "30 por dia" viraria 8 × 30 = 240 e derrubaria o OTP.
+//
+// Por isso o teto é UM SÓ, contado no banco. Estes testes travam o que não pode
+// regredir: o teto ser compartilhado, a falha ser FECHADA, e todo laço de envio
+// ter a trava dentro dele (e não só um corte de lista lá em cima, que qualquer
+// refatoração futura desfaz sem perceber).
+
+const GATE_FONTE = readFileSync(new URL('../../api/_helpers/emailGate.js', import.meta.url), 'utf8');
+
+test('o teto padrão é 30/dia, como o dono pediu', () => {
+  delete process.env.EMAILS_MARKETING_LIMITE_DIA;
+  const gate = require('../../api/_helpers/emailGate.js');
+  assert.equal(gate.limiteDoDia(), 30);
+});
+
+test('o teto é ajustável por env sem mexer em código', () => {
+  process.env.EMAILS_MARKETING_LIMITE_DIA = '80';
+  const gate = require('../../api/_helpers/emailGate.js');
+  assert.equal(gate.limiteDoDia(), 80);
+  delete process.env.EMAILS_MARKETING_LIMITE_DIA;
+});
+
+test('a reserva nunca passa do teto (senão sobra 0 pro marketing comum)', () => {
+  process.env.EMAILS_MARKETING_LIMITE_DIA = '10';
+  process.env.EMAILS_MARKETING_RESERVA_ALTA = '999';
+  const gate = require('../../api/_helpers/emailGate.js');
+  assert.equal(gate.reservaAlta(), 10);
+  delete process.env.EMAILS_MARKETING_LIMITE_DIA;
+  delete process.env.EMAILS_MARKETING_RESERVA_ALTA;
+});
+
+test('sem banco a cota é ZERO — falha fechada, nunca aberta', async () => {
+  const su = process.env.SUPABASE_URL, sk = process.env.SUPABASE_SERVICE_KEY;
+  delete process.env.SUPABASE_URL;
+  delete process.env.SUPABASE_SERVICE_KEY;
+  const gate = require('../../api/_helpers/emailGate.js');
+  const r = await gate.reservarCota('teste', 5, 'normal');
+  assert.equal(r.concedido, 0, 'sem saber quanto já foi gasto, o certo é não mandar nada');
+  if (su) process.env.SUPABASE_URL = su;
+  if (sk) process.env.SUPABASE_SERVICE_KEY = sk;
+});
+
+test('a carteira desiste depois do primeiro "não" (não martela o banco)', async () => {
+  const su = process.env.SUPABASE_URL;
+  delete process.env.SUPABASE_URL;
+  const gate = require('../../api/_helpers/emailGate.js');
+  const cota = gate.abrirCota('teste');
+  assert.equal(await cota.pegarUm(), false);
+  assert.equal(await cota.pegarUm(), false);
+  assert.equal(cota.esgotou(), true);
+  assert.equal(cota.gastos(), 0);
+  if (su) process.env.SUPABASE_URL = su;
+});
+
+test('o incremento é compare-and-swap (dois crons no mesmo minuto não se atropelam)', () => {
+  assert.match(GATE_FONTE, /enviados=eq\.\$\{usado\}/,
+    'sem filtrar pelo valor lido, dois jobs leem 0, gravam 1, e o teto vira decoração');
+  assert.match(GATE_FONTE, /return=representation/,
+    'preciso ver se o UPDATE casou alguma linha pra saber se perdi a corrida');
+});
+
+test('a linha do dia é criada sem ZERAR quem já gastou', () => {
+  assert.match(GATE_FONTE, /ignore-duplicates/,
+    'merge-duplicates faria INSERT…ON CONFLICT e sobrescreveria o contador com 0');
+  assert.ok(!/resolution=merge-duplicates/.test(GATE_FONTE),
+    'merge-duplicates no orçamento zera o contador de quem chegou primeiro');
+});
+
+test('TODO job de marketing tem a trava DENTRO do laço de envio', () => {
+  for (const job of JOBS_MARKETING) {
+    const fonte = readFileSync(new URL(`../../api/${job}.js`, import.meta.url), 'utf8');
+    assert.match(fonte, /abrirCota\(/, `${job}: não abre carteira — manda sem teto`);
+    assert.match(fonte, /await cota\.pegarUm\(\)/,
+      `${job}: sem a trava no laço, o teto depende do job ter cortado a lista certo`);
+  }
+});
+
+test('a trava vem ANTES do envio, não depois', () => {
+  for (const job of JOBS_MARKETING) {
+    const fonte = readFileSync(new URL(`../../api/${job}.js`, import.meta.url), 'utf8');
+    const iTrava = fonte.indexOf('await cota.pegarUm()');
+    const iEnvio = fonte.lastIndexOf('api.resend.com/emails');
+    assert.ok(iTrava > 0 && iTrava < iEnvio,
+      `${job}: a trava está depois do envio — o email já saiu quando a cota é conferida`);
+  }
+});
+
+test('nenhum transacional passou a depender da cota', () => {
+  for (const job of TRANSACIONAIS) {
+    let fonte;
+    try { fonte = readFileSync(new URL(`../../api/${job}.js`, import.meta.url), 'utf8'); } catch (e) { continue; }
+    assert.ok(!/abrirCota|cota\.pegarUm/.test(fonte),
+      `${job} é transacional: a pessoa está esperando, não pode morrer por cota de marketing`);
+  }
+});
+
+test('existe o SQL da tabela, com RLS ligada', () => {
+  const sql = readFileSync(new URL('../../sql/email_orcamento.sql', import.meta.url), 'utf8');
+  assert.match(sql, /create table if not exists email_orcamento/i);
+  assert.match(sql, /dia\s+date\s+primary key/i, 'a PK em dia é o que garante uma linha por dia');
+  assert.match(sql, /enable row level security/i, 'igual ao resto do banco depois do lockdown');
+});

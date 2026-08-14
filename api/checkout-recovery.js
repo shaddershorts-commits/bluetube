@@ -24,7 +24,7 @@
 //   - Unsub via _helpers/unsub-token.js scope=all
 //   - Logs em payment_logs (igual payment-monitor.js)
 
-const { barrarSeDesligado } = require('./_helpers/emailGate.js');
+const { barrarSeDesligado, abrirCota } = require('./_helpers/emailGate.js');
 
 const { signToken } = require('./_helpers/unsub-token');
 
@@ -56,6 +56,8 @@ module.exports = async function handler(req, res) {
 
   // Corte de marketing (10/08/2026): cota do Resend caiu pra 200/dia.
   if (barrarSeDesligado(res, 'checkout-recovery')) return;
+  // O teto diário deste job é aberto dentro de sendBatch() — é lá que o envio
+  // acontece. Ver _helpers/emailGate.js.
 
   const SU = process.env.SUPABASE_URL;
   const SK = process.env.SUPABASE_SERVICE_KEY;
@@ -211,6 +213,12 @@ async function sweep(ctx, res) {
 // ═══════════════════════════════════════════════════════════════════════════
 async function sendBatch(ctx, res, bucket) {
   const { SU, h, RESEND_KEY, SITE_URL } = ctx;
+  // A carteira nasce AQUI, e não no handler, porque o envio mora nesta função:
+  // declarada lá em cima ela nem chegaria neste escopo.
+  // Prioridade 'alta': recuperação de carrinho é receita e tem volume baixo
+  // (3 emails no máximo por abandono), então pode gastar a reserva que o resto
+  // do marketing não encosta.
+  const cota = abrirCota('checkout-recovery', 'alta');
   const inicio = Date.now();
   const config = BUCKETS[bucket];
   if (!config) return res.status(400).json({ error: 'bucket_invalido' });
@@ -318,6 +326,9 @@ async function sendBatch(ctx, res, bucket) {
     const html = buildTemplate(bucket, row, SITE_URL);
     const subject = SUBJECTS[bucket];
 
+    // acabou a cota do dia: para AQUI, no envio exato (o teto não depende
+    // de o job ter cortado a lista direito lá em cima).
+    if (!(await cota.pegarUm())) break;
     try {
       const sr = await fetch('https://api.resend.com/emails', {
         method: 'POST',
