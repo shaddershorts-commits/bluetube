@@ -56,6 +56,13 @@ const SOBRENOME_COMUM = new Set(['styles', 'grande', 'brown', 'white', 'black', 
 // Jordan, Gabriel acha qualquer um); só valem dentro do nome completo.
 const PRIMEIRO_NOME_COMUM = new Set(['michael', 'gabriel', 'rafael', 'rafaela', 'ricardo', 'fernando', 'fernanda', 'patricia', 'rodrigo', 'roberto', 'eduardo', 'leonardo', 'gustavo', 'matheus', 'mateus', 'thiago', 'felipe', 'marcelo', 'marcela', 'mariana', 'juliana', 'camila', 'amanda', 'larissa', 'vinicius', 'guilherme', 'leandro', 'anderson', 'wesley', 'henrique', 'augusto', 'sabrina', 'priscila', 'bianca', 'carolina', 'beatriz', 'leticia', 'natalia', 'william', 'richard', 'robert', 'joseph', 'matthew', 'anthony', 'charles', 'daniel', 'andrew', 'joshua', 'jessica', 'jennifer', 'ashley', 'brandon', 'samantha', 'isabella', 'gabriela', 'antonio', 'roberta']);
 
+// SIGLA de 3+ letras que o usuario digita minusculo ("gta", "nba"). Fora
+// daqui, sigla so passa se ele escreveu em CAIXA ALTA. Nada de 2 letras: o
+// match e ilike.*termo* e "ia" pescaria "familia". Sigla que e pedaco de
+// palavra comum fica FORA de proposito ("ted" casaria wanted/started;
+// "cia" casaria policia/farmacia) — precisao primeiro, sempre.
+const SIGLA_CONHECIDA = new Set(['gta', 'nba', 'ufc', 'mma', 'nfl', 'mlb', 'nhl', 'wwe', 'rpg', 'fps', 'diy', 'lol', 'wow', 'pvp', 'pve', 'bbb', 'mtv', 'snl', 'ufo', 'fbi', 'dna', 'rdr']);
+
 module.exports = async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
@@ -84,6 +91,9 @@ module.exports = async function handler(req, res) {
   // ── AUTH: assinante vivo (Full ou Master) ──────────────────────────────────
   const token = req.body?.token;
   let userId = null;
+  // o plano vinha do banco e era descartado — sem ele o Blublu recomendava
+  // ferramenta Master pra assinante Full, que bate em 403 na cara do cara.
+  let userPlan = null;
   if (token) {
     try {
       const ur = await fetch(`${SU}/auth/v1/user`, { headers: { apikey: AK, Authorization: 'Bearer ' + token } });
@@ -94,7 +104,7 @@ module.exports = async function handler(req, res) {
           const sub = (await pr.json())[0];
           // 2026-08-02: Full ganhou o chat do Blublu (era só Master)
           const vivo = sub && (sub.plan === 'master' || sub.plan === 'full') && (sub.is_manual || !sub.plan_expires_at || new Date(sub.plan_expires_at) > new Date());
-          if (vivo) userId = u.id;
+          if (vivo) { userId = u.id; userPlan = sub.plan; }
         }
       }
     } catch (e) {}
@@ -226,7 +236,23 @@ module.exports = async function handler(req, res) {
     // PRECISÃO > volume (regra do user: na dúvida, não manda): termo solto
     // curto demais (tipo "ney") pesca lixo — só passa termo com 4+ letras,
     // com dígito (CR7) ou composto ("michael jackson")
-    let termosOk = termos.map(clean).filter((t) => t.length >= 4 || /\d/.test(t) || t.includes(' '));
+    // SIGLA CURTA (GTA, NBA, UFC): o piso de 4 letras existe pra barrar
+    // fragmento ambiguo ("ney" pescando qualquer Neymar), mas ele derrubava
+    // junto a SIGLA — que e o oposto de ambigua. Medido no relatorio de 7d:
+    // "GTA" e "GTA IV" cairam na demanda NAO atendida com o acervo cheio de
+    // games, porque sem termo valido a busca por titulo nem chega a rodar
+    // (o `if (tema && termosOk.length)` la embaixo pula tudo). Passa quando o
+    // usuario escreveu em CAIXA ALTA ou quando e sigla conhecida. "ney" segue
+    // barrado: minusculo e fora da lista.
+    const soCaps = (() => {
+      const letras = String(message).replace(/[^\p{L}]/gu, '');
+      // mensagem GRITADA nao serve de sinal: ali tudo vira "sigla"
+      return letras.length >= 4 && letras === letras.toUpperCase();
+    })();
+    const caixaAlta = soCaps ? new Set()
+      : new Set((String(message).match(/\b[A-Z][A-Z0-9]{2,5}\b/g) || []).map((x) => norm(x)));
+    const ehSigla = (t) => { const x = norm(t); return x.length >= 3 && (caixaAlta.has(x) || SIGLA_CONHECIDA.has(x)); };
+    let termosOk = termos.map(clean).filter((t) => t.length >= 4 || /\d/.test(t) || t.includes(' ') || ehSigla(t));
     // NOME PRÓPRIO composto: o PRIMEIRO nome é ambíguo ("harry" acha Harry
     // Potter, "billie" acha Billie Jean) — proibido solto. MAS o SOBRENOME
     // distintivo (Haaland, Yamal) é o identificador real e a forma que os
@@ -647,13 +673,16 @@ No chat sua fala é CURTA e VIVA. Regra de ouro: NUNCA soe igual a duas resposta
 REGRA MÃE: se reler tua resposta e ela tiver a MESMA cara da anterior (abertura, estrutura, fecho), você falhou. Seja imprevisível DENTRO do personagem.
 
 ─── A CASA (você conhece TUDO do BlueTube e vende com orgulho) ───
-O usuário que fala com você é assinante (Full ou Master) — ele TEM acesso a tudo isso. Seja PROATIVO: depois de entregar vídeos, quando encaixar natural, solte 1 sugestão curta de próximo passo com a ferramenta certa (sem virar vendedor chato — uma por resposta, no máximo):
-• BaixaBlue (/baixaBlue) — baixa qualquer vídeo em ALTA qualidade. E pasme: sem anúncio, sem "aguarde 30 segundos", sem os 47 pop-ups dos sites por aí. É pra cá que você manda quem quer baixar. SEMPRE.
+O usuário que fala com você é assinante ${userPlan === 'master' ? 'MASTER — tem acesso a TUDO da casa, sem exceção' : 'FULL — tem quase tudo; o que for MARCADO (Master) ele NÃO acessa, então NUNCA mande ele pra lá: se a solução for uma dessas, diga que é do Master e ofereça o caminho Full equivalente'}. Seja PROATIVO: depois de entregar vídeos, quando encaixar natural, solte 1 sugestão curta de próximo passo com a ferramenta certa (sem virar vendedor chato — uma por resposta, no máximo):
+• BaixaBlue (/baixaBlue) — baixa qualquer vídeo em ALTA qualidade, e no mesmo lugar baixa o PERFIL INTEIRO (YouTube/TikTok/Instagram) de um criador de uma vez. E pasme: sem anúncio, sem "aguarde 30 segundos", sem os 47 pop-ups dos sites por aí. É pra cá que você manda quem quer baixar. SEMPRE.
 • BlueLens (/blueLens) — acha as cópias/reposts de um vídeo pela IMAGEM. Perfeito pra "quem mais postou isso?" e pra estudar variações que bombaram.
 • BlueVoice (/blueVoice) — narração nova com vozes de IA. Pra quem quer refazer o áudio/narrar o próprio corte.
 • BlueTendências (/bluetendencias) — sua outra casa: você disseca o vídeo em 5 atos lá (o card já tem o botão 🔬 Analisar).
 • Roteiros (botão 📝 Roteiro no card) — roteiro pronto a partir do vídeo, na hora.
-• Comunidade (/comunidade) — treinamentos oficiais exclusivos + troca entre criadores.
+• BlueScore (/blueScore) — análise do canal dele feita a fundo, com laudo. Pra quem pergunta "por que meu canal não cresce?" — é ali que responde, não no chute.
+• BlueClean (/blueClean) — (Master) tira marca d'água e overlays de cima do vídeo, deixando a imagem limpa.
+• Comunidade (/comunidade) — treinamentos oficiais exclusivos + troca entre criadores, salas de voz ao vivo e chat.
+NÃO EXISTE AINDA (jamais prometa, jamais mande procurar): editor de vídeo próprio e geração de vídeo por IA NÃO estão no ar — a página do BlueEditor é só lista de espera. Se perguntarem, seja reto: "ainda não temos, tá sendo construído" e resolva com o que EXISTE. Mandar assinante procurar tela que não existe é o pior erro da casa.
 REGRA DE OURO: JAMAIS recomende ferramenta de FORA (yt-dlp, snaptik, savefrom, sites de download, apps externos — NENHUM). Tudo se resolve dentro do BlueTube. Se realmente não existir ferramenta da casa pra algo, diga que ainda não fazemos — sem indicar concorrente. Piada ácida sobre os gambiarras de fora é bem-vinda.
 PLATAFORMA: YouTube Shorts é a prioridade da casa nas entregas; TikTok só protagoniza se o usuário pedir.
 CONTINUAÇÃO: quando o usuário complementar um pedido anterior ("que seja sobre X", "só do youtube"), monte a busca juntando com o contexto da conversa — não trate como papo.`;
