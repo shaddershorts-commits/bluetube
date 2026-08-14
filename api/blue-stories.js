@@ -374,6 +374,26 @@ module.exports = async function handler(req, res) {
     } catch (e) { return res.status(200).json({ contagem: [0, 0], minha: null }); }
   }
 
+  // ── GET gifs: proxy de busca no GIPHY (chave fica no servidor) ───────────
+  if (req.method === 'GET' && action === 'gifs') {
+    const q = (req.query?.q || '').trim();
+    const GIPHY_KEY = process.env.GIPHY_API_KEY || 'DIBKjyVEsRV2iQVo0lhBXVPap71dVsnD';
+    try {
+      const rota = q ? 'search' : 'trending';
+      const url = `https://api.giphy.com/v1/gifs/${rota}?api_key=${GIPHY_KEY}&limit=24&rating=pg-13${q ? '&q=' + encodeURIComponent(q) : ''}`;
+      const r = await fetch(url);
+      const d = r.ok ? await r.json() : { data: [] };
+      const gifs = (d.data || []).map((g) => ({
+        id: g.id,
+        url: g.images?.fixed_height?.url || g.images?.original?.url,
+        preview: g.images?.fixed_height_small?.url || g.images?.preview_gif?.url || g.images?.fixed_height?.url,
+        w: parseInt(g.images?.fixed_height?.width) || 0,
+        h: parseInt(g.images?.fixed_height?.height) || 0,
+      })).filter((g) => g.url);
+      return res.status(200).json({ gifs });
+    } catch (e) { return res.status(200).json({ gifs: [] }); }
+  }
+
   // ── POST reagir: toggle/update reação ────────────────────────────────────
   if (req.method === 'POST' && action === 'reagir') {
     const { story_id, emoji } = req.body;
