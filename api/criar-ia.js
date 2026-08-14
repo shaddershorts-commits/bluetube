@@ -69,6 +69,7 @@ Não liste vozes no texto.`,
   escolher_legenda: `ETAPA ATUAL: o estilo da legenda. Os estilos estão NA
 TELA em cards. Diga CURTO que é a legenda nova que vai queimada no vídeo
 final, e mande escolher (tem a opção sem legenda também).`,
+  escolher_musica: `ETAPA ATUAL: música de fundo. A caixa de busca está NA TELA (biblioteca do BlueTube, entra baixinha atrás da narração). Se pedirem sugestão, sugira climas (épica, lofi, tensão, alegre). Dá pra seguir sem música também.`,
   montagem: `ETAPA ATUAL: montagem final rodando (narração sincronizada +
 legendas + render). Comente CURTO que você está montando; se aparecer aviso
 de atraso/estouro no histórico, explique honesto o que significa.`,
@@ -374,7 +375,9 @@ Gere o pacote de publicação EM ${idioma}, otimizado pra Shorts/Reels: {"titulo
     if (!durVideo) return res.status(400).json({ error: 'duração inválida' });
     const audio_clips = (Array.isArray(p.audio_clips) ? p.audio_clips.slice(0, 12) : [])
       .filter((a) => urlOk(a.url))
-      .map((a) => ({ kind: 'extra', url: a.url, start: n(a.start, 0, 0, 120), source_in: n(a.source_in, 0, 0, 600), source_out: n(a.source_out, 1, 0.05, 600), volume: 1, speed: 1 }));
+      // volume validado: a narração vai a 1; a música de fundo chega ~0.18 —
+      // teto 1 e piso 0.05 (user 14/08: música NÃO pode brigar com a fala)
+      .map((a) => ({ kind: 'extra', url: a.url, start: n(a.start, 0, 0, 120), source_in: n(a.source_in, 0, 0, 600), source_out: n(a.source_out, 1, 0.05, 600), volume: n(a.volume, 1, 0.05, 1), speed: 1 }));
     // ÂNCORA DE DURAÇÃO (medido 13/08): o mux de produção termina no fim do
     // ÁUDIO — narração curta CORTAVA o vídeo (15,7s viravam 12,9s). Um clipe
     // de silêncio colado no fim segura o arquivo até a duração real do vídeo.

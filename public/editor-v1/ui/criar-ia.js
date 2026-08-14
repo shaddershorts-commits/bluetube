@@ -17,6 +17,7 @@
 import { montarLinhaDoTempo } from '../core/sync-narracao.js';
 import { layoutDoTexto } from '../core/text-layout.js';
 import { TEXT_SIZE_PCT } from '../core/schema.js';
+import { api } from '../services/api.js';   // audio-search (música de fundo)
 
 const esc = (s) => String(s == null ? '' : s).replace(/[&<>"]/g, (c) =>
   ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
@@ -58,6 +59,7 @@ export function mountCriarIA({ onExit }) {
         roteiros: fluxo.roteiros, roteiro: fluxo.roteiro,
         chunks: fluxo.chunks, narracao: fluxo.narracao, voz: fluxo.voz,
         estiloLegenda: fluxo.estiloLegenda, renderUrl: fluxo.renderUrl, pacote: fluxo.pacote,
+        legendaPos: fluxo.legendaPos, legendaTam: fluxo.legendaTam, musica: fluxo.musica,
         historico: fluxo.historico.slice(-12), salvoEm: Date.now(),
       }));
     } catch {}
@@ -940,12 +942,110 @@ export function mountCriarIA({ onExit }) {
         salvarFluxo();
         bolha('user', 'Legenda: ' + e2.nome);
         fluxo.historico.push({ role: 'user', text: `[escolheu o estilo de legenda: ${e2.nome}]` });
-        etapaMontagem();
+        if (e2.id === 'sem') { etapaMusica(); return; }
+        escolherPosicaoLegenda();
       });
       grid.appendChild(c);
     }
     msgs.appendChild(grid);
     msgs.scrollTop = msgs.scrollHeight;
+  }
+
+  // posição e tamanho da legenda À ESCOLHA (user 14/08) — antes era fixo
+  // embaixo/médio e a pessoa não mandava em nada
+  function escolherPosicaoLegenda() {
+    bolha('assistant', 'E onde ela fica na tela?');
+    chips([
+      { rotulo: '⬆️ No topo', acao: () => { fluxo.legendaPos = 'topo'; depoisDaPos('no topo'); } },
+      { rotulo: '↔️ No meio', acao: () => { fluxo.legendaPos = 'meio'; depoisDaPos('no meio'); } },
+      { rotulo: '⬇️ Embaixo', acao: () => { fluxo.legendaPos = 'baixo'; depoisDaPos('embaixo'); } },
+    ]);
+    const depoisDaPos = (nome) => {
+      salvarFluxo();
+      bolha('user', 'Posição: ' + nome);
+      bolha('assistant', 'E o tamanho da letra?');
+      chips([
+        { rotulo: 'Pequena', acao: () => { fluxo.legendaTam = 'small'; fecha('pequena'); } },
+        { rotulo: 'Média', acao: () => { fluxo.legendaTam = 'medium'; fecha('média'); } },
+        { rotulo: 'Grande', acao: () => { fluxo.legendaTam = 'large'; fecha('grande'); } },
+      ]);
+    };
+    const fecha = (nome) => {
+      salvarFluxo();
+      bolha('user', 'Tamanho: ' + nome);
+      fluxo.historico.push({ role: 'user', text: `[legenda ${fluxo.legendaPos}, letra ${nome}]` });
+      etapaMusica();
+    };
+  }
+
+  // ── MÚSICA DE FUNDO (user 14/08): da biblioteca curada, volume BAIXO ─────
+  // (0.18 fixo — não pode brigar com a narração; o limiter do render segura picos)
+  const VOLUME_MUSICA = 0.18;
+  async function etapaMusica() {
+    fluxo.etapa = 'escolher_musica';
+    syncEtapa();
+    salvarFluxo();
+    bolha('assistant', '🎵 Quer uma música de fundo? Ela entra BAIXINHA, por trás da narração. Busca pelo clima (ex.: "épica", "lofi", "tensão") ou segue sem.');
+    const caixa = document.createElement('div');
+    caixa.className = 'be-ia-musica';
+    caixa.innerHTML = `
+      <div class="be-ia-musica-busca">
+        <input type="text" id="beIaMusQ" placeholder="🔎 Buscar música pelo clima…" maxlength="60"/>
+        <button type="button" id="beIaMusGo" class="be-ia-chip">Buscar</button>
+        <button type="button" id="beIaMusSem" class="be-ia-chip">🔇 Sem música</button>
+      </div>
+      <div id="beIaMusLista" class="be-ia-musica-lista"></div>`;
+    msgs.appendChild(caixa);
+    msgs.scrollTop = msgs.scrollHeight;
+    let tocando = null;
+    const buscar = async () => {
+      const lista = caixa.querySelector('#beIaMusLista');
+      lista.innerHTML = '<div class="be-ia-dim">buscando…</div>';
+      let r = null;
+      try { r = await api.audioSearch(caixa.querySelector('#beIaMusQ').value.trim(), 'music'); } catch {}
+      const results = (r?.results || []).slice(0, 12);
+      lista.innerHTML = '';
+      if (!results.length) {
+        lista.innerHTML = '<div class="be-ia-dim">Nada encontrado — tenta outro clima, ou segue sem música.</div>';
+        return;
+      }
+      for (const m of results) {
+        const row = document.createElement('div');
+        row.className = 'be-ia-musica-row';
+        row.innerHTML = `<button type="button" class="be-ia-chip" data-mp>▶</button>
+          <span class="be-ia-musica-nome">${esc(m.name)}<i>${esc(m.category || '')}${m.duration ? ' · ' + Math.round(m.duration) + 's' : ''}</i></span>
+          <button type="button" class="be-ia-chip" data-mu>Usar</button>`;
+        row.querySelector('[data-mp]').addEventListener('click', (ev) => {
+          if (tocando) { tocando.pause(); tocando = null; }
+          tocando = new Audio(m.preview || m.url);
+          tocando.volume = 0.5;
+          tocando.play().catch(() => {});
+          ev.target.textContent = '♪';
+          setTimeout(() => { ev.target.textContent = '▶'; tocando?.pause(); }, 8000);
+        });
+        row.querySelector('[data-mu]').addEventListener('click', () => {
+          if (tocando) { tocando.pause(); tocando = null; }
+          caixa.remove();
+          fluxo.musica = { url: m.url, nome: m.name, dur: Number(m.duration) || null };
+          salvarFluxo();
+          bolha('user', '🎵 Música: ' + m.name);
+          fluxo.historico.push({ role: 'user', text: `[escolheu música de fundo: ${m.name}]` });
+          etapaMontagem();
+        });
+        lista.appendChild(row);
+      }
+    };
+    caixa.querySelector('#beIaMusGo').addEventListener('click', buscar);
+    caixa.querySelector('#beIaMusQ').addEventListener('keydown', (ev) => { if (ev.key === 'Enter') buscar(); });
+    caixa.querySelector('#beIaMusSem').addEventListener('click', () => {
+      if (tocando) { tocando.pause(); tocando = null; }
+      caixa.remove();
+      fluxo.musica = null;
+      salvarFluxo();
+      bolha('user', 'Sem música de fundo.');
+      etapaMontagem();
+    });
+    buscar();
   }
 
   // ── TIJOLO 6 (13/08): MONTAGEM — solver + render real ─────────────────────
@@ -995,10 +1095,13 @@ export function mountCriarIA({ onExit }) {
     // sem isso a legenda sangrava pras bordas (medido no E2E de 13/08).
     const out = [];
     for (const item of plano.itens) {
-      const lay = layoutDoTexto({ content: item.texto, x_pct: 0.5, y_pct: 0.78, font: 'Anton', size: 'medium' }, TEXT_SIZE_PCT.medium);
+      // posição e tamanho À ESCOLHA (user 14/08): topo/meio/baixo + P/M/G
+      const tam = ['small', 'medium', 'large'].includes(fluxo.legendaTam) ? fluxo.legendaTam : 'medium';
+      const yEscolhido = fluxo.legendaPos === 'topo' ? 0.18 : fluxo.legendaPos === 'meio' ? 0.5 : 0.78;
+      const lay = layoutDoTexto({ content: item.texto, x_pct: 0.5, y_pct: yEscolhido, font: 'Anton', size: tam }, TEXT_SIZE_PCT[tam]);
       const linhas = lay.linhas?.length ? lay.linhas : [item.texto];
       const altura = (lay.fontePct || 0.06) * 1.15 * (1080 / 1920);   // fração da ALTURA por linha
-      const yBase = (lay.yPct || 0.78) - ((linhas.length - 1) * altura) / 2;
+      const yBase = (lay.yPct || yEscolhido) - ((linhas.length - 1) * altura) / 2;
       linhas.forEach((linha, i) => {
         out.push({
           content: linha, lines: [linha], font_pct: lay.fontePct || 0.06,
@@ -1018,6 +1121,15 @@ export function mountCriarIA({ onExit }) {
       source_in: fluxo.narracao[i].fala_in,
       source_out: fluxo.narracao[i].fala_out,
     }));
+    // música de fundo (user 14/08): BAIXINHA por trás da narração, do início
+    // ao fim do vídeo (ou até a música acabar)
+    if (fluxo.musica?.url) {
+      audio_clips.push({
+        url: fluxo.musica.url, start: 0, source_in: 0,
+        source_out: Math.min(Number(fluxo.musica.dur) || durVideo, durVideo),
+        volume: VOLUME_MUSICA,
+      });
+    }
     let inicio = null;
     try {
       inicio = await chamarAction({
@@ -1181,6 +1293,9 @@ export function mountCriarIA({ onExit }) {
       narracao: salvo.narracao || null,
       voz: salvo.voz || null,
       estiloLegenda: salvo.estiloLegenda || null,
+      legendaPos: salvo.legendaPos || null,
+      legendaTam: salvo.legendaTam || null,
+      musica: salvo.musica || null,
       renderUrl: salvo.renderUrl || null,
       pacote: salvo.pacote || null,
       historico: Array.isArray(salvo.historico) ? salvo.historico : [],
@@ -1192,6 +1307,10 @@ export function mountCriarIA({ onExit }) {
     } else if (fluxo.renderUrl) {
       bolha('assistant', `Retomando "${fluxo.video.titulo}" — a montagem já estava PRONTA. Assiste e decide:`);
       etapaAprovacao();
+    } else if (fluxo.narracao && (fluxo.etapa === 'escolher_musica' || fluxo.estiloLegenda)) {
+      // legenda já decidida: retoma na MÚSICA (etapa nova 14/08)
+      bolha('assistant', `Retomando "${fluxo.video.titulo}" — legenda pronta. Só falta a música de fundo e montar:`);
+      etapaMusica();
     } else if (fluxo.narracao) {
       bolha('assistant', `Retomando "${fluxo.video.titulo}" — narração (${fluxo.voz?.nome || 'gravada'}) guardada. Falta pouco: legenda e montagem.`);
       etapaLegenda();
