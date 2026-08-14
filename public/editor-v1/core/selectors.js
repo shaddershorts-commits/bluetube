@@ -565,6 +565,9 @@ export function exportPayload(state) {
       // som embutido da camada (user 14/08): o render mixa o áudio da camada,
       // a menos que o user o tenha removido — muted viaja explícito
       ...(o.muted ? { muted: true } : {}),
+      ...(o.anim_in ? { anim_in: o.anim_in } : {}),
+      ...(o.anim_out ? { anim_out: o.anim_out } : {}),
+      ...(o.anim_loop ? { anim_loop: o.anim_loop } : {}),
       lane: o.lane || 1, // ordem de composicao
     })),
     transitions: remapTransicoes(state),

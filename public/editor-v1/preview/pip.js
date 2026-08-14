@@ -7,6 +7,7 @@
 
 import * as act from '../core/actions.js';
 import { effectiveOverlays, mediaUrlFor, overlayTimelineDur, clipSpeed } from '../core/selectors.js';
+import { ANIM_POR_ID, progressoDaAnimacao, previewDaAnimacao, previewDoLoop } from '../core/animacoes-cena.js';
 
 export function createPip(container, videoSrcEl, store, player) {
   const pool = new Map(); // overlay.id -> <video>
@@ -104,7 +105,32 @@ export function createPip(container, videoSrcEl, store, player) {
       // cortando o excedente — exatamente o que a faixa principal faz.
       // Imagem fica com altura automática pra manter a proporção dela.
       if (kind !== 'image') el.style.height = (ov.scale * 100) + '%';
-      el.style.transform = `translate(-50%,-50%) rotate(${ov.rotation || 0}deg)`;
+      // ANIMAÇÃO DA CAMADA (user 14/08): compõe transform/opacity por tick,
+      // relativa à JANELA da camada na régua (start..start+dur/velocidade)
+      let animTf = '', animOp = 1;
+      if (kind !== 'image' && (ov.anim_in || ov.anim_out || ov.anim_loop)) {
+        const tLocal = t - (ov.start || 0);
+        const durCam = Math.max(0.01, overlayTimelineDur(ov));
+        const compoe = (id, slot) => {
+          const def = ANIM_POR_ID.get(id);
+          if (!def) return;
+          let fx = null;
+          if (slot === 'loop') fx = previewDoLoop(id, t);
+          else {
+            const p2 = progressoDaAnimacao(def, slot, tLocal, durCam) ?? 1;
+            if (p2 >= 0.999) return;   // assentada
+            fx = previewDaAnimacao(id, p2);
+          }
+          if (!fx) return;
+          if (fx.transform) animTf += fx.transform + ' ';
+          if (fx.opacity != null) animOp *= fx.opacity;
+        };
+        if (ov.anim_in) compoe(ov.anim_in, 'in');
+        if (ov.anim_out) compoe(ov.anim_out, 'out');
+        if (ov.anim_loop) compoe(ov.anim_loop, 'loop');
+      }
+      el.style.transform = `translate(-50%,-50%) ${animTf}rotate(${ov.rotation || 0}deg)`;
+      el.style.opacity = String(Math.max(0, Math.min(1, animOp)));
       // z compartilhado com os textos do overlay.js: lane MAIOR = na frente
       el.style.zIndex = String(10 + (ov.lane || 1));
       const sel = state.selected_overlay_id === ov.id;

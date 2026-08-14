@@ -441,6 +441,8 @@ export function mountEditor(root, store, opts = {}) {
   // por editor, reescrito quando o ajuste muda — recriar nó a cada frame
   // causaria piscada.
   let _gradeSig = null;
+  let _gradeIdFlip = false;        // id alternado do filtro SVG (anti-stall)
+  let _gradeFiltroAtual = '';
   function aplicarGrade() {
     const state = store.getState();
     const t = player.getTime();
@@ -457,11 +459,26 @@ export function mountEditor(root, store, opts = {}) {
         defs.style.cssText = 'position:absolute;width:0;height:0;overflow:hidden';
         root.appendChild(defs);
       }
-      const svg = svgDoGrade(g, 'beGradeF');
-      defs.innerHTML = svg ? '<svg xmlns="http://www.w3.org/2000/svg">' + svg + '</svg>' : '';
+      // ID ALTERNADO (fix do travamento, user 14/08): antes o innerHTML
+      // destruía e recriava o filtro com o MESMO id dezenas de vezes por
+      // segundo durante o arrasto do slider, com o vídeo apontando
+      // filter:url(#...) — o compositor ficava com a referência pendurada e
+      // podia parar de desenhar o vídeo DE VEZ. Agora o filtro novo nasce com
+      // o id alternado, o style aponta pro novo, e só então o velho sai:
+      // nunca existe um url() apontando pro nada.
+      _gradeIdFlip = !_gradeIdFlip;
+      const idNovo = _gradeIdFlip ? 'beGradeF_a' : 'beGradeF_b';
+      const svg = svgDoGrade(g, idNovo);
+      const holder = document.createElement('div');
+      if (svg) holder.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg">' + svg + '</svg>';
+      const antigos = [...defs.children];
+      if (svg) defs.appendChild(holder.firstChild);
+      const filtroNovo = temAjuste(g) ? `url(#${idNovo})` : '';
+      videoEl.style.filter = filtroNovo; videoEl2.style.filter = filtroNovo;
+      for (const a of antigos) a.remove();
+      _gradeFiltroAtual = filtroNovo;
     }
-    const usaFiltro = temAjuste(g);
-    const filtro = usaFiltro ? 'url(#beGradeF)' : '';
+    const filtro = _gradeFiltroAtual || '';
     if (videoEl.style.filter !== filtro) { videoEl.style.filter = filtro; videoEl2.style.filter = filtro; }
     // vinheta é sombra POR CIMA (não é cor) — vai no palco
     const vin = vinhetaCss(g);
@@ -1383,6 +1400,42 @@ export function mountEditor(root, store, opts = {}) {
     // re-render quando a seleção muda (o sync geral já roda a cada dispatch)
     store.subscribe(() => { if ($('#bePropsClip').style.display !== 'none') renderAnimCards(); });
     renderAnimCards();
+  }
+
+  // ── ANIMAÇÃO DA CAMADA (painel da camada — user 14/08) ──────────────────
+  {
+    let ovAnimCat = 'in';
+    const cards = $('#beOvAnimCards');
+    const renderOvAnim = () => {
+      const st = store.getState();
+      const ov = st.overlays.find((o) => o.id === st.selected_overlay_id);
+      // imagem não tem timeline própria no filtro — sem animação por ora
+      $('#beOvAnimSec').style.display = ov && ov.kind !== 'image' ? '' : 'none';
+      if (!ov || ov.kind === 'image') return;
+      const campo = ovAnimCat === 'in' ? 'anim_in' : ovAnimCat === 'out' ? 'anim_out' : 'anim_loop';
+      const atual = ov[campo] || null;
+      cards.innerHTML = [
+        `<button type="button" class="be-anim-card${atual == null ? ' active' : ''}" data-oanim=""><span class="be-anim-ico">⃠</span><span>Nenhum</span></button>`,
+        ...ANIMACOES_CENA.filter((a) => a.slot === ovAnimCat && a.camada !== false).map((a) =>
+          `<button type="button" class="be-anim-card${atual === a.id ? ' active' : ''}" data-oanim="${a.id}"><span class="be-anim-ico">${a.icone}</span><span>${a.nome}</span></button>`),
+      ].join('');
+    };
+    $('#beOvAnimCats').addEventListener('click', (e) => {
+      const btn = e.target.closest('[data-oacat]'); if (!btn) return;
+      ovAnimCat = btn.dataset.oacat;
+      $('#beOvAnimCats').querySelectorAll('.be-cfg-subtab').forEach((b) => b.classList.toggle('active', b === btn));
+      renderOvAnim();
+    });
+    cards.addEventListener('click', (e) => {
+      const card = e.target.closest('[data-oanim]'); if (!card) return;
+      const st = store.getState();
+      if (st.selected_overlay_id == null) return;
+      const id = card.dataset.oanim || null;
+      store.dispatch(act.setOverlayAnim(st.selected_overlay_id, ovAnimCat, id));
+      renderOvAnim();
+      toast(id ? `Animação da camada: ${ANIM_POR_ID.get(id)?.nome} ✓` : 'Animação removida ✓');
+    });
+    store.subscribe(() => { if ($('#bePropsOverlay').style.display !== 'none') renderOvAnim(); });
   }
 
   // troca de sub-aba dentro de Vídeo (Básico/Remover fundo/Mascarar)
@@ -3056,6 +3109,18 @@ function buildTemplate() {
       <div class="be-dim">Botão direito na camada = Copiar/Cortar/frente-trás. Q/W cortam no cursor.</div>
       <!-- som embutido da camada (user 14/08): permanece a menos que remova -->
       <button id="beOvMute" class="be-tool-btn">🔇 Remover o som da camada</button>
+      <!-- ANIMAÇÃO DA CAMADA (user 14/08): só as anims com par REAL na
+           composição do arquivo (fades, deslizes, balanço) — zoom/pulso
+           ficam na cena principal até terem par confiável no render -->
+      <div id="beOvAnimSec" class="be-ov-anim">
+        <div class="be-side-title">Animação da camada</div>
+        <div class="be-cfg-subtabs" id="beOvAnimCats">
+          <button type="button" data-oacat="in" class="be-cfg-subtab active">Entrada</button>
+          <button type="button" data-oacat="out" class="be-cfg-subtab">Saída</button>
+          <button type="button" data-oacat="loop" class="be-cfg-subtab">Combinação</button>
+        </div>
+        <div id="beOvAnimCards" class="be-anim-cards"></div>
+      </div>
       <button id="beOverlayDelete" class="be-danger-btn">🗑 Excluir camada</button>
     </div>
 

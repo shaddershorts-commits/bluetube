@@ -6,6 +6,7 @@
 // Estado e imutavel: cada action retorna um objeto novo.
 
 import { A } from './actions.js';
+import { ANIM_POR_ID } from './animacoes-cena.js';
 import { createInitialState, normalizeLoadedState, validarFormato, createFullClip, clamp, clamp01, MIN_CLIP_DURATION, MIN_TEXT_DURATION, TEXT_FONTS, TEXT_SIZES, clampLane, TEXT_DEFAULT_LANE, OVERLAY_DEFAULT_LANE, MAX_LANE, MAX_AUDIO_LANE, MAX_EXTRA_LANES } from './schema.js';
 import { transicaoPorId } from './transitions.js';
 import { timelineSegments, segmentAt, mainTrackItems, clipSpeed, clipTimelineDur, audioTimelineDur, overlayTimelineDur, audioLaneMap, captionAudioPlan } from './selectors.js';
@@ -1516,6 +1517,25 @@ export function reduce(state, action) {
         return novo;
       });
       return touch({ ...state, clips });
+    }
+
+    case A.SET_OVERLAY_ANIM: {
+      // animação da CAMADA (user 14/08: "também deve ser possível em camadas")
+      // — só as anims com par real na composição (camada !== false) e só em
+      // camada de VÍDEO (imagem não tem timeline própria no filtro)
+      const campo = action.slot === 'in' ? 'anim_in' : action.slot === 'out' ? 'anim_out' : action.slot === 'loop' ? 'anim_loop' : null;
+      if (!campo) return state;
+      if (action.animId != null && ANIM_POR_ID.get(action.animId)?.camada === false) return state;
+      const idx = state.overlays.findIndex(o => o.id === action.overlayId);
+      if (idx < 0 || state.overlays[idx].kind === 'image') return state;
+      const overlays = state.overlays.map(o => {
+        if (o.id !== action.overlayId) return o;
+        const novo = { ...o };
+        if (action.animId) novo[campo] = action.animId;
+        else delete novo[campo];
+        return novo;
+      });
+      return touch({ ...state, overlays });
     }
 
     case A.SET_ASPECT: {

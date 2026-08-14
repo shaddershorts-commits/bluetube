@@ -265,6 +265,10 @@ export function normalizeLoadedState(raw) {
       // som embutido da camada (user 14/08): sem copiar aqui, reabrir o
       // projeto devolveria o som a uma camada que o user tinha silenciado
       ...(o.muted ? { muted: true } : {}),
+      // animações da camada (14/08) — mesmas chaves da cena
+      ...(typeof o.anim_in === 'string' ? { anim_in: o.anim_in } : {}),
+      ...(typeof o.anim_out === 'string' ? { anim_out: o.anim_out } : {}),
+      ...(typeof o.anim_loop === 'string' ? { anim_loop: o.anim_loop } : {}),
       start: Math.max(0, o.start || 0),
       x_pct: clamp01(o.x_pct ?? 0.5), y_pct: clamp01(o.y_pct ?? 0.5),
       scale: Math.min(2, Math.max(0.1, o.scale ?? 0.5)),

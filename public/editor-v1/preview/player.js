@@ -35,7 +35,15 @@ export function createPlayer(videoEl, opts, store) {
   const disp = () => els[active];
   const buf = () => (els.length > 1 ? els[1 - active] : null);
 
-  function emit() { for (const fn of listeners) fn(); }
+  // BLINDADO (user 14/08: "mexendo nos ajustes o vídeo travou"): o emit roda
+  // DENTRO do tick do rAF — um listener que lançasse exceção matava o loop do
+  // relógio pra sempre (vídeo congelado até recarregar). Listener quebrado
+  // agora só loga; o playback NUNCA morre por causa da UI.
+  function emit() {
+    for (const fn of listeners) {
+      try { fn(); } catch (e) { console.error('[player] listener quebrou (playback segue):', e); }
+    }
+  }
   function primaryUrl() { return opts?.primaryUrl?.() || store.getState().video?.url || null; }
   function urlForClip(state, clip) {
     return clip.media_id != null ? mediaUrlFor(state, clip) : primaryUrl();

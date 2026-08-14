@@ -15,6 +15,11 @@ export function mountHome(root, { onOpen }) {
         <span class="be-logo">Blue<b>Editor</b></span>
         <a class="be-home-exit" href="/">← Voltar ao BlueTube</a>
       </header>
+      <!-- lançamento 14/08: aviso honesto de primeira versão (dismissível) -->
+      <div class="be-home-aviso" id="beHomeAviso" style="display:none">
+        <span>🎬 <b>Primeira versão do BlueEditor!</b> Melhorias chegando toda semana — achou algo estranho? Conta pra gente no suporte.</span>
+        <button type="button" id="beHomeAvisoX" title="Entendi">✕</button>
+      </div>
       <div class="be-home-create-row">
         <button class="be-home-create" id="beHomeCreate">
           <span class="be-home-create-ico">＋</span>
@@ -35,6 +40,16 @@ export function mountHome(root, { onOpen }) {
 
   // CRIAR COM IA (2026-08-13): experiência guiada pelo Blublu. Import
   // dinâmico — quem não clica não paga o peso do módulo.
+  // aviso de 1ª versão: some pra sempre depois do ✕
+  try {
+    if (!localStorage.getItem('be_v1_aviso_lancamento')) {
+      root.querySelector('#beHomeAviso').style.display = 'flex';
+    }
+  } catch {}
+  root.querySelector('#beHomeAvisoX').addEventListener('click', () => {
+    root.querySelector('#beHomeAviso').style.display = 'none';
+    try { localStorage.setItem('be_v1_aviso_lancamento', '1'); } catch {}
+  });
   root.querySelector('#beHomeCriarIA').addEventListener('click', async () => {
     const { mountCriarIA } = await import('./criar-ia.js');
     mountCriarIA({ onExit: () => {} });

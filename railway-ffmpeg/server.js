@@ -2827,10 +2827,28 @@ async function processEditV0(jobId, p) {
           // principal (crop_center) e igual ao object-fit:cover do preview.
           const scaleH = Math.max(2, Math.round(scaleW * ((p.output_height || 1920) / (p.output_width || 1080))));
           const spF = sp !== 1 ? `/${sp}` : '';
+          // ── ANIMAÇÃO DA CAMADA (user 14/08) ────────────────────────────
+          // Fades = alpha no ramo (t da composição = régua final, igual ao
+          // preview); deslizes/balanço = x/y do overlay com expressão em t
+          // (o overlay reavalia x/y por frame). Zoom/pulso não têm par
+          // confiável aqui — o catálogo (camada:false) nem os oferece.
+          const iniAn = (o.start ?? 0), fimAn = iniAn + tlDur, dAn = 0.5;
+          const fades = [];
+          if (o.anim_in === 'fade_in') fades.push(`fade=t=in:st=${iniAn.toFixed(3)}:d=${dAn}:alpha=1`);
+          if (o.anim_out === 'fade_out') fades.push(`fade=t=out:st=${(fimAn - dAn).toFixed(3)}:d=${dAn}:alpha=1`);
+          const alphaFx = fades.length ? ',format=yuva420p,' + fades.join(',') : '';
           fc.push(`[${idx}:v]scale=${scaleW}:${scaleH}:force_original_aspect_ratio=increase,` +
                   `crop=${scaleW}:${scaleH},setsar=1,` +
-                  `setpts=(PTS-STARTPTS)${spF}+${(o.start ?? 0).toFixed(3)}/TB[${scaled}]`);
-          fc.push(`[${vLabel}][${scaled}]overlay=x=${xExpr}:y=${yExpr}:enable='${enable}'[${nextL}]`);
+                  `setpts=(PTS-STARTPTS)${spF}+${(o.start ?? 0).toFixed(3)}/TB${alphaFx}[${scaled}]`);
+          const PIn = `min(max((t-${iniAn.toFixed(3)})/${dAn},0),1)`;
+          const POut = `min(max((t-${(fimAn - dAn).toFixed(3)})/${dAn},0),1)`;
+          const OW = p.output_width || 1080, OH = p.output_height || 1920;
+          let xE = xExpr, yE = yExpr;
+          if (o.anim_in === 'vindo_direita') xE = `(${xE})+(${OW}-(${xE}))*(1-${PIn})`;
+          if (o.anim_in === 'subir') yE = `(${yE})+(${OH}-(${yE}))*(1-${PIn})`;
+          if (o.anim_out === 'descer') yE = `(${yE})+(${OH}-(${yE}))*${POut}`;
+          if (o.anim_loop === 'balanco') xE = `(${xE})+${Math.round(OW * 0.02)}*sin(2*PI*t/2.2)`;
+          fc.push(`[${vLabel}][${scaled}]overlay=x='${xE}':y='${yE}':enable='${enable}'[${nextL}]`);
         }
       } else {
         const t = op.t;

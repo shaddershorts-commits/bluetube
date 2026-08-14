@@ -16,18 +16,21 @@ export const ANIM_CATEGORIAS = [
   { id: 'loop', nome: 'Combinação' },
 ];
 
+// camada:false = só na cena principal (zoom/pulso exigem escala por frame,
+// sem par confiável na composição do overlay — melhor 6 perfeitas que 9 com
+// 3 quebradas no arquivo, a régua do próprio user)
 export const ANIMACOES_CENA = [
   // ── Entrada ──────────────────────────────────────────────────────────────
   { id: 'fade_in', nome: 'Fade-in', slot: 'in', dur: 0.5, icone: '◐' },
-  { id: 'zoom_in', nome: 'Aproximar', slot: 'in', dur: 0.5, icone: '🔍' },
+  { id: 'zoom_in', nome: 'Aproximar', slot: 'in', dur: 0.5, icone: '🔍', camada: false },
   { id: 'subir', nome: 'Surgir de baixo', slot: 'in', dur: 0.5, icone: '⬆' },
   { id: 'vindo_direita', nome: 'Chegar da direita', slot: 'in', dur: 0.5, icone: '⬅' },
   // ── Saída ────────────────────────────────────────────────────────────────
   { id: 'fade_out', nome: 'Fade-out', slot: 'out', dur: 0.5, icone: '◑' },
-  { id: 'zoom_out', nome: 'Afastar', slot: 'out', dur: 0.5, icone: '🔎' },
+  { id: 'zoom_out', nome: 'Afastar', slot: 'out', dur: 0.5, icone: '🔎', camada: false },
   { id: 'descer', nome: 'Sair por baixo', slot: 'out', dur: 0.5, icone: '⬇' },
   // ── Combinação (a cena inteira) ──────────────────────────────────────────
-  { id: 'pulsar', nome: 'Pulsar', slot: 'loop', dur: 0, icone: '💓' },
+  { id: 'pulsar', nome: 'Pulsar', slot: 'loop', dur: 0, icone: '💓', camada: false },
   { id: 'balanco', nome: 'Balanço', slot: 'loop', dur: 0, icone: '🌊' },
 ];
 

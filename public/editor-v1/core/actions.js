@@ -62,6 +62,7 @@ export const A = {
   SET_ASPECT: 'SET_ASPECT',
   SET_FORMATO: 'SET_FORMATO',
   SET_CLIP_ANIM: 'SET_CLIP_ANIM',
+  SET_OVERLAY_ANIM: 'SET_OVERLAY_ANIM',
   // compostos (CapCut Alt+G)
   TOGGLE_MULTI_SELECT: 'TOGGLE_MULTI_SELECT',
   SELECT_ALL: 'SELECT_ALL',
@@ -141,6 +142,7 @@ export const UNDOABLE = {
   [A.SET_ASPECT]: U,
   [A.SET_FORMATO]: U,
   [A.SET_CLIP_ANIM]: U,
+  [A.SET_OVERLAY_ANIM]: U,
   [A.CREATE_COMPOUND]: U,
   [A.UNGROUP_COMPOUND]: U,
   [A.UPDATE_COMPOUND]: U,
@@ -227,6 +229,7 @@ export const setAspect = (strategy) => ({ type: A.SET_ASPECT, strategy });
 export const setFormato = (formato) => ({ type: A.SET_FORMATO, formato });
 // slot: 'in' | 'out' | 'loop'; animId null = remover
 export const setClipAnim = (clipId, slot, animId) => ({ type: A.SET_CLIP_ANIM, clipId, slot, animId });
+export const setOverlayAnim = (overlayId, slot, animId) => ({ type: A.SET_OVERLAY_ANIM, overlayId, slot, animId });
 export const setProjectId = (id) => ({ type: A.SET_PROJECT_ID, id });
 export const toggleMultiSelect = (itemType, id) => ({ type: A.TOGGLE_MULTI_SELECT, itemType, id });
 export const selectAll = () => ({ type: A.SELECT_ALL });

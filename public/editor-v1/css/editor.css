@@ -1209,3 +1209,19 @@ body {
 .be-anim-card:hover { border-color: var(--neon); color: var(--text); }
 .be-anim-card.active { border-color: var(--neon); color: var(--neon); background: rgba(0,229,255,.10); }
 .be-anim-ico { font-size: 18px; line-height: 1; }
+
+/* seção de animação no painel da camada */
+.be-ov-anim { display: flex; flex-direction: column; gap: 8px; margin-top: 4px; }
+
+/* aviso de primeira versão na home (lançamento 14/08) */
+.be-home-aviso {
+  display: flex; align-items: center; gap: 12px; justify-content: space-between;
+  background: rgba(0,229,255,.07); border: 1px solid var(--blue-border);
+  border-radius: 10px; padding: 10px 14px; font-size: 13px; color: var(--text-dim);
+  margin-bottom: 4px;
+}
+.be-home-aviso b { color: var(--neon); }
+.be-home-aviso button {
+  background: none; border: 0; color: var(--text-dim); cursor: pointer; font-size: 14px;
+}
+.be-home-aviso button:hover { color: var(--text); }
