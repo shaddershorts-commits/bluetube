@@ -39,19 +39,38 @@ const DUR_MAX_S = 50 * 60;
 const MAX_INSCRITOS = 70_000;
 const PISOS = [30_000, 100_000, 300_000];
 
-// Categorias com conteúdo dark de verdade. `search.list` aceita filtro sem
-// termo de busca, e a categoria é o que espalha a descoberta em vez de deixar
-// tudo cair no mesmo nicho.
-const CATEGORIAS = {
-  27: 'Educação',
-  28: 'Ciência e Tecnologia',
-  24: 'Entretenimento',
-  22: 'Pessoas e Blogs',
-  26: 'Como fazer / Estilo',
-  25: 'Notícias e Política',
-  20: 'Games',
-  1: 'Filme e Animação',
-};
+// ⚠️ MEDIDO em 13/08/2026 com ?diag=1: `videoCategoryId` devolve ZERO na busca
+// de vídeo — testado com e sem `order`, três variações, todas com
+// `totalResults: 0`. Com TERMO de busca a mesma chamada devolve 10 itens e
+// 1 milhão de resultados estimados.
+//
+// Consequência de desenho: a descoberta precisa de VOCABULÁRIO, não de
+// categoria. É o mesmo padrão da rotação de hashtags do coletor de TikTok —
+// uma lista grande, e cada rodada usa uma fatia, pra duas rodadas seguidas não
+// vasculharem o mesmo canto.
+//
+// Os termos abaixo miram conteúdo SEM ROSTO, que é o que o dono chamou de
+// "criador dark": narração sobre imagem, compilação, história contada. Termo
+// com nome de gente ou de marca traria justamente o canal famoso que a regra
+// dos 70 mil inscritos existe pra excluir.
+const TERMOS = [
+  'documentary', 'documentário', 'true story', 'história real',
+  'mystery explained', 'mistério explicado', 'unsolved case',
+  'deep dive', 'explicado em detalhes', 'full analysis',
+  'compilation', 'compilado', 'top 10 facts', 'curiosidades',
+  'sleep story', 'história para dormir', 'relaxing narration',
+  'scary stories', 'histórias de terror', 'creepy',
+  'ancient history', 'história antiga', 'space documentary',
+  'crime documentary', 'caso real', 'investigação',
+];
+
+function fatiaDeTermos(quantos, semente) {
+  const passo = Math.floor(semente / (3 * 3600 * 1000));
+  const inicio = (passo * quantos) % TERMOS.length;
+  const saida = [];
+  for (let i = 0; i < quantos; i++) saida.push(TERMOS[(inicio + i) % TERMOS.length]);
+  return saida;
+}
 
 function segundosDeISO(iso) {
   const m = String(iso || '').match(/PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?/);
@@ -119,29 +138,32 @@ module.exports = async function handler(req, res) {
     const candidatos = new Map();   // videoId -> categoria de origem
 
     // ── 1) BUSCA. É o passo caro; tudo abaixo é barato. ───────────────────
-    for (let i = 0; i < buscas; i++) {
-      const cat = cats[i % cats.length];
-      // `long` (+20min) pega a metade de cima da faixa pedida; `medium`
-      // (4-20min) pega a de baixo. Alterna entre as duas.
+    const termos = req.query.termos
+      ? String(req.query.termos).split(',').map((t) => t.trim()).filter(Boolean).slice(0, 8)
+      : fatiaDeTermos(buscas, Date.now());
+    for (let i = 0; i < termos.length && i < buscas; i++) {
+      const termo = termos[i];
+      // `long` (+20min) cobre a metade de cima da faixa pedida (15-50min);
+      // `medium` (4-20min) cobre a de baixo. Alterna entre as duas.
       const balde = i % 2 === 0 ? 'long' : 'medium';
       try {
         const r = await youtubeRequest('search', {
           part: 'snippet',
           type: 'video',
+          q: termo,
           videoDuration: balde,
           order: 'viewCount',
-          videoCategoryId: cat,
           maxResults: 50,
         });
         relatorio.custo.buscas_gastas++;
         const itens = (r && r.items) || [];
-        relatorio.por_categoria[`${CATEGORIAS[cat] || cat} (${balde})`] = itens.length;
+        relatorio.por_categoria[`${termo} (${balde})`] = itens.length;
         for (const it of itens) {
           const id = it.id && it.id.videoId;
-          if (id) candidatos.set(id, CATEGORIAS[cat] || cat);
+          if (id) candidatos.set(id, termo);
         }
       } catch (e) {
-        relatorio.erros.push(`busca cat=${cat} ${balde}: ${String(e.message || e).slice(0, 140)}`);
+        relatorio.erros.push(`busca "${termo}" ${balde}: ${String(e.message || e).slice(0, 140)}`);
       }
     }
     relatorio.funil.candidatos_da_busca = candidatos.size;
