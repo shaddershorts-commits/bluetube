@@ -23,6 +23,7 @@ import { createTransitionsPanel } from './transitions-panel.js';
 import { createTransitionFx } from '../preview/transition-fx.js';
 import { transicaoPorId, TRANSICOES } from '../core/transitions.js';
 import { ANIMACOES_CENA, ANIM_CATEGORIAS, ANIM_POR_ID, progressoDaAnimacao, previewDaAnimacao, previewDoLoop } from '../core/animacoes-cena.js';
+import { criarGuardiao } from '../core/guardiao.js';
 import {
   CAMPOS_COR, svgDoGrade, vinhetaCss, temAjuste, TODAS_CHAVES,
   FAIXAS_HSL, EIXOS_HSL, CANAIS_CURVA, ANCORAS_CURVA, FAIXAS_RODA, CANAIS_RODA,
@@ -169,6 +170,9 @@ export function mountEditor(root, store, opts = {}) {
   const frameUI = createFrameUI($('#beStage'), store, player);
   // efeito da transicao rodando no player (progresso vem do relogio do player)
   const fxTransicao = createTransitionFx($('#beStage'), store, player);
+  // AUTORREPARADOR (user 15/08): watchdog do relógio + sentinela do estado +
+  // recuperação de sessão em chuva de erros — toda ação dele é visível (🩹)
+  const guardiao = criarGuardiao({ store, player, toast });
   fxTransicao.registrarCatalogo(TRANSICOES);
   const exporter = createExporter(store);
   const autosave = createAutosave(store, (s, detail) => {
@@ -205,7 +209,7 @@ export function mountEditor(root, store, opts = {}) {
 
   // ── expose pra E2E (fora de producao) ──
   if (location.hostname !== 'www.bluetubeviral.com' && location.hostname !== 'bluetubeviral.com') {
-    window.__BE__ = { store, player, timeline, getState: () => store.getState() };
+    window.__BE__ = { store, player, timeline, guardiao, getState: () => store.getState() };
   }
 
   // ── reatividade da UI ──
@@ -2773,6 +2777,7 @@ export function mountEditor(root, store, opts = {}) {
     detachResizers();
     detachShortcuts();
     document.removeEventListener('visibilitychange', flushOnHide);
+    guardiao.destroy();
     player.destroy(); overlay.destroy(); pip.destroy(); maskUI.destroy(); frameUI.destroy(); fxTransicao.destroy(); transPanel.destroy(); clearTimeout(previewTimer); timeline.destroy();
     autosave.destroy(); exporter.destroy();
     for (const t of thumbsRegistry.values()) t.destroy();

@@ -1225,3 +1225,18 @@ body {
   background: none; border: 0; color: var(--text-dim); cursor: pointer; font-size: 14px;
 }
 .be-home-aviso button:hover { color: var(--text); }
+
+/* barra do guardião (recuperar sessão após chuva de erros) */
+#beGuardiaoBarra {
+  position: fixed; left: 50%; bottom: 18px; transform: translateX(-50%); z-index: 300;
+  display: flex; align-items: center; gap: 12px; max-width: 92vw;
+  background: #0a1526; border: 1px solid rgba(255,180,60,.5); border-radius: 12px;
+  padding: 10px 14px; font-size: 13px; color: #eaf6ff;
+  box-shadow: 0 10px 30px rgba(0,0,0,.55);
+}
+#beGuardiaoBarra button {
+  background: rgba(0,229,255,.1); border: 1px solid var(--blue-border); color: var(--neon);
+  border-radius: 8px; padding: 6px 12px; cursor: pointer; font-size: 12.5px; white-space: nowrap;
+}
+#beGuardiaoBarra button:hover { border-color: var(--neon); }
+#beGuardiaoBarra #beGuardiaoX { background: none; border: 0; color: #7f93ad; }

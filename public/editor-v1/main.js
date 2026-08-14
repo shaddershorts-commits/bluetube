@@ -5,6 +5,8 @@ import { createStore } from './core/store.js';
 import { normalizeLoadedState } from './core/schema.js';
 import { bootstrapGate, api, getToken } from './services/api.js';
 import { mountEditor } from './ui/shell.js';
+import { FLAG_RECUPERAR } from './core/guardiao.js';
+import { readSessionFallback } from './services/autosave.js';
 import { mountHome } from './ui/home.js';
 
 const root = document.getElementById('beRoot');
@@ -39,6 +41,26 @@ async function boot() {
     gateScreen('👑', 'Exclusivo Full e Master', 'O BlueEditor faz parte dos planos Full e Master.',
       '<a class="be-export-btn" href="/#planos">Ver planos</a>');
     return;
+  }
+
+  // RECUPERAÇÃO DE SESSÃO (guardião, 15/08): se a página recarregou pelo
+  // botão "Recuperar sessão", volta EXATAMENTE onde o usuário estava — o
+  // snapshot é gravado a cada edição pelo autosave (readSessionFallback
+  // existia sem ninguém ler; o guardião fecha o circuito).
+  let flagRec = null;
+  try { flagRec = sessionStorage.getItem(FLAG_RECUPERAR); sessionStorage.removeItem(FLAG_RECUPERAR); } catch {}
+  if (flagRec) {
+    const snap = readSessionFallback();
+    if (snap && (snap.video || snap.clips?.length || snap.audio_clips?.length)) {
+      const store = createStore();
+      store.replaceState(normalizeLoadedState(snap));
+      try { editorAtivo?.destroy(); } catch (e) {}
+      root.innerHTML = '';
+      editorAtivo = mountEditor(root, store, { onExit: showHome });
+      const t = document.getElementById('beToast');
+      if (t) { t.textContent = '🩹 Sessão recuperada — você está exatamente onde parou.'; t.classList.add('show'); setTimeout(() => t.classList.remove('show'), 5000); }
+      return;
+    }
   }
 
   // CapCut-like: abre na TELA INICIAL (grid de projetos salvos + "Criar
