@@ -337,3 +337,22 @@ test('a página mostra e ordena por ritmo nas duas abas', () => {
   // dado real depois da 1ª medição em vez de chutadas agora.
   assert.match(API, /req\.query\.ritmo_min/);
 });
+
+test('métricas: o upsert manda as colunas OBRIGATÓRIAS (23502 medido em prod)', () => {
+  // O upsert do PostgREST é INSERT ... ON CONFLICT DO UPDATE: o corpo precisa
+  // satisfazer o INSERT. Mandar só {youtube_id, views} devolveu
+  // "23502 not-null violation" e ZERO linhas atualizadas.
+  const m = API.slice(API.indexOf('async function metricas'), API.indexOf('// ── FAXINA'));
+  for (const c of ['titulo: v.titulo', 'url: v.url', 'canal_id: v.canal_id', 'duracao_segundos: v.duracao_segundos']) {
+    assert.ok(m.includes(c), `o upsert de métricas não manda ${c} — volta 23502`);
+  }
+  assert.match(m, /select=youtube_id,titulo,url,canal_id,duracao_segundos/,
+    'e elas precisam vir no SELECT, senão chegam undefined');
+});
+
+test('métricas: ler N e gravar 0 responde 503, não "ok"', () => {
+  const m = API.slice(API.indexOf('async function metricas'), API.indexOf('// ── FAXINA'));
+  assert.match(m, /const falhou = linhas\.length > 0 && stat\.atualizados === 0;/);
+  assert.match(m, /res\.status\(falhou \? 503 : 200\)/,
+    'a 1ª versão devolveu ok:true com atualizados:0 e o erro escondido no array — é o modo de falha que já custou 7 dias aqui');
+});

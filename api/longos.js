@@ -447,7 +447,14 @@ async function metricas(req, res, { SU, h }) {
   }
   const stat = { lidos: 0, atualizados: 0, com_ritmo: 0, primeira_medicao: 0, sumidos: 0, chamadas_api: 0, erros: [] };
 
-  const r = await fetch(`${SU}/rest/v1/longos_virais?ativo=eq.true&select=youtube_id,canal_id,views,views_anterior,medido_em&limit=2000`, { headers: h });
+  // ⚠️ O SELECT traz as colunas OBRIGATÓRIAS junto (titulo, url, canal_id,
+  // duracao_segundos) mesmo sem precisar delas pro cálculo. Motivo medido em
+  // 14/08: o upsert do PostgREST é INSERT ... ON CONFLICT DO UPDATE, então o
+  // corpo precisa satisfazer o INSERT — mandar só `{youtube_id, views}`
+  // devolveu `23502 not-null violation` e ZERO linhas atualizadas.
+  // Reenviar as obrigatórias com o mesmo valor é o preço de manter UMA
+  // requisição por lote de 50, em vez de 44 PATCHes individuais.
+  const r = await fetch(`${SU}/rest/v1/longos_virais?ativo=eq.true&select=youtube_id,titulo,url,canal_id,duracao_segundos,views,views_anterior,medido_em&limit=2000`, { headers: h });
   if (!r.ok) return res.status(500).json({ error: 'list_failed' });
   const atuais = await r.json();
   stat.lidos = atuais.length;
@@ -477,6 +484,12 @@ async function metricas(req, res, { SU, h }) {
 
     const linha = {
       youtube_id: v.youtube_id,
+      // As quatro abaixo são NOT NULL e vão inalteradas, só pra o INSERT do
+      // upsert ser válido. Ver o comentário do SELECT.
+      titulo: v.titulo,
+      url: v.url,
+      canal_id: v.canal_id,
+      duracao_segundos: v.duracao_segundos,
       views: agoraViews,
       views_anterior: v.views,
       medido_em: agoraIso,
@@ -512,10 +525,18 @@ async function metricas(req, res, { SU, h }) {
     stat.canais_atualizados = await gravar(`${SU}/rest/v1/longos_canais?on_conflict=channel_id`, canaisLinhas, h, stat);
   }
 
-  return res.status(200).json({
-    ok: true, ...stat,
-    detalhe: stat.com_ritmo ? null
-      : 'primeira medição: a base foi gravada, o ritmo aparece na próxima passada (mín. 30 min)',
+  // ⚠️ LER 44 E GRAVAR 0 NÃO É SUCESSO. A primeira versão disto devolveu
+  // `ok: true` com `atualizados: 0` e o erro escondido dentro de `erros[]` —
+  // exatamente o modo de falha que já custou 7 dias de coleta morta neste
+  // projeto. Se havia o que gravar e nada foi gravado, a resposta é 503.
+  const falhou = linhas.length > 0 && stat.atualizados === 0;
+  return res.status(falhou ? 503 : 200).json({
+    ok: !falhou, ...stat,
+    error: falhou ? 'nada_gravado' : undefined,
+    detalhe: falhou
+      ? 'li ' + linhas.length + ' vídeos e não gravei nenhum — isto é falha, não silêncio.'
+      : (stat.com_ritmo ? null
+        : 'primeira medição: a base foi gravada, o ritmo aparece na próxima passada (mín. 30 min)'),
   });
 }
 
