@@ -62,7 +62,7 @@ test('o teto de inscritos é o substituto do selo, e canal que esconde não pass
 
 test('os três pisos são os pedidos, e o menor corta na coleta', () => {
   assert.deepEqual(I.PISOS, [30_000, 100_000, 300_000]);
-  assert.match(API, /if \(views < PISOS\[0\]\) continue;/,
+  assert.match(API, /if \(views < PISOS\[0\]\) \{ corte\.abaixo_do_piso\+\+; continue; \}/,
     'guardar vídeo abaixo do menor piso é encher a tabela com o que nenhum filtro mostra');
 });
 
@@ -182,4 +182,54 @@ test('SQL: a regra central (canal pequeno) tem rede no banco também', () => {
   assert.match(SQL, /longos_virais_canal_pequeno check \(canal_inscritos <= 200000\)/,
     'se alguém afrouxar a API sem pensar, o insert estoura em vez de encher a página de canal grande');
   assert.match(SQL, /longos_virais_duracao check \(duracao_segundos between/);
+});
+
+// ═══ 5 — OS TRÊS FILTROS PEDIDOS DEPOIS DA 1ª COLETA (14/08) ════════════
+
+test('canal MORTO não entra: precisa ter postado nos últimos 2 dias', () => {
+  assert.equal(I.DIAS_CANAL_VIVO, 2);
+  const bloco = API.slice(API.indexOf('// ── 3.5) CANAL VIVO'), API.indexOf('const linhas = []'));
+  // O sinal sai da playlist de uploads, e custa 1 unidade — não 100 como a busca.
+  assert.match(bloco, /youtubeRequest\('playlistItems'/);
+  assert.match(bloco, /maxResults: 1/);
+  // E só é consultado pros que JÁ passaram nos outros filtros.
+  assert.match(bloco, /c\.subs <= MAX_INSCRITOS && views >= PISOS\[0\]/,
+    'consultar os 85 candidatos gastaria 85 unidades pra descartar quase todas');
+  // Falha ao checar NÃO é canal morto — barrar por soluço de rede esvaziaria a
+  // página em silêncio, que é o modo de falha que este projeto mais sofreu.
+  assert.match(bloco, /ultimaPub\[id\] = Date\.now\(\);/);
+  assert.match(API, /if \(\(ultimaPub\[v\.snippet\.channelId\] \|\| 0\) < corteVivo\) \{ corte\.canal_morto\+\+; continue; \}/);
+});
+
+test('só os 4 países pedidos, e eles entram na BUSCA também', () => {
+  assert.deepEqual(I.PAISES, ['US', 'ES', 'BR', 'DE']);
+  // regionCode sozinho devolveria conteúdo em inglês mirando a Alemanha.
+  assert.deepEqual(I.IDIOMA_DO_PAIS, { US: 'en', ES: 'es', BR: 'pt', DE: 'de' });
+  const busca = API.slice(API.indexOf('// ── 1) BUSCA'), API.indexOf('stat.candidatos'));
+  assert.match(busca, /regionCode: pais/);
+  assert.match(busca, /relevanceLanguage: IDIOMA_DO_PAIS\[pais\]/);
+  assert.match(busca, /PAISES\[i % PAISES\.length\]/, 'os quatro mercados rodam entre as buscas da rodada');
+  // E o filtro final confere o país DECLARADO do canal.
+  assert.match(API, /paisesAceitos\.indexOf\(String\(c\.pais\)\.toUpperCase\(\)\) < 0/);
+});
+
+test('canal sem país declarado não entra — mas é CONTADO separado', () => {
+  // `snippet.country` é opcional no YouTube. A regra pedida é literal, então
+  // quem não declara fica de fora; o contador separado existe pra a decisão de
+  // afrouxar ser tomada com número em vez de palpite.
+  assert.match(API, /if \(!c\.pais\) \{ corte\.sem_pais\+\+; continue; \}/);
+  assert.match(API, /sem_pais: 0/);
+});
+
+test('o funil por filtro é reportado — 5 regras empilhadas sem número é chute', () => {
+  for (const k of ['canal_grande', 'abaixo_do_piso', 'canal_morto', 'pais_fora', 'sem_pais']) {
+    assert.ok(API.includes(k + ':') || API.includes('corte.' + k), `o funil não conta "${k}"`);
+  }
+  assert.match(API, /stat\.cortes = corte;/, 'e o funil precisa sair na resposta da coleta');
+});
+
+test('o vocabulário é o TETO da página, e está dimensionado', () => {
+  assert.ok(I.TERMOS.length >= 70, `${I.TERMOS.length} termos — a busca é estável, então repetir termo não traz vídeo novo`);
+  assert.match(API, /O TAMANHO DESTA LISTA É O TETO DA PÁGINA/,
+    'quem for encher a página depois precisa saber que o caminho é ACRESCENTAR TERMO, não rodar mais vezes');
 });
