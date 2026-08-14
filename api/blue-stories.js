@@ -37,6 +37,27 @@ module.exports = async function handler(req, res) {
     }
   }
 
+  // ── GET gifs: proxy de busca no GIPHY. PÚBLICO (não precisa de login) —
+  // vem ANTES da trava de token porque é só um proxy de busca, sem dado do user.
+  if (req.method === 'GET' && action === 'gifs') {
+    const q = (req.query?.q || '').trim();
+    const GIPHY_KEY = process.env.GIPHY_API_KEY || 'DIBKjyVEsRV2iQVo0lhBXVPap71dVsnD';
+    try {
+      const rota = q ? 'search' : 'trending';
+      const url = `https://api.giphy.com/v1/gifs/${rota}?api_key=${GIPHY_KEY}&limit=24&rating=pg-13${q ? '&q=' + encodeURIComponent(q) : ''}`;
+      const r = await fetch(url);
+      const d = r.ok ? await r.json() : { data: [] };
+      const gifs = (d.data || []).map((g) => ({
+        id: g.id,
+        url: g.images?.fixed_height?.url || g.images?.original?.url,
+        preview: g.images?.fixed_height_small?.url || g.images?.preview_gif?.url || g.images?.fixed_height?.url,
+        w: parseInt(g.images?.fixed_height?.width) || 0,
+        h: parseInt(g.images?.fixed_height?.height) || 0,
+      })).filter((g) => g.url);
+      return res.status(200).json({ gifs, giphy_status: d.meta?.status || (r.ok ? 200 : r.status) });
+    } catch (e) { return res.status(200).json({ gifs: [], erro: e.message }); }
+  }
+
   // ── Auth check — todas as outras actions requerem token
   const token = req.method === 'GET' ? req.query.token : req.body?.token;
   if (!token) return res.status(401).json({ error: 'Login necessário' });
@@ -85,7 +106,7 @@ module.exports = async function handler(req, res) {
       const now = new Date().toISOString();
       const idsParam = targetIds.map(id => `"${id}"`).join(',');
       let sR = await fetch(
-        `${SU}/rest/v1/blue_stories?user_id=in.(${idsParam})&audience=eq.${feedMode}&expirado_em=gt.${now}&order=user_id,created_at.asc&select=id,user_id,tipo,media_url,texto,cor_fundo,duracao,visto_por,created_at,expirado_em,audience,video_id`,
+        `${SU}/rest/v1/blue_stories?user_id=in.(${idsParam})&audience=eq.${feedMode}&expirado_em=gt.${now}&order=user_id,created_at.asc&select=id,user_id,tipo,media_url,texto,cor_fundo,duracao,visto_por,created_at,expirado_em,audience,video_id,overlays,musica_url,filtro`,
         { headers: H }
       );
       // Retrocompat: coluna audience/video_id ainda não criada (sql/status_bluechat_v1.sql)
@@ -282,7 +303,7 @@ module.exports = async function handler(req, res) {
 
   // ── POST criar: cria novo story ──────────────────────────────────────────
   if (req.method === 'POST' && action === 'criar') {
-    const { tipo, media_url, texto, cor_fundo, duracao, audience, video_id } = req.body;
+    const { tipo, media_url, texto, cor_fundo, duracao, audience, video_id, overlays, musica_url, filtro } = req.body;
     if (!['imagem', 'video', 'texto', 'video_share'].includes(tipo)) {
       return res.status(400).json({ error: 'tipo inválido (imagem|video|texto|video_share)' });
     }
@@ -305,10 +326,20 @@ module.exports = async function handler(req, res) {
         duracao: duracaoFinal,
         visto_por: []
       };
+      // Camadas do editor (texto/figurinha/menção/desenho), música e filtro de
+      // cor. Sanitiza overlays: no máx 40 camadas, cada uma um objeto simples.
+      const overlaysFinal = Array.isArray(overlays) ? overlays.slice(0, 40).filter(o => o && typeof o === 'object') : [];
       let r = await fetch(`${SU}/rest/v1/blue_stories`, {
         method: 'POST',
         headers: { ...H, Prefer: 'return=representation' },
-        body: JSON.stringify({ ...basePayload, audience: audienceFinal, video_id: video_id || null })
+        body: JSON.stringify({
+          ...basePayload,
+          audience: audienceFinal,
+          video_id: video_id || null,
+          overlays: overlaysFinal,
+          musica_url: musica_url || null,
+          filtro: filtro || null,
+        })
       });
       // Retrocompat: colunas novas ainda não criadas → tenta shape antigo
       // (só pra stories comuns; video_share EXIGE as colunas do SQL novo)
@@ -328,6 +359,40 @@ module.exports = async function handler(req, res) {
     } catch (e) {
       return res.status(500).json({ error: e.message });
     }
+  }
+
+  // ── POST votar-enquete: vota (ou troca o voto) numa camada de enquete ────
+  if (req.method === 'POST' && action === 'votar-enquete') {
+    if (!userId) return res.status(401).json({ error: 'Login necessário' });
+    const { story_id, overlay_id, opcao } = req.body || {};
+    if (!story_id || !overlay_id || (opcao !== 0 && opcao !== 1)) {
+      return res.status(400).json({ error: 'story_id, overlay_id e opcao (0|1) obrigatórios' });
+    }
+    try {
+      // upsert: 1 voto por pessoa por enquete; re-votar troca a opção
+      await fetch(`${SU}/rest/v1/blue_story_votos?on_conflict=overlay_id,user_id`, {
+        method: 'POST',
+        headers: { ...H, Prefer: 'resolution=merge-duplicates,return=minimal' },
+        body: JSON.stringify({ story_id, overlay_id, user_id: userId, opcao }),
+      });
+      const cR = await fetch(`${SU}/rest/v1/blue_story_votos?overlay_id=eq.${encodeURIComponent(overlay_id)}&select=opcao`, { headers: H });
+      const votos = cR.ok ? await cR.json() : [];
+      const contagem = [votos.filter(v => v.opcao === 0).length, votos.filter(v => v.opcao === 1).length];
+      return res.status(200).json({ ok: true, contagem, minha: opcao });
+    } catch (e) { return res.status(500).json({ error: e.message }); }
+  }
+
+  // ── GET enquete-resultado: contagem + meu voto de uma camada de enquete ──
+  if (req.method === 'GET' && action === 'enquete-resultado') {
+    const overlay_id = req.query?.overlay_id;
+    if (!overlay_id) return res.status(400).json({ error: 'overlay_id obrigatório' });
+    try {
+      const cR = await fetch(`${SU}/rest/v1/blue_story_votos?overlay_id=eq.${encodeURIComponent(overlay_id)}&select=opcao,user_id`, { headers: H });
+      const votos = cR.ok ? await cR.json() : [];
+      const contagem = [votos.filter(v => v.opcao === 0).length, votos.filter(v => v.opcao === 1).length];
+      const minha = userId ? (votos.find(v => v.user_id === userId)?.opcao ?? null) : null;
+      return res.status(200).json({ contagem, minha });
+    } catch (e) { return res.status(200).json({ contagem: [0, 0], minha: null }); }
   }
 
   // ── POST reagir: toggle/update reação ────────────────────────────────────
