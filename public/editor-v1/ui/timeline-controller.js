@@ -13,7 +13,7 @@ import { A } from '../core/actions.js';
 import * as act from '../core/actions.js';
 import * as clip from './clipboard.js';
 
-export function createTimelineController({ canvas, store, player, onEditText, onOpenCompound, onSelectTransition, onLanesChanged, onGerarLegenda, onSepararVoz }) {
+export function createTimelineController({ canvas, store, player, onEditText, onOpenCompound, onSelectTransition, onLanesChanged, onGerarLegenda, onSepararVoz, onFavoritarAudio }) {
   // width 0 = "ainda nao medido" -> zoomFit vira pendingFit ate o RO medir
   let vp = { pxPerSec: 40, scrollX: 0, width: 0, height: 200 };
   let fsm = idle();
@@ -369,6 +369,12 @@ export function createTimelineController({ canvas, store, player, onEditText, on
       { label: '💬 Gerar legenda deste áudio', fn: () => onGerarLegenda?.(hit.audioId) },
       // voz × música com IA (2026-08-14): troca o clipe por 2 stems alinhados
       { label: '🎙 Separar voz × música (IA)', fn: () => onSepararVoz?.(hit.audioId) },
+      // salvar o áudio da timeline nos favoritos da biblioteca (user 14/08):
+      // escolhe o LADO (música/efeito) e renomeia — aparece na aba Favoritos
+      { label: '⭐ Adicionar', sub: [
+        { label: '🎵 Em minhas músicas', fn: () => onFavoritarAudio?.(hit.audioId, 'music') },
+        { label: '🔊 Meus efeitos', fn: () => onFavoritarAudio?.(hit.audioId, 'sfx') },
+      ] },
       { sep: true },
       { label: 'Excluir', hint: '⌫', fn: () => store.dispatch(act.deleteAudioClip(hit.audioId)) },
     ]);

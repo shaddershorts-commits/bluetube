@@ -70,6 +70,28 @@ export function mountEditor(root, store, opts = {}) {
     },
     // botão direito no áudio → "Separar voz × música" (Demucs, 2026-08-14)
     onSepararVoz: (audioId) => separarVozMusica(audioId),
+    // botão direito no áudio → "⭐ Adicionar" → músicas/efeitos + renomear
+    // (user 14/08). Salva na MESMA lista da aba Favoritos da biblioteca.
+    onFavoritarAudio: (audioId, kind) => {
+      const a = store.getState().audio_clips.find((k) => k.id === audioId);
+      if (!a) return;
+      if (!/^https?:\/\//.test(a.url || '')) {
+        toast('Esse áudio ainda não tem arquivo próprio (gravação local?). Salva o projeto primeiro.', true);
+        return;
+      }
+      const sugerido = (a.filename || 'áudio').replace(/\.[a-z0-9]+$/i, '');
+      const nome = prompt(kind === 'music' ? 'Nome pra salvar em Minhas músicas:' : 'Nome pra salvar em Meus efeitos:', sugerido);
+      if (nome == null || !nome.trim()) return;
+      const favs = getAudioFavs();
+      if (favs.some((f) => f.url === a.url)) { toast('Esse áudio já está nos favoritos ⭐'); return; }
+      favs.push({
+        name: nome.trim().slice(0, 80), url: a.url,
+        duration: a.media_duration || Math.max(0, (a.source_out || 0) - (a.source_in || 0)),
+        kind, category: kind === 'music' ? 'Minhas músicas' : 'Meus efeitos',
+      });
+      try { localStorage.setItem(AUDIO_FAV_KEY, JSON.stringify(favs)); } catch {}
+      toast('⭐ Salvo em ' + (kind === 'music' ? 'Minhas músicas' : 'Meus efeitos') + ': ' + nome.trim());
+    },
   });
 
   // ── SEPARAR VOZ × MÚSICA (IA) ──────────────────────────────────────────────

@@ -866,8 +866,11 @@ body {
 }
 
 /* ── divisores arrastaveis (CapCut) ── */
+/* SÓ NA LINHA DE CIMA (fix 2026-08-14): as larguras que estes divisores
+   ajustam existem apenas na row 1 — com grid-row 1/-1 a barra atravessava a
+   TIMELINE por cima (print do user). */
 .be-gutter-v {
-  grid-column: 2; grid-row: 1 / -1; justify-self: end;
+  grid-column: 2; grid-row: 1; justify-self: end;
   width: 8px; margin-right: -9px; cursor: col-resize; z-index: 30;
   border-radius: 4px; transition: background .15s;
 }
@@ -875,7 +878,7 @@ body {
 /* divisa entre o painel de FERRAMENTAS (Mídia/Texto/Áudio) e o de configurações
    — a coluna 1 era fixa em 232px (user 2026-07-29) */
 .be-gutter-lib {
-  grid-column: 1; grid-row: 1 / -1; justify-self: end;
+  grid-column: 1; grid-row: 1; justify-self: end;
   width: 8px; margin-right: -9px; cursor: col-resize; z-index: 30;
   border-radius: 4px; transition: background .15s; touch-action: none;
 }

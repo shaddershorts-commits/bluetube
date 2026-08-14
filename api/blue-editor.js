@@ -572,7 +572,17 @@ module.exports = async function handler(req, res) {
       // renderizava take do vídeo principal, sem escala/velocidade/efeitos.
       clips: effectiveClips.map(c => ({ ...c })),
       transitions: projectState.transitions || [],
-      texts: (projectState.texts || []).filter(t => t.active !== false),
+      // APÓSTROFO QUEBRA O DRAWTEXT (achado 14/08, reproduzido): dentro de
+      // text='...' do ffmpeg, \' NÃO escapa — a aspa fecha, a vírgula do texto
+      // corta a cadeia -vf e o pedaço seguinte vira "filtro" (o "No such
+      // filter: '0.000'" do export do user). O apóstrofo TIPOGRÁFICO (’) é
+      // visualmente igual e inofensivo — sanitiza AQUI porque vale já em
+      // produção (o Railway de main só se cura no merge).
+      texts: (projectState.texts || []).filter(t => t.active !== false).map(t => ({
+        ...t,
+        content: String(t.content || '').replace(/'/g, '’'),
+        ...(Array.isArray(t.lines) ? { lines: t.lines.map(l => String(l).replace(/'/g, '’')) } : {}),
+      })),
       volumes: projectState.volumes || { video: 1, audio_extra: 1 },
       // resolução escolhida no modal de export (fallback 1080×1920)
       output_width: projectState.output_width || 1080,

@@ -2018,11 +2018,15 @@ app.post('/edit-v0', (req, res) => {
 });
 
 function escapeDrawText(s) {
-  // FFmpeg drawtext exige escape de :' \ %
+  // FFmpeg drawtext exige escape de : \ % — e o APÓSTROFO é caso especial
+  // (14/08, reproduzido): dentro de text='...' o \' NÃO escapa — a aspa
+  // FECHA a string, a vírgula seguinte corta a cadeia -vf e o resto vira
+  // "filtro" (era o "No such filter: '0.000'" no export). O apóstrofo
+  // tipográfico (’) é visualmente idêntico e não é delimitador.
   return String(s || '')
     .replace(/\\/g, '\\\\')
     .replace(/:/g, '\\:')
-    .replace(/'/g, "\\'")
+    .replace(/'/g, '’')
     .replace(/%/g, '\\%');
 }
 function fontFile(fontName) {
