@@ -83,6 +83,38 @@ module.exports = async function handler(req, res) {
     erros: [],
   };
 
+  // ── MODO DIAGNÓSTICO ────────────────────────────────────────────────────
+  // A primeira rodada da sonda voltou ZERO candidatos, sem erro nenhum: a
+  // documentação diz que `q` não é obrigatório, mas na prática
+  // `videoCategoryId + videoDuration + order=viewCount` sem termo devolveu
+  // lista vazia. Em vez de chutar qual parâmetro é o culpado, este modo testa
+  // as combinações numa rodada só e diz qual delas traz item.
+  if (req.query.diag === '1') {
+    const variantes = [
+      { nome: 'categoria + long + viewCount (o que falhou)', p: { videoCategoryId: '27', videoDuration: 'long', order: 'viewCount' } },
+      { nome: 'categoria + long, SEM order', p: { videoCategoryId: '27', videoDuration: 'long' } },
+      { nome: 'categoria + long + order=date', p: { videoCategoryId: '27', videoDuration: 'long', order: 'date' } },
+      { nome: 'q generico + long + viewCount', p: { q: 'documentario', videoDuration: 'long', order: 'viewCount' } },
+      { nome: 'q generico + long + viewCount + 30d', p: { q: 'documentario', videoDuration: 'long', order: 'viewCount', publishedAfter: new Date(Date.now() - 30 * 864e5).toISOString() } },
+      { nome: 'so q generico, sem duracao', p: { q: 'documentario', order: 'viewCount' } },
+    ];
+    const saida = [];
+    for (const v of variantes) {
+      try {
+        const r = await youtubeRequest('search', Object.assign({ part: 'snippet', type: 'video', maxResults: 10 }, v.p));
+        const itens = (r && r.items) || [];
+        saida.push({
+          variante: v.nome, itens: itens.length,
+          total_estimado: (r && r.pageInfo && r.pageInfo.totalResults) != null ? r.pageInfo.totalResults : null,
+          exemplo: itens[0] ? (itens[0].snippet && itens[0].snippet.title || '').slice(0, 55) : null,
+        });
+      } catch (e) {
+        saida.push({ variante: v.nome, erro: String(e.message || e).slice(0, 180) });
+      }
+    }
+    return res.status(200).json({ ok: true, diagnostico: saida, buscas_gastas: variantes.length });
+  }
+
   try {
     const candidatos = new Map();   // videoId -> categoria de origem
 
