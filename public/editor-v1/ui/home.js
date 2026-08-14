@@ -15,10 +15,16 @@ export function mountHome(root, { onOpen }) {
         <span class="be-logo">Blue<b>Editor</b></span>
         <a class="be-home-exit" href="/">← Voltar ao BlueTube</a>
       </header>
-      <button class="be-home-create" id="beHomeCreate">
-        <span class="be-home-create-ico">＋</span>
-        <span class="be-home-create-txt">Criar projeto<small>Começar do zero</small></span>
-      </button>
+      <div class="be-home-create-row">
+        <button class="be-home-create" id="beHomeCreate">
+          <span class="be-home-create-ico">＋</span>
+          <span class="be-home-create-txt">Criar projeto<small>Começar do zero</small></span>
+        </button>
+        <button class="be-criar-ia-btn" id="beHomeCriarIA" title="O Blublu monta teu vídeo do início ao fim">
+          <span class="be-criar-ia-ico">✨</span>
+          <span class="be-criar-ia-txt">Criar com IA<small>O Blublu edita pra você</small></span>
+        </button>
+      </div>
       <div class="be-home-sub">Seus projetos</div>
       <div class="be-home-grid" id="beHomeGrid">
         <div class="be-home-empty">Carregando…</div>
@@ -26,6 +32,13 @@ export function mountHome(root, { onOpen }) {
     </div>`;
 
   root.querySelector('#beHomeCreate').addEventListener('click', () => onOpen(null));
+
+  // CRIAR COM IA (2026-08-13): experiência guiada pelo Blublu. Import
+  // dinâmico — quem não clica não paga o peso do módulo.
+  root.querySelector('#beHomeCriarIA').addEventListener('click', async () => {
+    const { mountCriarIA } = await import('./criar-ia.js');
+    mountCriarIA({ onExit: () => {} });
+  });
 
   async function refresh() {
     const grid = root.querySelector('#beHomeGrid');

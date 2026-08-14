@@ -1,0 +1,332 @@
+/* editor-v1/css/criar-ia.css
+   "CRIAR COM IA" — experiência guiada pelo Blublu (2026-08-13).
+   Arquivo SEPARADO de propósito: esta frente não pode se misturar com o
+   batch do editor que aguarda commit (editor.css é do outro batch). */
+
+/* ── O BOTÃO DOURADO na home, LADO A LADO com "Criar projeto" ─────────────
+   O .be-home-create original é width:100% — dentro da row os DOIS viram
+   flex:1 e dividem a linha meio a meio, mesmo porte (a quebra pra baixo
+   era o dourado sendo empurrado pelo 100% do azul). */
+.be-home-create-row { display: flex; gap: 14px; align-items: stretch; }
+.be-home-create-row .be-home-create { flex: 1; width: auto; min-width: 0; }
+@media (max-width: 640px) { .be-home-create-row { flex-direction: column; } }
+.be-criar-ia-btn {
+  position: relative;
+  flex: 1; min-width: 0;
+  display: flex; align-items: center; gap: 16px;
+  padding: 22px 26px;
+  border-radius: 16px;
+  cursor: pointer;
+  font-family: var(--font, 'Syne', sans-serif);
+  text-align: left;
+  color: #1a1200;
+  background: linear-gradient(120deg, #8a6400 0%, #ffd75e 18%, #b8860b 38%, #ffe9a3 50%, #b8860b 62%, #ffd75e 82%, #8a6400 100%);
+  background-size: 280% 100%;
+  border: 1px solid rgba(255, 215, 94, .75);
+  box-shadow: 0 0 18px rgba(255, 200, 40, .35), 0 4px 24px rgba(0, 0, 0, .45), inset 0 1px 0 rgba(255, 255, 255, .5);
+  animation: beIaBrilho 3.2s linear infinite;
+  overflow: hidden;
+}
+/* o BRILHO que corre: faixa de luz atravessando o dourado */
+.be-criar-ia-btn::after {
+  content: '';
+  position: absolute; inset: 0;
+  background: linear-gradient(105deg, transparent 38%, rgba(255, 255, 255, .55) 50%, transparent 62%);
+  transform: translateX(-120%);
+  animation: beIaVarredura 2.6s ease-in-out infinite;
+  pointer-events: none;
+}
+@keyframes beIaBrilho { 0% { background-position: 0% 0 } 100% { background-position: 280% 0 } }
+@keyframes beIaVarredura { 0%, 55% { transform: translateX(-120%) } 85%, 100% { transform: translateX(120%) } }
+.be-criar-ia-btn:hover {
+  box-shadow: 0 0 30px rgba(255, 210, 60, .6), 0 6px 28px rgba(0, 0, 0, .5), inset 0 1px 0 rgba(255, 255, 255, .6);
+}
+.be-criar-ia-ico { font-size: 30px; line-height: 1; filter: drop-shadow(0 1px 1px rgba(0,0,0,.25)); }
+.be-criar-ia-txt { display: flex; flex-direction: column; font-weight: 800; font-size: 18px; }
+.be-criar-ia-txt small { font-weight: 600; font-size: 12px; opacity: .8; margin-top: 2px; }
+@media (prefers-reduced-motion: reduce) {
+  .be-criar-ia-btn, .be-criar-ia-btn::after { animation: none }
+}
+
+/* ── A TELA: ambiente tecnológico com o chat no meio ──────────────────────── */
+.be-ia-tela {
+  position: fixed; inset: 0; z-index: 300;
+  background: radial-gradient(ellipse at 50% -10%, #0a1c33 0%, #050d1a 55%, #02060d 100%);
+  display: flex; flex-direction: column; align-items: center;
+  font-family: var(--font, 'Syne', sans-serif); color: #e8f4ff;
+}
+.be-ia-particulas { position: absolute; inset: 0; pointer-events: none; }
+.be-ia-head {
+  position: relative; z-index: 2;
+  width: 100%; max-width: 860px;
+  display: flex; align-items: center; gap: 12px;
+  padding: 16px 18px 8px;
+}
+.be-ia-voltar {
+  background: rgba(10, 25, 47, .6); border: 1px solid rgba(130, 190, 255, .25);
+  color: #9fc3e8; border-radius: 10px; padding: 7px 12px; cursor: pointer;
+  font-family: inherit; font-size: 13px; font-weight: 700;
+}
+.be-ia-voltar:hover { color: #fff; border-color: rgba(130, 190, 255, .5); }
+.be-ia-titulo { font-weight: 800; font-size: 16px; letter-spacing: -.3px; }
+.be-ia-titulo b {
+  background: linear-gradient(90deg, #ffd75e, #ffe9a3, #ffd75e);
+  -webkit-background-clip: text; background-clip: text; color: transparent;
+}
+.be-ia-etapa { margin-left: auto; font-size: 11px; color: #6e93b8; font-family: 'JetBrains Mono', monospace; }
+
+/* chat central */
+.be-ia-chat {
+  position: relative; z-index: 2;
+  width: 100%; max-width: 860px; flex: 1; min-height: 0;
+  display: flex; flex-direction: column;
+  padding: 8px 18px 18px;
+}
+.be-ia-msgs {
+  flex: 1; min-height: 0; overflow-y: auto;
+  display: flex; flex-direction: column; gap: 12px; padding: 12px 4px;
+  scroll-behavior: smooth;
+}
+.be-ia-msg { display: flex; gap: 10px; max-width: 86%; }
+.be-ia-msg.user { align-self: flex-end; flex-direction: row-reverse; }
+.be-ia-avatar {
+  width: 38px; height: 38px; border-radius: 50%; flex: none;
+  display: flex; align-items: center; justify-content: center;
+  background: radial-gradient(circle at 35% 30%, #1c3f66, #0a1c33);
+  border: 1px solid rgba(90, 170, 255, .45);
+  box-shadow: 0 0 12px rgba(60, 150, 255, .25);
+  overflow: hidden;
+}
+/* a FOTO do Blublu (pedido do user: nada de robô genérico) */
+.be-ia-avatar-img { width: 82%; height: 82%; object-fit: contain; filter: drop-shadow(0 0 4px rgba(0, 190, 255, .5)); }
+.be-ia-bolha {
+  padding: 10px 14px; border-radius: 14px; font-size: 14px; line-height: 1.55;
+  background: rgba(12, 30, 54, .82); border: 1px solid rgba(90, 170, 255, .22);
+  white-space: pre-wrap; word-break: break-word;
+}
+.be-ia-msg.user .be-ia-bolha {
+  background: rgba(0, 120, 210, .28); border-color: rgba(90, 170, 255, .4);
+}
+/* digitando: 3 pontinhos */
+.be-ia-digitando { display: inline-flex; gap: 5px; padding: 4px 2px; }
+.be-ia-digitando i {
+  width: 7px; height: 7px; border-radius: 50%; background: #6fb4ff; opacity: .4;
+  animation: beIaPonto 1.2s ease-in-out infinite;
+}
+.be-ia-digitando i:nth-child(2) { animation-delay: .18s }
+.be-ia-digitando i:nth-child(3) { animation-delay: .36s }
+@keyframes beIaPonto { 0%, 100% { opacity: .35; transform: translateY(0) } 45% { opacity: 1; transform: translateY(-3px) } }
+
+/* cards de vídeo dentro do chat (etapa de escolha) */
+.be-ia-videos {
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 10px; margin: 4px 0 2px; width: 100%;
+}
+.be-ia-vcard {
+  background: rgba(10, 24, 44, .85); border: 1px solid rgba(90, 170, 255, .2);
+  border-radius: 12px; overflow: hidden; cursor: pointer; text-align: left;
+  padding: 0; color: inherit; font-family: inherit;
+  transition: transform .12s, border-color .12s, box-shadow .12s;
+}
+.be-ia-vcard:hover { transform: translateY(-2px); border-color: rgba(255, 215, 94, .6); box-shadow: 0 0 16px rgba(255, 200, 40, .18); }
+.be-ia-vcard.sel { border-color: #ffd75e; box-shadow: 0 0 18px rgba(255, 200, 40, .4); }
+.be-ia-vthumb { width: 100%; aspect-ratio: 9 / 14; object-fit: cover; display: block; background: #0a1a2e; }
+.be-ia-vinfo { padding: 8px 9px 9px; display: flex; flex-direction: column; gap: 3px; }
+.be-ia-vtit { font-size: 11.5px; font-weight: 700; line-height: 1.3; max-height: 2.6em; overflow: hidden; }
+.be-ia-vmeta { font-size: 10px; color: #7ea6cc; font-family: 'JetBrains Mono', monospace; }
+
+/* input */
+.be-ia-input-row {
+  display: flex; gap: 8px; padding-top: 10px;
+  border-top: 1px solid rgba(90, 170, 255, .15);
+}
+.be-ia-input {
+  flex: 1; background: rgba(8, 20, 38, .9); color: #e8f4ff;
+  border: 1px solid rgba(90, 170, 255, .3); border-radius: 12px;
+  padding: 12px 14px; font-family: inherit; font-size: 14px; outline: none;
+}
+.be-ia-input:focus { border-color: rgba(255, 215, 94, .55); box-shadow: 0 0 12px rgba(255, 200, 40, .12); }
+.be-ia-enviar {
+  background: linear-gradient(120deg, #ffd75e, #b8860b); color: #1a1200;
+  border: none; border-radius: 12px; padding: 0 20px; font-weight: 800;
+  font-family: inherit; font-size: 14px; cursor: pointer;
+}
+.be-ia-enviar:disabled { opacity: .45; cursor: default; }
+/* ações rápidas sugeridas (chips clicáveis) */
+.be-ia-chips { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 6px; }
+.be-ia-chip {
+  background: rgba(255, 215, 94, .1); border: 1px solid rgba(255, 215, 94, .4);
+  color: #ffd75e; border-radius: 999px; padding: 6px 13px; cursor: pointer;
+  font-family: inherit; font-size: 12px; font-weight: 700;
+}
+.be-ia-chip:hover { background: rgba(255, 215, 94, .22); }
+
+/* ── TIJOLO 2: marcar a legenda (BlueClean) + progresso do job ────────────── */
+.be-ia-marcar { width: 100%; max-width: 300px; margin: 4px 0; }
+.be-ia-marcar-palco {
+  position: relative; width: 100%; aspect-ratio: 9 / 16;
+  background: #000; border-radius: 12px; overflow: hidden;
+  border: 1px solid rgba(90, 170, 255, .3);
+  touch-action: none;    /* o arrasto do box não pode rolar a página */
+}
+.be-ia-marcar-palco video { width: 100%; height: 100%; object-fit: contain; display: block; }
+/* o BOX da legenda: arrasta pelo corpo, redimensiona pela alça */
+.be-ia-box {
+  position: absolute; border: 2px solid #ffd75e; border-radius: 6px;
+  background: rgba(255, 215, 94, .14); cursor: move;
+  box-shadow: 0 0 0 2000px rgba(0, 0, 0, .35);   /* escurece TUDO fora do box */
+}
+.be-ia-box-rotulo {
+  position: absolute; top: -22px; left: 0; font-size: 10px; font-weight: 800;
+  color: #ffd75e; background: rgba(10, 20, 40, .85); padding: 2px 8px;
+  border-radius: 6px; white-space: nowrap;
+}
+.be-ia-box-alca {
+  position: absolute; right: -8px; bottom: -8px; width: 18px; height: 18px;
+  border-radius: 50%; background: #ffd75e; cursor: nwse-resize;
+  border: 2px solid #0a1a2e; box-shadow: 0 0 8px rgba(255, 200, 40, .5);
+}
+.be-ia-marcar-acoes { display: flex; gap: 8px; margin-top: 8px; flex-wrap: wrap; }
+.be-ia-btn-acao {
+  flex: 1; min-width: 120px;
+  background: linear-gradient(120deg, #ffd75e, #b8860b); color: #1a1200;
+  border: none; border-radius: 10px; padding: 10px 12px; font-weight: 800;
+  font-family: inherit; font-size: 13px; cursor: pointer;
+}
+.be-ia-btn-acao.sec {
+  background: rgba(10, 25, 47, .7); color: #9fc3e8;
+  border: 1px solid rgba(130, 190, 255, .3);
+}
+.be-ia-btn-acao:disabled { opacity: .5; cursor: default; }
+/* progresso REAL do job (nada de barra fake) */
+.be-ia-prog { width: 100%; max-width: 300px; margin: 4px 0; }
+.be-ia-prog-barra {
+  height: 10px; border-radius: 999px; overflow: hidden;
+  background: rgba(10, 25, 47, .8); border: 1px solid rgba(130, 190, 255, .25);
+}
+.be-ia-prog-fill {
+  height: 100%; width: 0%;
+  background: linear-gradient(90deg, #ffd75e, #ffb020);
+  transition: width .6s ease;
+}
+.be-ia-prog-info { font-size: 11px; color: #7ea6cc; font-family: 'JetBrains Mono', monospace; margin-top: 5px; display: flex; justify-content: space-between; }
+/* player de resultado (vídeo limpo) dentro do chat */
+.be-ia-player { width: 100%; max-width: 300px; margin: 4px 0; }
+.be-ia-player video {
+  width: 100%; aspect-ratio: 9 / 16; object-fit: contain; background: #000;
+  border-radius: 12px; border: 1px solid rgba(255, 215, 94, .45);
+  box-shadow: 0 0 18px rgba(255, 200, 40, .18);
+}
+
+/* ── PREVIEW do card: ver o vídeo TOCANDO antes de escolher (user 13/08) ──── */
+.be-ia-preview-fundo {
+  position: absolute; inset: 0; z-index: 20;
+  background: rgba(2, 8, 20, .82); backdrop-filter: blur(4px);
+  display: flex; align-items: center; justify-content: center;
+}
+.be-ia-preview {
+  width: min(330px, 86vw);
+  display: flex; flex-direction: column; gap: 10px;
+}
+.be-ia-preview iframe {
+  width: 100%; aspect-ratio: 9 / 16; border: 1px solid rgba(255, 215, 94, .5);
+  border-radius: 14px; background: #000;
+  box-shadow: 0 0 28px rgba(255, 200, 40, .22);
+}
+.be-ia-preview-tit { font-size: 13px; font-weight: 700; color: #e8f4ff; }
+.be-ia-preview-acoes { display: flex; gap: 8px; }
+.be-ia-preview-acoes .be-ia-btn-acao { padding: 12px; }
+.be-ia-preview-fora {
+  font-size: 11px; color: #7ea6cc; text-align: center; text-decoration: none;
+}
+.be-ia-preview-fora:hover { color: #ffd75e; }
+
+/* ── TIJOLO 3: cards das versões de roteiro ────────────────────────────────── */
+.be-ia-roteiros {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+  gap: 10px; width: 100%; margin: 4px 0;
+}
+.be-ia-rcard {
+  background: rgba(10, 24, 44, .88); border: 1px solid rgba(90, 170, 255, .22);
+  border-radius: 12px; padding: 11px; display: flex; flex-direction: column; gap: 8px;
+}
+.be-ia-rcard.sel { border-color: #ffd75e; box-shadow: 0 0 18px rgba(255, 200, 40, .35); }
+.be-ia-rcard-nome { font-weight: 800; font-size: 13px; color: #ffd75e; }
+.be-ia-rcard-texto {
+  font-size: 12.5px; line-height: 1.6; color: #d5e8fa;
+  max-height: 220px; overflow-y: auto; white-space: pre-wrap;
+  padding-right: 4px;
+}
+.be-ia-rcard .be-ia-btn-acao { padding: 9px 10px; font-size: 12px; }
+
+/* ── TIJOLO 4: vozes do acervo + teleprompter ─────────────────────────────── */
+.be-ia-vozes {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+  gap: 8px; width: 100%; margin: 4px 0;
+}
+.be-ia-voz {
+  background: rgba(10, 24, 44, .88); border: 1px solid rgba(90, 170, 255, .22);
+  border-radius: 12px; padding: 10px; display: flex; flex-direction: column; gap: 8px;
+}
+.be-ia-voz-nome { font-weight: 800; font-size: 13px; }
+.be-ia-voz-acoes { display: flex; gap: 6px; align-items: center; }
+.be-ia-voz-acoes .be-ia-btn-acao { flex: 1; min-width: 0; padding: 8px; font-size: 12px; }
+.be-ia-tele {
+  width: min(560px, 92vw); display: flex; flex-direction: column; gap: 14px;
+  background: rgba(6, 16, 30, .96); border: 1px solid rgba(255, 215, 94, .5);
+  border-radius: 16px; padding: 22px;
+}
+.be-ia-tele-passo { font-size: 11px; color: #7ea6cc; font-family: 'JetBrains Mono', monospace; }
+.be-ia-tele-texto {
+  font-size: 22px; line-height: 1.6; font-weight: 700; color: #fff;
+  max-height: 46vh; overflow-y: auto;
+}
+.be-ia-tele-acoes { display: flex; gap: 8px; }
+.be-ia-tele-dica { font-size: 11px; color: #7ea6cc; }
+
+/* ── TIJOLO 5: estilos de legenda ──────────────────────────────────────────── */
+.be-ia-estilos {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 8px; width: 100%; margin: 4px 0;
+}
+.be-ia-estilo {
+  background: rgba(10, 24, 44, .88); border: 1px solid rgba(90, 170, 255, .22);
+  border-radius: 12px; padding: 12px 10px; cursor: pointer; color: #cfe4f7;
+  font-family: inherit; font-size: 12px; font-weight: 700;
+  display: flex; flex-direction: column; gap: 8px; align-items: center;
+}
+.be-ia-estilo:hover { border-color: rgba(255, 215, 94, .6); }
+.be-ia-estilo-demo { font-family: 'Anton', sans-serif; font-size: 17px; letter-spacing: .3px; }
+.be-ia-estilo-sem { color: #57748f; }
+
+/* ── TIJOLO 7: entrega (pacote de publicação) ─────────────────────────────── */
+.be-ia-entrega {
+  width: 100%; display: flex; flex-direction: column; gap: 12px; margin: 4px 0;
+  background: rgba(10, 24, 44, .88); border: 1px solid rgba(255, 215, 94, .5);
+  border-radius: 14px; padding: 14px;
+  box-shadow: 0 0 22px rgba(255, 200, 40, .18);
+}
+.be-ia-entrega-sec { display: flex; flex-direction: column; gap: 6px; }
+.be-ia-entrega-sec > b { color: #ffd75e; font-size: 12px; }
+.be-ia-copiavel {
+  background: rgba(4, 12, 24, .8); border: 1px solid rgba(90, 170, 255, .2);
+  border-radius: 9px; padding: 9px 11px; font-size: 12.5px; line-height: 1.55;
+  cursor: pointer; position: relative;
+}
+.be-ia-copiavel span {
+  float: right; font-size: 10px; color: #7ea6cc; font-family: 'JetBrains Mono', monospace;
+}
+.be-ia-copiavel:hover { border-color: rgba(255, 215, 94, .5); }
+.be-ia-copiavel.ok { border-color: #4ade80; }
+.be-ia-copiavel.ok span { color: #4ade80; }
+.be-ia-copiavel.ok span::after { content: ' ✓'; }
+
+/* indício de play no thumbnail do card */
+.be-ia-vcard { position: relative; }
+.be-ia-vplay {
+  position: absolute; top: 8px; right: 8px;
+  width: 26px; height: 26px; border-radius: 50%;
+  background: rgba(2, 8, 20, .72); border: 1px solid rgba(255, 215, 94, .55);
+  color: #ffd75e; font-size: 11px; display: flex; align-items: center;
+  justify-content: center; pointer-events: none;
+}

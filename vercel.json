@@ -23,6 +23,9 @@
     "api/blublu-chat.js": {
       "maxDuration": 60
     },
+    "api/criar-ia.js": {
+      "maxDuration": 60
+    },
     "api/blublu-emails.js": {
       "maxDuration": 60
     },
