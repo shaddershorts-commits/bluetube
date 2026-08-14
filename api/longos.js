@@ -37,20 +37,71 @@ const MAX_INSCRITOS = 70_000;
 const PISOS = [30_000, 100_000, 300_000];
 const BUSCAS_POR_RODADA = 8;
 const RETENCAO_DIAS = 90;
+// Canal precisa ter postado nos últimos N dias pra entrar. Pedido do dono em
+// 14/08, depois de ver o acervo enchendo de canal que estourou uma vez e
+// parou: viral de canal abandonado não serve pra estudar formato.
+const DIAS_CANAL_VIVO = 2;
+// Só canal destes países (pedido do dono em 14/08). Entram em DOIS lugares:
+//  · no `regionCode` da busca, pra a descoberta já mirar esses mercados;
+//  · no filtro final, conferindo o país DECLARADO do canal.
+// ⚠️ `snippet.country` é OPCIONAL no YouTube — canal que não declara fica sem
+// o campo. A regra é literal ("apenas desses países"), então canal sem país
+// declarado NÃO entra. O relatório da coleta conta quantos caem por isso, pra
+// a decisão de afrouxar (ou não) ser tomada com número.
+const PAISES = ['US', 'ES', 'BR', 'DE'];
+// Idioma que combina com cada mercado, pra a busca não devolver conteúdo em
+// inglês quando está mirando a Alemanha.
+const IDIOMA_DO_PAIS = { US: 'en', ES: 'es', BR: 'pt', DE: 'de' };
 
 // O vocabulário É a curadoria desta página: ele define o que ela encontra.
 // Mira conteúdo SEM ROSTO — narração sobre imagem, história contada,
 // compilação. Termo com nome de gente ou de marca traria justamente o canal
 // famoso que o teto de inscritos existe pra excluir.
+//
+// ⚠️ O TAMANHO DESTA LISTA É O TETO DA PÁGINA, não a cota da API.
+// Medido em 14/08: a busca do YouTube é ESTÁVEL — repetir o mesmo termo devolve
+// praticamente os mesmos 50 vídeos. Então rodar a coleta mais vezes com o mesmo
+// vocabulário não enche o acervo; só gasta cota. Quem quiser mais conteúdo
+// acrescenta TERMO aqui, e é o único lugar que precisa mexer.
+// Rendimento medido: ~50 candidatos por termo → ~5% viram vídeo gravado.
 const TERMOS = [
+  // narrativa e investigação
   'documentary', 'documentário', 'true story', 'história real',
   'mystery explained', 'mistério explicado', 'unsolved case', 'caso não resolvido',
+  'crime documentary', 'caso real', 'investigação', 'true crime',
+  'cold case', 'caso arquivado', 'desaparecimento misterioso',
+  // explicação e análise
   'deep dive', 'explicado em detalhes', 'full analysis', 'análise completa',
+  'explicação completa', 'entenda de uma vez', 'como funciona',
+  // listas e compilações
   'compilation', 'compilado', 'top 10 facts', 'curiosidades incríveis',
+  'fatos surpreendentes', 'coisas que você não sabia', 'top 10 mysteries',
+  // sono e relaxamento (nicho gigante de canal sem rosto)
   'sleep story', 'história para dormir', 'relaxing narration',
-  'scary stories', 'histórias de terror', 'creepy',
+  'bedtime stories', 'contos de fadas', 'histórias infantis',
+  'audiolivro completo', 'audiobook full',
+  // terror
+  'scary stories', 'histórias de terror', 'creepy', 'horror stories',
+  'relatos de terror', 'lendas urbanas', 'creepypasta',
+  // história e ciência
   'ancient history', 'história antiga', 'space documentary', 'universo explicado',
-  'crime documentary', 'caso real', 'investigação',
+  'segunda guerra', 'civilizações perdidas', 'documentário histórico',
+  'astronomia explicada', 'buraco negro', 'evolução humana',
+  // natureza e animais
+  'wildlife documentary', 'documentário natureza', 'animais selvagens',
+  'oceano profundo', 'predadores',
+  // pessoas e sociedade
+  'biografia completa', 'a história de', 'ascensão e queda',
+  'psicologia explicada', 'comportamento humano',
+  // dinheiro e trabalho
+  'como enriqueceu', 'história de sucesso', 'colapso da empresa',
+  'documentário economia',
+  // cultura pop sem rosto
+  'anime explained', 'lore explicada', 'teoria do filme', 'game lore',
+  'reddit stories', 'histórias do reddit',
+  // religião e mitologia
+  'mitologia grega', 'curiosidades da bíblia', 'histórias bíblicas',
+  'mitologia nórdica',
 ];
 
 const seg = (iso) => {
@@ -126,14 +177,19 @@ async function coletar(req, res, { SU, h }) {
     // `long` (+20min) cobre 20-50min da faixa pedida; `medium` (4-20min) cobre
     // 15-20. Alternar aproveita as duas pontas.
     const balde = i % 2 === 0 ? 'long' : 'medium';
+    // Rotaciona os 4 mercados pedidos entre as buscas da rodada: cada termo sai
+    // olhando um país, e ao longo da rodada os quatro são cobertos.
+    const pais = PAISES[i % PAISES.length];
     try {
       const r = await youtubeRequest('search', {
         part: 'snippet', type: 'video', q: termos[i],
         videoDuration: balde, order: 'relevance', maxResults: 50,
+        regionCode: pais,
+        relevanceLanguage: IDIOMA_DO_PAIS[pais] || 'en',
       });
       stat.buscas++;
       const itens = (r && r.items) || [];
-      stat.por_termo[termos[i]] = itens.length;
+      stat.por_termo[`${termos[i]} [${pais}]`] = itens.length;
       for (const it of itens) {
         const id = it.id && it.id.videoId;
         if (id && !candidatos.has(id)) candidatos.set(id, termos[i]);
@@ -165,7 +221,9 @@ async function coletar(req, res, { SU, h }) {
   const info = {};
   for (let i = 0; i < canaisIds.length; i += 50) {
     const r = await youtubeRequest('channels', {
-      part: 'snippet,statistics', id: canaisIds.slice(i, i + 50).join(','), maxResults: 50,
+      // `contentDetails` traz a playlist de uploads — é ela que diz quando o
+      // canal postou pela última vez (ver o filtro de canal vivo abaixo).
+      part: 'snippet,statistics,contentDetails', id: canaisIds.slice(i, i + 50).join(','), maxResults: 50,
     });
     for (const c of (r && r.items) || []) {
       info[c.id] = {
@@ -174,10 +232,53 @@ async function coletar(req, res, { SU, h }) {
         nome: (c.snippet && c.snippet.title) || '',
         thumb: (c.snippet && c.snippet.thumbnails && ((c.snippet.thumbnails.medium || {}).url || (c.snippet.thumbnails.default || {}).url)) || null,
         pais: (c.snippet && c.snippet.country) || null,
+        uploads: (c.contentDetails && c.contentDetails.relatedPlaylists && c.contentDetails.relatedPlaylists.uploads) || null,
       };
     }
   }
   stat.canais_consultados = canaisIds.length;
+
+  // ── 3.5) CANAL VIVO ───────────────────────────────────────────────────────
+  // ⚠️ O acervo estava enchendo de CANAL MORTO: o vídeo estourou um dia e o
+  // canal parou de postar. Um viral de canal abandonado não serve pra estudar
+  // formato — o que interessa é quem está acertando AGORA.
+  //
+  // O sinal é a última publicação, e ela sai da playlist de uploads do canal:
+  // `playlistItems` com maxResults=1 custa **1 unidade**, não 100 como a busca.
+  // E só é consultada pros canais que JÁ passaram no teto de inscritos e no
+  // piso de views — um punhado por rodada, não os 85 candidatos.
+  const diasVivo = Math.max(1, parseInt(req.query.dias_vivo || String(DIAS_CANAL_VIVO), 10));
+  const corteVivo = Date.now() - diasVivo * 864e5;
+  const ultimaPub = {};
+  const precisamChecar = [...new Set(naFaixa
+    .filter(({ v }) => {
+      const c = info[v.snippet.channelId];
+      const views = Number((v.statistics && v.statistics.viewCount) || 0);
+      return c && !c.oculto && c.subs <= MAX_INSCRITOS && views >= PISOS[0] && c.uploads;
+    })
+    .map(({ v }) => v.snippet.channelId))];
+  for (const id of precisamChecar) {
+    try {
+      const r = await youtubeRequest('playlistItems', {
+        part: 'contentDetails', playlistId: info[id].uploads, maxResults: 1,
+      });
+      const it = (r && r.items && r.items[0]) || null;
+      const q = it && it.contentDetails && it.contentDetails.videoPublishedAt;
+      ultimaPub[id] = q ? new Date(q).getTime() : 0;
+    } catch (e) {
+      // Não deu pra checar não é o mesmo que canal morto. Sem o dado, deixa
+      // passar: barrar por falha de rede esvaziaria a página em silêncio.
+      ultimaPub[id] = Date.now();
+    }
+  }
+  stat.canais_checados_vivos = precisamChecar.length;
+  stat.canais_mortos = precisamChecar.filter((id) => ultimaPub[id] < corteVivo).length;
+  stat.dias_vivo = diasVivo;
+
+  // Funil por filtro: com cinco regras empilhadas, saber QUANTO cada uma corta
+  // é a diferença entre afrouxar a certa e chutar.
+  const corte = { canal_grande: 0, abaixo_do_piso: 0, canal_morto: 0, pais_fora: 0, sem_pais: 0 };
+  const paisesAceitos = String(req.query.paises || PAISES.join(',')).toUpperCase().split(',').map((p) => p.trim()).filter(Boolean);
 
   const linhas = [];
   const porCanal = new Map();
@@ -185,9 +286,15 @@ async function coletar(req, res, { SU, h }) {
     const c = info[v.snippet.channelId];
     // Canal que ESCONDE a contagem não passa: sem o número não dá pra afirmar
     // que é pequeno, e na dúvida fica de fora.
-    if (!c || c.oculto || c.subs > MAX_INSCRITOS) continue;
+    if (!c || c.oculto || c.subs > MAX_INSCRITOS) { corte.canal_grande++; continue; }
     const views = Number((v.statistics && v.statistics.viewCount) || 0);
-    if (views < PISOS[0]) continue;      // abaixo do menor piso não interessa a ninguém
+    if (views < PISOS[0]) { corte.abaixo_do_piso++; continue; }
+    // Canal parado não entra, por mais que o vídeo tenha estourado.
+    if ((ultimaPub[v.snippet.channelId] || 0) < corteVivo) { corte.canal_morto++; continue; }
+    // País do canal. `snippet.country` é opcional no YouTube: quem não declara
+    // fica sem o campo, e a regra pedida é literal — só os quatro mercados.
+    if (!c.pais) { corte.sem_pais++; continue; }
+    if (paisesAceitos.indexOf(String(c.pais).toUpperCase()) < 0) { corte.pais_fora++; continue; }
     const agora = new Date().toISOString();
     linhas.push({
       youtube_id: v.id,
@@ -220,6 +327,8 @@ async function coletar(req, res, { SU, h }) {
     }
   }
   stat.de_canal_pequeno = linhas.length;
+  stat.cortes = corte;
+  stat.paises = paisesAceitos;
   if (!linhas.length) return responder(res, stat, 'nada passou no teto de inscritos + piso de views');
 
   // ── 4) GRAVA em blocos (uma linha ruim custa o bloco, não a rodada)
@@ -320,4 +429,4 @@ async function limpar(req, res, { SU, h }) {
   return res.status(200).json({ ok: r.ok, apagados, retencao_dias: RETENCAO_DIAS });
 }
 
-module.exports.__interno = { TERMOS, PISOS, DUR_MIN_S, DUR_MAX_S, MAX_INSCRITOS, fatiaDeTermos, textoSeguro, seg };
+module.exports.__interno = { TERMOS, PISOS, DUR_MIN_S, DUR_MAX_S, MAX_INSCRITOS, DIAS_CANAL_VIVO, PAISES, IDIOMA_DO_PAIS, fatiaDeTermos, textoSeguro, seg };
