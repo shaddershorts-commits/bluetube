@@ -68,7 +68,65 @@ export function mountEditor(root, store, opts = {}) {
       store.dispatch(act.selectAudioClip(audioId));
       generateCaptions();
     },
+    // botão direito no áudio → "Separar voz × música" (Demucs, 2026-08-14)
+    onSepararVoz: (audioId) => separarVozMusica(audioId),
   });
+
+  // ── SEPARAR VOZ × MÚSICA (IA) ──────────────────────────────────────────────
+  // Troca o clipe por DOIS stems do MESMO arquivo (voz + música), nascendo com
+  // o MESMO recorte/posição/volume — na timeline soa idêntico, mas agora cada
+  // lado tem a própria faixa. Job no Replicate via endpoint isolado; os stems
+  // ficam no NOSSO Storage (permanentes). 1 gestureId = a troca inteira é UM
+  // undo (desfazer devolve o clipe original).
+  const separandoAudio = new Set();
+  async function separarVozMusica(audioId) {
+    const a = store.getState().audio_clips.find((k) => k.id === audioId);
+    if (!a) return;
+    if (a.kind !== 'extra' || !/^https?:\/\//.test(a.url || '')) {
+      toast('Separação vale pra faixas de áudio importadas/da biblioteca. Pro áudio do vídeo: destaca ele primeiro (Ctrl+Shift+S).', true);
+      return;
+    }
+    if (separandoAudio.has(audioId)) { toast('Já estou separando essa faixa — segura aí.'); return; }
+    separandoAudio.add(audioId);
+    toast('🎙 Separando voz × música com IA…');
+    try {
+      const chamar = async (body) => {
+        const r = await fetch('/api/separar-audio', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ token: localStorage.getItem('bt_token') || '', ...body }),
+        });
+        const j = await r.json().catch(() => ({}));
+        if (!r.ok) throw new Error(j.error || ('HTTP ' + r.status));
+        return j;
+      };
+      const { job_id } = await chamar({ action: 'start', audio_url: a.url });
+      let st = null;
+      for (let i = 0; i < 40; i++) {
+        await new Promise((r) => setTimeout(r, 3000));
+        st = await chamar({ action: 'status', job_id });
+        if (st.status === 'done' || st.status === 'error') break;
+      }
+      if (st?.status !== 'done') throw new Error(st?.error || 'A separação não terminou. Tenta de novo.');
+      // o clipe pode ter sido editado/apagado durante o job: re-lê o estado
+      const atual = store.getState().audio_clips.find((k) => k.id === audioId);
+      if (!atual) { toast('A faixa foi apagada durante a separação — os arquivos ficaram na sua biblioteca de resultados.', true); return; }
+      const g = 'sepvoz-' + audioId + '-' + Date.now();
+      const base = {
+        duration: atual.media_duration, start: atual.start,
+        source_in: atual.source_in, source_out: atual.source_out,
+        volume: atual.volume, ...(atual.speed ? { speed: atual.speed } : {}),
+      };
+      const lane = Number.isInteger(atual.lane) ? atual.lane : 0;
+      store.dispatch({ ...act.addAudioClip({ ...base, url: st.vocals_url, filename: '🎙 voz — ' + (atual.filename || 'áudio'), lane }), gestureId: g });
+      store.dispatch({ ...act.addAudioClip({ ...base, url: st.no_vocals_url, filename: '🎵 música — ' + (atual.filename || 'áudio'), lane: lane + 1 }), gestureId: g });
+      store.dispatch({ ...act.deleteAudioClip(audioId), gestureId: g });
+      toast('✅ Separado: faixa de VOZ + faixa de MÚSICA no lugar da original (Ctrl+Z desfaz).');
+    } catch (e) {
+      toast('Separação falhou: ' + (e.message || 'erro'), true);
+    } finally {
+      separandoAudio.delete(audioId);
+    }
+  }
   const overlay = createOverlay($('#beOverlay'), store, player, openTextPanel);
   const pip = createPip($('#beOverlay').parentElement, videoEl, store, player);
   // marcador da máscara: arrastar/redimensionar direto no vídeo

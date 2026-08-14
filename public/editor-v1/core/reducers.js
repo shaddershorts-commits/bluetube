@@ -680,6 +680,12 @@ export function reduce(state, action) {
     case A.ADD_AUDIO_CLIP: {
       const m = action.media || {};
       if (!m.url || !(m.duration > 0)) return state;
+      // source_in/out/volume/speed opcionais (2026-08-14): o SEPARAR VOZ ×
+      // MÚSICA troca um clipe por dois stems do MESMO arquivo — eles precisam
+      // nascer com o RECORTE e o volume do original pra soar idêntico.
+      const sIn = Math.max(0, Math.min(Number(m.source_in) || 0, m.duration));
+      const sOutBruto = Number(m.source_out);
+      const sOut = (sOutBruto > sIn && sOutBruto <= m.duration) ? sOutBruto : m.duration;
       const clip = {
         id: state.next_audio_id, kind: 'extra',
         url: m.url, filename: m.filename || 'áudio',
@@ -688,8 +694,10 @@ export function reduce(state, action) {
         // fantasma da gravação estava (posição da agulha + faixa nova)
         start: Math.max(0, Number(m.start) || 0),
         ...(Number.isInteger(m.lane) && m.lane >= 0 ? { lane: Math.min(MAX_AUDIO_LANE, m.lane) } : {}),
-        source_in: 0, source_out: m.duration,
-        volume: 1, active: true,
+        source_in: sIn, source_out: sOut,
+        volume: (Number(m.volume) > 0 && Number(m.volume) <= 1) ? Number(m.volume) : 1,
+        ...(Number(m.speed) > 0 ? { speed: Math.min(100, Math.max(0.1, Number(m.speed))) } : {}),
+        active: true,
       };
       return touch({
         ...state,

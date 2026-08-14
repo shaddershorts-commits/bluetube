@@ -26,6 +26,9 @@
     "api/criar-ia.js": {
       "maxDuration": 60
     },
+    "api/separar-audio.js": {
+      "maxDuration": 60
+    },
     "api/blublu-emails.js": {
       "maxDuration": 60
     },
