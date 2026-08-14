@@ -83,14 +83,25 @@ export function mountEditor(root, store, opts = {}) {
       const nome = prompt(kind === 'music' ? 'Nome pra salvar em Minhas músicas:' : 'Nome pra salvar em Meus efeitos:', sugerido);
       if (nome == null || !nome.trim()) return;
       const favs = getAudioFavs();
-      if (favs.some((f) => f.url === a.url)) { toast('Esse áudio já está nos favoritos ⭐'); return; }
+      // O RECORTE VIAJA JUNTO (user 14/08: "salvei só a parte cortada e foi a
+      // faixa inteira"): o favorito guarda source_in/out do clipe — usar da
+      // biblioteca recoloca EXATAMENTE o trecho salvo. Por isso o dedup é por
+      // url+recorte: dois trechos do mesmo arquivo são favoritos diferentes.
+      const sIn = a.source_in || 0;
+      const sOut = a.source_out || a.media_duration || 0;
+      if (favs.some((f) => f.url === a.url && (f.source_in || 0) === sIn && (f.source_out || f.duration) === sOut)) {
+        toast('Esse trecho já está nos favoritos ⭐');
+        return;
+      }
       favs.push({
-        name: nome.trim().slice(0, 80), url: a.url,
-        duration: a.media_duration || Math.max(0, (a.source_out || 0) - (a.source_in || 0)),
+        name: nome.trim().slice(0, 80), url: a.url, preview: a.url,
+        duration: a.media_duration || sOut,
+        source_in: sIn, source_out: sOut,
+        ...(a.speed ? { speed: a.speed } : {}),
         kind, category: kind === 'music' ? 'Minhas músicas' : 'Meus efeitos',
       });
       try { localStorage.setItem(AUDIO_FAV_KEY, JSON.stringify(favs)); } catch {}
-      toast('⭐ Salvo em ' + (kind === 'music' ? 'Minhas músicas' : 'Meus efeitos') + ': ' + nome.trim());
+      toast('⭐ Salvo em ' + (kind === 'music' ? 'Minhas músicas' : 'Meus efeitos') + ': ' + nome.trim() + ' (' + Math.round(sOut - sIn) + 's)');
     },
   });
 
@@ -1585,7 +1596,10 @@ export function mountEditor(root, store, opts = {}) {
   function audioResultRow(it, isFav) {
     const row = document.createElement('div');
     row.className = 'be-audio-lib-row';
-    const meta = [it.category, it.duration ? Math.round(it.duration) + 's' : ''].filter(Boolean).join(' · ');
+    // favorito RECORTADO mostra o tamanho do TRECHO, não do arquivo
+    const temRecorte = it.source_out > (it.source_in || 0) && (it.source_in > 0 || it.source_out < it.duration);
+    const segs = temRecorte ? (it.source_out - (it.source_in || 0)) : it.duration;
+    const meta = [it.category, segs ? Math.round(segs) + 's' : '', temRecorte ? '✂' : ''].filter(Boolean).join(' · ');
     row.innerHTML = `<button class="be-audiolib-play" title="Ouvir">▶</button>
       <span class="be-audiolib-name" title="${it.name || ''}">${it.name || 'áudio'}</span>
       <span class="be-dim">${meta}</span>`;
@@ -1593,28 +1607,56 @@ export function mountEditor(root, store, opts = {}) {
     row.querySelector('.be-audiolib-play').addEventListener('click', () => {
       if (!it.preview) return;
       if (audio && !audio.paused) { audio.pause(); return; }
-      audio = new Audio(it.preview); audio.play().catch(() => {});
+      audio = new Audio(it.preview);
+      // prévia do TRECHO salvo: começa no in e para no out
+      if (temRecorte) {
+        audio.currentTime = it.source_in || 0;
+        audio.addEventListener('timeupdate', () => { if (audio && audio.currentTime >= it.source_out) audio.pause(); });
+      }
+      audio.play().catch(() => {});
     });
-    const star = document.createElement('button');
-    star.className = 'be-audiolib-star'; star.textContent = isFav ? '★' : '☆'; star.title = 'Favoritar';
-    star.addEventListener('click', () => { toggleAudioFav(it); renderAudioLib(); });
+    if (isFav) {
+      // na aba Favoritos a ação é EXPLÍCITA: apagar (user 14/08 — a estrela
+      // ambígua não comunicava remoção)
+      const del = document.createElement('button');
+      del.className = 'be-audiolib-star'; del.textContent = '🗑'; del.title = 'Remover dos favoritos';
+      del.addEventListener('click', () => { removerAudioFav(it); renderAudioLib(); toast('Removido dos favoritos'); });
+      row.appendChild(del);
+    } else {
+      const star = document.createElement('button');
+      star.className = 'be-audiolib-star'; star.textContent = '☆'; star.title = 'Favoritar';
+      star.addEventListener('click', () => { toggleAudioFav(it); renderAudioLib(); });
+      row.appendChild(star);
+    }
     const use = document.createElement('button');
     use.className = 'be-tool-btn'; use.style.cssText = 'padding:2px 8px;font-size:11px'; use.textContent = '＋';
     use.title = 'Adicionar na timeline';
     use.addEventListener('click', () => {
-      store.dispatch(act.addAudioClip({ url: it.url, filename: it.name, duration: it.duration || 10 }));
+      // o RECORTE salvo viaja pro clipe novo (a razão de existir do favorito ✂)
+      store.dispatch(act.addAudioClip({
+        url: it.url, filename: it.name, duration: it.duration || 10,
+        ...(temRecorte ? { source_in: it.source_in || 0, source_out: it.source_out } : {}),
+        ...(it.speed ? { speed: it.speed } : {}),
+      }));
       syncWaveRegistry(store.getState());
-      toast('Áudio adicionado ✓');
+      toast('Áudio adicionado ✓' + (temRecorte ? ' (trecho de ' + Math.round(segs) + 's)' : ''));
     });
-    row.appendChild(star); row.appendChild(use);
+    row.appendChild(use);
     return row;
   }
   const AUDIO_FAV_KEY = 'be_v1_audio_favs';
   function getAudioFavs() { try { return JSON.parse(localStorage.getItem(AUDIO_FAV_KEY)) || []; } catch { return []; } }
+  const mesmaFav = (f, it) => f.url === it.url
+    && (f.source_in || 0) === (it.source_in || 0)
+    && (f.source_out || f.duration || 0) === (it.source_out || it.duration || 0);
   function toggleAudioFav(it) {
     const favs = getAudioFavs();
-    const i = favs.findIndex(f => f.url === it.url);
+    const i = favs.findIndex((f) => mesmaFav(f, it));
     if (i >= 0) favs.splice(i, 1); else favs.push(it);
+    try { localStorage.setItem(AUDIO_FAV_KEY, JSON.stringify(favs)); } catch {}
+  }
+  function removerAudioFav(it) {
+    const favs = getAudioFavs().filter((f) => !mesmaFav(f, it));
     try { localStorage.setItem(AUDIO_FAV_KEY, JSON.stringify(favs)); } catch {}
   }
   audioInput.addEventListener('change', async () => {
