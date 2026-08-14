@@ -54,12 +54,14 @@ export const A = {
   SPLIT_OVERLAY: 'SPLIT_OVERLAY',
   MOVE_OVERLAY: 'MOVE_OVERLAY',
   SET_OVERLAY_TRANSFORM: 'SET_OVERLAY_TRANSFORM',
+  TOGGLE_OVERLAY_MUTED: 'TOGGLE_OVERLAY_MUTED',
   DELETE_OVERLAY: 'DELETE_OVERLAY',
   SELECT_OVERLAY: 'SELECT_OVERLAY',
   SET_VOLUME: 'SET_VOLUME',
   SET_TRANSITION: 'SET_TRANSITION',
   SET_ASPECT: 'SET_ASPECT',
   SET_FORMATO: 'SET_FORMATO',
+  SET_CLIP_ANIM: 'SET_CLIP_ANIM',
   // compostos (CapCut Alt+G)
   TOGGLE_MULTI_SELECT: 'TOGGLE_MULTI_SELECT',
   SELECT_ALL: 'SELECT_ALL',
@@ -124,6 +126,7 @@ export const UNDOABLE = {
   [A.SPLIT_OVERLAY]: U,
   [A.MOVE_OVERLAY]: U,
   [A.SET_OVERLAY_TRANSFORM]: U,
+  [A.TOGGLE_OVERLAY_MUTED]: U,
   [A.SET_ITEM_LANE]: U,
   [A.SET_AUDIO_LANE]: U,
   [A.ADD_EXTRA_LANE]: U,
@@ -137,6 +140,7 @@ export const UNDOABLE = {
   [A.SET_TRANSITION]: U,
   [A.SET_ASPECT]: U,
   [A.SET_FORMATO]: U,
+  [A.SET_CLIP_ANIM]: U,
   [A.CREATE_COMPOUND]: U,
   [A.UNGROUP_COMPOUND]: U,
   [A.UPDATE_COMPOUND]: U,
@@ -210,6 +214,7 @@ export const moveItemTo = (itemType, id, start, laneAlvo) => ({ type: A.MOVE_ITE
 export const cutSilence = (alvo, id, falas) => ({ type: A.CUT_SILENCE, alvo, id, falas });
 export const overlayToClip = (overlayId, atT) => ({ type: A.OVERLAY_TO_CLIP, overlayId, atT });
 export const trimOverlay = (overlayId, edge, value) => ({ type: A.TRIM_OVERLAY, overlayId, edge, value });
+export const toggleOverlayMuted = (overlayId) => ({ type: A.TOGGLE_OVERLAY_MUTED, overlayId });
 export const splitOverlayAt = (t) => ({ type: A.SPLIT_OVERLAY, t });
 export const moveOverlay = (overlayId, start) => ({ type: A.MOVE_OVERLAY, overlayId, start });
 export const setOverlayTransform = (overlayId, patch) => ({ type: A.SET_OVERLAY_TRANSFORM, overlayId, patch });
@@ -220,6 +225,8 @@ export const setVolume = (track, value) => ({ type: A.SET_VOLUME, track, value }
 export const setTransition = (between, ttype, duration, intensity) => ({ type: A.SET_TRANSITION, between, ttype, duration, intensity });
 export const setAspect = (strategy) => ({ type: A.SET_ASPECT, strategy });
 export const setFormato = (formato) => ({ type: A.SET_FORMATO, formato });
+// slot: 'in' | 'out' | 'loop'; animId null = remover
+export const setClipAnim = (clipId, slot, animId) => ({ type: A.SET_CLIP_ANIM, clipId, slot, animId });
 export const setProjectId = (id) => ({ type: A.SET_PROJECT_ID, id });
 export const toggleMultiSelect = (itemType, id) => ({ type: A.TOGGLE_MULTI_SELECT, itemType, id });
 export const selectAll = () => ({ type: A.SELECT_ALL });

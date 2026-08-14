@@ -296,6 +296,11 @@ body {
   position: relative;
   width: min(100cqw, calc(100cqh * var(--be-arn, 0.5625)));
   height: min(100cqh, calc(100cqw / var(--be-arn, 0.5625)));
+  /* o QUADRO precisa ser visível contra o painel preto: sem isto, trocar o
+     formato com vídeo vertical não mudava nenhum pixel na tela (user 14/08
+     'se mantém em formato de storie') — o palco era transparente. */
+  background: #05101f;
+  outline: 1px solid var(--blue-border);
 }
 .be-preview-frame video {
   position: absolute; inset: 0;   /* double-buffer: 2 vídeos empilhados */
@@ -811,7 +816,7 @@ body {
 .be-export-opts { display: flex; flex-direction: row; align-items: stretch; gap: 18px; }
 .be-export-optthumb-wrap {
   flex: 0 0 clamp(180px, 34%, 240px); align-self: start;
-  aspect-ratio: 9 / 16; border-radius: 10px; overflow: hidden;
+  aspect-ratio: var(--be-export-ar, 9 / 16); border-radius: 10px; overflow: hidden;
   background: #000; border: 1px solid var(--blue-border);
 }
 .be-export-optthumb { width: 100%; height: 100%; object-fit: cover; display: block; }
@@ -1153,11 +1158,19 @@ body {
 /* esmaecer preto/branco: escurece/clareia no miolo e a nova surge */
 [data-fx="flash"] video.be-trans-saindo   { filter: brightness(calc(1 + (0.5 - abs(var(--p) - 0.5)) * 3)) !important }
 [data-fx="flash"] video.be-trans-entrando { opacity: var(--p) !important; filter: brightness(calc(1 + (0.5 - abs(var(--p) - 0.5)) * 3)) !important }
-/* DESLIZAR: a cena que entra REALMENTE entra pela borda */
-[data-fx="slide"] video.be-trans-entrando { transform: translateY(calc((1 - var(--p)) * 100%)) var(--betf,) !important }
-[data-fx="slide"] video.be-trans-saindo   { transform: translateY(calc(var(--p) * -18%)) var(--betf,) !important }
-/* varredura: a nova é revelada por uma faixa que corre */
-[data-fx="wipe"] video.be-trans-entrando  { clip-path: inset(calc((1 - var(--p)) * 100%) 0 0 0) !important }
+/* DESLIZAR: a cena que entra REALMENTE entra pela borda — e pela borda CERTA.
+   data-dir vem do catálogo (eixo+sinal): yp = baixo, yn = cima, xn = esquerda.
+   Antes tudo era translateY fixo e "Deslizar esquerda" deslizava na vertical. */
+[data-fx="slide"] video.be-trans-entrando { transform: translateY(calc((1 - var(--p)) * -100%)) var(--betf,) !important }
+[data-fx="slide"] video.be-trans-saindo   { transform: translateY(calc(var(--p) * 18%)) var(--betf,) !important }
+[data-fx="slide"][data-dir="yn"] video.be-trans-entrando { transform: translateY(calc((1 - var(--p)) * 100%)) var(--betf,) !important }
+[data-fx="slide"][data-dir="yn"] video.be-trans-saindo   { transform: translateY(calc(var(--p) * -18%)) var(--betf,) !important }
+[data-fx="slide"][data-dir="xn"] video.be-trans-entrando { transform: translateX(calc((1 - var(--p)) * 100%)) var(--betf,) !important }
+[data-fx="slide"][data-dir="xn"] video.be-trans-saindo   { transform: translateX(calc(var(--p) * -18%)) var(--betf,) !important }
+/* varredura: a nova é revelada por uma borda que corre na direção do nome */
+[data-fx="wipe"] video.be-trans-entrando  { clip-path: inset(0 0 calc((1 - var(--p)) * 100%) 0) !important }
+[data-fx="wipe"][data-dir="yn"] video.be-trans-entrando { clip-path: inset(calc((1 - var(--p)) * 100%) 0 0 0) !important }
+[data-fx="wipe"][data-dir="xn"] video.be-trans-entrando { clip-path: inset(0 0 0 calc((1 - var(--p)) * 100%)) !important }
 /* radial / círculo: revela em círculo a partir do centro */
 [data-fx="radial"] video.be-trans-entrando  { clip-path: circle(calc(var(--p) * 110%) at 50% 50%) !important }
 [data-fx="circulo"] video.be-trans-entrando { clip-path: circle(calc(var(--p) * 110%) at 50% 50%) !important }
@@ -1181,3 +1194,18 @@ body {
 @media (prefers-reduced-motion: reduce) {
   .be-em-transicao video.be-trans-entrando { transform: none !important; clip-path: none !important }
 }
+
+/* ── cards da aba Animação (Entrada/Saída/Combinação) ── */
+.be-anim-cards {
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(86px, 1fr));
+  gap: 8px; padding: 4px 0;
+}
+.be-anim-card {
+  display: flex; flex-direction: column; align-items: center; gap: 6px;
+  background: rgba(0,229,255,.04); border: 1px solid var(--blue-border);
+  color: var(--text-dim); font-size: 11.5px; padding: 10px 6px; border-radius: 10px;
+  cursor: pointer; text-align: center;
+}
+.be-anim-card:hover { border-color: var(--neon); color: var(--text); }
+.be-anim-card.active { border-color: var(--neon); color: var(--neon); background: rgba(0,229,255,.10); }
+.be-anim-ico { font-size: 18px; line-height: 1; }

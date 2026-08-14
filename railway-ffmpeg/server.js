@@ -2097,6 +2097,51 @@ function filtrosDeAudioFx(a) {
   return out;
 }
 
+// ── ANIMAÇÕES DA CENA (aba Animação, user 14/08) ────────────────────────────
+// ESPELHO do catálogo public/editor-v1/core/animacoes-cena.js — id a id.
+// Entrada anima [st, st+d]; saída [fim-d, fim]; combinação a cena inteira.
+// Zoom/deslizes precisam de quadro FIXO (o chamador garante normPara antes);
+// fades funcionam em qualquer tamanho. Tudo expressão em t: nada é aproximado.
+const ANIMS_GEOMETRICAS = new Set(['zoom_in', 'zoom_out', 'subir', 'vindo_direita', 'descer', 'pulsar', 'balanco']);
+function clipeTemAnimGeo(c) {
+  return ANIMS_GEOMETRICAS.has(c?.anim_in) || ANIMS_GEOMETRICAS.has(c?.anim_out) || ANIMS_GEOMETRICAS.has(c?.anim_loop);
+}
+function filtrosDaAnimacao(c, W, H, stIn, durVis) {
+  const out = [];
+  if (!c || durVis <= 0.2) return out;
+  const d = Math.max(0.15, Math.min(0.5, durVis / 2)).toFixed(3);
+  const stOut = (stIn + durVis) - Number(d);
+  // progresso 0..1 preso: entrada sobe a partir de stIn; saída sobe no fim.
+  // Duas réguas de tempo: `t` (crop/fade reavaliam por frame) e `on/30`
+  // (zoompan conta FRAMES de saída — o scale com eval=frame NÃO reavalia t
+  // de verdade nesta build, medido na sonda; zoompan é o filtro certo).
+  const pIn = `min(max((t-${stIn.toFixed(3)})/${d},0),1)`;
+  const pOut = `min(max((t-${stOut.toFixed(3)})/${d},0),1)`;
+  const pInF = `min(max(((on/30)-${stIn.toFixed(3)})/${d},0),1)`;
+  const pOutF = `min(max(((on/30)-${stOut.toFixed(3)})/${d},0),1)`;
+  const zoomPan = (zexpr) => out.push(
+    `zoompan=z='${zexpr}':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=1:s=${W}x${H}:fps=30`);
+  if (c.anim_in === 'fade_in') out.push(`fade=t=in:st=${stIn.toFixed(3)}:d=${d}`);
+  if (c.anim_in === 'zoom_in') zoomPan(`(1+0.2*(1-${pInF}))`);
+  if (c.anim_in === 'subir') out.push(
+    `pad=w=iw:h=3*ih:x=0:y=ih:color=black`,
+    `crop=${W}:${H}:0:'${H}*(2-${pIn})'`);
+  if (c.anim_in === 'vindo_direita') out.push(
+    `pad=w=3*iw:h=ih:x=iw:y=0:color=black`,
+    `crop=${W}:${H}:'${W}*(2-${pIn})':0`);
+  if (c.anim_out === 'fade_out') out.push(`fade=t=out:st=${stOut.toFixed(3)}:d=${d}`);
+  if (c.anim_out === 'zoom_out') zoomPan(`(1+0.2*${pOutF})`);
+  if (c.anim_out === 'descer') out.push(
+    `pad=w=iw:h=3*ih:x=0:y=ih:color=black`,
+    `crop=${W}:${H}:0:'${H}*(1-${pOut})'`);
+  if (c.anim_loop === 'pulsar') zoomPan(`(1.05+0.04*sin(2*PI*(on/30)/1.6))`);
+  if (c.anim_loop === 'balanco') out.push(
+    `scale=w='trunc(iw*1.06/2)*2':h='trunc(ih*1.06/2)*2'`,
+    `crop=${W}:${H}:'(iw-${W})/2+(iw-${W})/2*sin(2*PI*t/2.2)':'(ih-${H})/2'`);
+  return out;
+}
+// ── FIM filtrosDaAnimacao (marcador pra sonda extrair o fonte) ──
+
 // ── TRANSFORMAÇÕES DA CENA: velocidade, espelho, escala, posição, opacidade ──
 // (2026-08-05) O payload manda essas cinco desde sempre — e o motor ignorava
 // TODAS. O preview mostrava o vídeo acelerado, espelhado, com zoom e meio
@@ -2437,7 +2482,7 @@ async function processEditV0(jobId, p) {
         await run('ffmpeg', [
           '-y', '-loop', '1', '-t', String(alvo), '-i', still,
           '-vf', [...vfF, `fps=30`].join(','), '-r', '30', '-pix_fmt', 'yuv420p',
-          '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '23',
+          '-c:v', 'libx264', '-preset', 'ultrafast', '-crf', '18', // intermediário: o final re-encoda; ultrafast corta CPU, crf baixo preserva
           '-force_key_frames', 'expr:gte(t,0)', '-an', out,
         ]);
         clipFiles.push({ path: out, duration: alvo });
@@ -2455,7 +2500,8 @@ async function processEditV0(jobId, p) {
       const faltaHeadOut = (headSrc - (c.source_in - ssSrc)) / v;
       const lerSrc = (c.source_out + tailSrc) - ssSrc;
       const vfPartes = [
-        ...((multiSource || temFitProprio) ? [normPara(c)] : []),
+        // animação geométrica (zoom/deslize/pulso) exige quadro fixo — normaliza JÁ AQUI
+        ...((multiSource || temFitProprio || clipeTemAnimGeo(c)) ? [normPara(c)] : []),
         ...fGrade,
         // velocidade/espelho/escala/posição/opacidade da cena
         ...filtrosDaCena(c, NORM_W, NORM_H),
@@ -2468,6 +2514,12 @@ async function processEditV0(jobId, p) {
         vfPartes.push(`tpad=stop_mode=clone:stop_duration=${(Math.max(bw.antes, bw.depois) + 0.3).toFixed(3)}`);
         vfPartes.push(`trim=duration=${alvo.toFixed(3)}`, 'setpts=PTS-STARTPTS');
       }
+      // ANIMAÇÃO DA CENA (aba Animação): aplicada por último — aqui t é o
+      // tempo FINAL do arquivo do clipe; a cena visível começa em bw.antes
+      // (0 sem transição) e dura alvo - antes - depois.
+      if (c.anim_in || c.anim_out || c.anim_loop) {
+        vfPartes.push(...filtrosDaAnimacao(c, NORM_W, NORM_H, bw.antes, alvo - bw.antes - bw.depois));
+      }
       // -ss antes do -i = fast seek (keyframe). Pra accuracy: -ss depois do -i (frame accurate, lento)
       // V0 usa fast seek + re-encode pra balance
       // com transição na cadeia TODO clip sai 30fps/yuv420p: xfade e concat de
@@ -2477,7 +2529,7 @@ async function processEditV0(jobId, p) {
         '-i', srcFor(c),
         ...(vfPartes.length ? ['-vf', vfPartes.join(','), '-r', '30', '-pix_fmt', 'yuv420p']
           : (plano.temXfade ? ['-r', '30', '-pix_fmt', 'yuv420p'] : [])),
-        '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '23',
+        '-c:v', 'libx264', '-preset', 'ultrafast', '-crf', '18', // intermediário (re-encodado no concat/final)
         '-c:a', 'aac', '-b:a', '128k',
         '-force_key_frames', 'expr:gte(t,0)',
         '-an', // pass1 sem audio (audio mux na fase final)
@@ -2496,7 +2548,7 @@ async function processEditV0(jobId, p) {
           await run('ffmpeg', ['-y', '-i', out,
             '-vf', `tpad=stop_mode=clone:stop_duration=2,trim=duration=${alvo.toFixed(3)},setpts=PTS-STARTPTS`,
             '-r', '30', '-pix_fmt', 'yuv420p',
-            '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '23', '-an', fix]);
+            '-c:v', 'libx264', '-preset', 'ultrafast', '-crf', '18', '-an', fix]);
           if (fs.existsSync(fix)) fs.renameSync(fix, out);
         }
       }
@@ -2550,7 +2602,7 @@ async function processEditV0(jobId, p) {
         await run('ffmpeg', [
           ...args, '-filter_complex', fc.join(';'),
           '-map', `[${rotulo}]`, '-an',
-          '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '20', '-pix_fmt', 'yuv420p',
+          '-c:v', 'libx264', '-preset', 'ultrafast', '-crf', '18', '-pix_fmt', 'yuv420p', // intermediário (o final re-encoda)
           concatPath,
         ]);
       }
@@ -2669,9 +2721,22 @@ async function processEditV0(jobId, p) {
       await run('ffmpeg', [
         '-y', '-ss', String(o.source_in), '-t', String(dur),
         '-i', srcFor(o),
-        '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '23', '-an', out,
+        '-c:v', 'libx264', '-preset', 'ultrafast', '-crf', '20', '-an', out,
       ]);
-      ovInputs.push({ idx: inputIdx, o, file: out });
+      const entry = { idx: inputIdx, o, file: out };
+      // SOM EMBUTIDO DA CAMADA (user 14/08): o ov_{i}.mp4 nasce -an, então o
+      // áudio sai num arquivo PRÓPRIO, mixado depois junto dos audio_clips.
+      // Fonte sem trilha de áudio → a extração falha/não gera arquivo → o
+      // catch engole e a camada segue muda (mesma blindagem do passo 5).
+      if (o.muted !== true) {
+        const ovaud = path.join(dir, `ovaud_${i}.aac`);
+        try {
+          await run('ffmpeg', ['-y', '-ss', String(o.source_in), '-t', String(dur),
+            '-i', srcFor(o), '-vn', '-c:a', 'aac', '-b:a', '128k', ovaud]);
+          if (fs.existsSync(ovaud) && fs.statSync(ovaud).size > 200) entry.audioFile = ovaud;
+        } catch (e) { console.log(`[edit-v0] overlay ${i} sem trilha de audio, segue mudo:`, e.message); }
+      }
+      ovInputs.push(entry);
       args.push('-i', out);
       inputIdx++;
     }
@@ -2857,6 +2922,23 @@ async function processEditV0(jobId, p) {
       if (audioExtraPath) { args.push('-i', audioExtraPath); fc.push(`[${inputIdx}:a]volume=${volA}[a2]`); aLabels.push('a2'); inputIdx++; }
     }
 
+    // SOM DAS CAMADAS (user 14/08): cada overlay de vídeo não-mudo cuja
+    // extração deu certo entra no mix como faixa própria — posicionado com
+    // adelay no start da timeline e com atempo casando o speed do vídeo da
+    // camada (o mesmo tlDur = dur/sp do enable/setpts). Inputs empurrados SÓ
+    // AQUI, pra não deslocar os índices de overlays/máscaras lá de cima.
+    for (let i = 0; i < ovInputs.length; i++) {
+      const ent = ovInputs[i];
+      if (!ent.audioFile) continue;
+      const sp = Number(ent.o.speed) > 0 ? Number(ent.o.speed) : 1;
+      const delayMs = Math.max(0, Math.round((ent.o.start || 0) * 1000));
+      const tempo = atempoChain(sp);
+      args.push('-i', ent.audioFile);
+      fc.push(`[${inputIdx}:a]asetpts=PTS-STARTPTS${tempo.length ? ',' + tempo.join(',') : ''},adelay=${delayMs}|${delayMs}[oa${i}]`);
+      aLabels.push(`oa${i}`);
+      inputIdx++;
+    }
+
     if (aLabels.length > 1) {
       // ⚠️ normalize=0 é OBRIGATÓRIO: sem ele o amix DIVIDE cada entrada pelo
       // número de entradas. Com música + narração + áudio do vídeo o som já
@@ -2880,7 +2962,7 @@ async function processEditV0(jobId, p) {
       args.push('-vn', '-c:a', 'aac', '-b:a', '192k', '-movflags', '+faststart', finalPath);
     } else {
       args.push(
-        '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '23',
+        '-c:v', 'libx264', '-preset', 'superfast', '-crf', '23', // superfast: ~30% mais rápido que veryfast, mesmo crf (user 14/08: tempo de export)
         '-c:a', 'aac', '-b:a', '128k',
         '-pix_fmt', 'yuv420p',
         '-movflags', '+faststart',

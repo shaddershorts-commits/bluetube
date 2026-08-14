@@ -123,6 +123,11 @@ export function createPip(container, videoSrcEl, store, player) {
       if (kind === 'video') {
         const sp = clipSpeed(ov);
         el.playbackRate = sp;                          // camada acelerada
+        // O SOM DA CAMADA TOCA (user 14/08). O elemento NASCE muted (makeEl)
+        // pro el.play() passar sem gesto; aqui, a cada tick, o mudo segue o
+        // documento — igual ao vidMuted() da cena principal. Pausado fica mudo
+        // (scrub não pode vazar áudio).
+        el.muted = !!ov.muted || !player.isPlaying();
         const local = ov.source_in + (t - ov.start) * sp;
         if (Math.abs(el.currentTime - local) > 0.2 * sp) {
           try { el.currentTime = local; } catch {}

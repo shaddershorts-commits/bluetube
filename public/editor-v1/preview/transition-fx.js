@@ -32,6 +32,7 @@ export function createTransitionFx(stageEl, store, player) {
   }
 
   let mapa = new Map();          // id -> definição do catálogo
+  let abortadaJun = null;        // emenda cuja transição degradou pra corte seco
   let previa = null;             // prévia disparada pelo clique no card
   let ativoAgora = null;         // chave do efeito aplicado (evita mexer no DOM à toa)
   let rolesAgora = null;         // { elSai, elEntra, jun } enquanto o efeito roda
@@ -69,6 +70,7 @@ export function createTransitionFx(stageEl, store, player) {
     rolesAgora = null;
     stageEl.classList.remove('be-em-transicao');
     stageEl.removeAttribute('data-fx');
+    stageEl.removeAttribute('data-dir');
     stageEl.style.removeProperty('--p');
     for (const el of elementos()) {
       el.classList.remove('be-trans-entrando', 'be-trans-saindo', 'be-trans-pronta');
@@ -93,7 +95,9 @@ export function createTransitionFx(stageEl, store, player) {
     }
 
     if (!ativa) ativa = acharAtiva(itens, transicoes, t);
-    if (!ativa || !ativa.def) { limpar(); return; }
+    if (!ativa || !ativa.def) { abortadaJun = null; limpar(); return; }
+    // esta emenda degradou pra corte nesta passagem: não re-entra no efeito
+    if (abortadaJun === ativa.jun) return;
 
     // papéis vêm do PLAYER: tocando = hold da fronteira; pausado = display
     // mostra o lado sob a agulha e o buffer compõe o outro lado
@@ -124,6 +128,8 @@ export function createTransitionFx(stageEl, store, player) {
       rolesAgora = { elSai: roles.sai, elEntra: roles.entra, jun: roles.jun };
       stageEl.classList.add('be-em-transicao');
       stageEl.dataset.fx = chave;
+      // direção do efeito (deslizar/varrer): o CSS escolhe o eixo/sentido
+      stageEl.dataset.dir = (ativa.def.eixo || 'y') + ((ativa.def.sinal || 1) < 0 ? 'n' : 'p');
       for (const el of elementos()) {
         el.classList.toggle('be-trans-saindo', el === roles.sai);
         el.classList.toggle('be-trans-entrando', el === roles.entra);
@@ -132,7 +138,16 @@ export function createTransitionFx(stageEl, store, player) {
     }
     // a entrada só APARECE quando tem frame decodificado — antes disso o
     // elemento visível-sem-frame pintava PRETO por cima da cena que sai
-    roles.entra.classList.toggle('be-trans-pronta', roles.entra.readyState >= 2);
+    const pronta = roles.entra.readyState >= 2;
+    roles.entra.classList.toggle('be-trans-pronta', pronta);
+    // CONTINGÊNCIA ANTI-TELA-PRETA (user 14/08): metade do efeito e a entrada
+    // AINDA sem frame decodificado (vídeo pesado) → degrada pra corte seco.
+    // O efeito some e o playback segue no caminho normal — nunca preto preso.
+    if (!pronta && ativa.prog > 0.5 && player.isPlaying?.()) {
+      abortadaJun = ativa.jun;
+      limpar();
+      return;
+    }
 
     // uma escrita por frame — o CSS faz o resto
     stageEl.style.setProperty('--p', ativa.prog.toFixed(4));

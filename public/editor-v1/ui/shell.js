@@ -22,6 +22,7 @@ import { createFrameUI } from '../preview/frame-ui.js';
 import { createTransitionsPanel } from './transitions-panel.js';
 import { createTransitionFx } from '../preview/transition-fx.js';
 import { transicaoPorId, TRANSICOES } from '../core/transitions.js';
+import { ANIMACOES_CENA, ANIM_CATEGORIAS, ANIM_POR_ID, progressoDaAnimacao, previewDaAnimacao, previewDoLoop } from '../core/animacoes-cena.js';
 import {
   CAMPOS_COR, svgDoGrade, vinhetaCss, temAjuste, TODAS_CHAVES,
   FAIXAS_HSL, EIXOS_HSL, CANAIS_CURVA, ANCORAS_CURVA, FAIXAS_RODA, CANAIS_RODA,
@@ -337,13 +338,39 @@ export function mountEditor(root, store, opts = {}) {
     // próprio quadro a partir do centro
     const px = (dono('pos_x') ?? 0) * 100, py = (dono('pos_y') ?? 0) * 100;
     const mover = (px || py) ? `translate(${px.toFixed(2)}%, ${py.toFixed(2)}%) ` : '';
-    const tf = (scale !== 1 || dono('mirrored') || px || py) ? `${mover}scale(${sx}, ${scale})` : '';
+    // ANIMAÇÃO DA CENA (aba Animação, user 14/08): entrada/saída/combinação
+    // compõem transform e opacity POR TICK — o relógio manda, igual à transição
+    let animTf = '', animOp = 1;
+    {
+      const tNow = player.getTime();
+      const tLocal = tNow - (seg?.tStart ?? 0);
+      const durCena = Math.max(0.01, (seg?.tEnd ?? 0) - (seg?.tStart ?? 0));
+      const compoe = (id, slot) => {
+        const def = ANIM_POR_ID.get(id);
+        if (!def) return;
+        let fx = null;
+        if (slot === 'loop') fx = previewDoLoop(id, tNow);
+        else {
+          const p = progressoDaAnimacao(def, slot, tLocal, durCena) ?? 1;
+          if (p >= 0.999) return;   // assentada: fora da janela não escreve nada
+          fx = previewDaAnimacao(id, p);
+        }
+        if (!fx) return;
+        if (fx.transform) animTf += fx.transform + ' ';
+        if (fx.opacity != null) animOp *= fx.opacity;
+      };
+      if (seg?.clip?.anim_in) compoe(seg.clip.anim_in, 'in');
+      if (seg?.clip?.anim_out) compoe(seg.clip.anim_out, 'out');
+      if (seg?.clip?.anim_loop) compoe(seg.clip.anim_loop, 'loop');
+    }
+    const tfCena = (scale !== 1 || dono('mirrored') || px || py) ? `${mover}scale(${sx}, ${scale})` : '';
+    const tf = (animTf + tfCena).trim();
     if (el.style.transform !== tf) el.style.transform = tf;
     // o transform da cena TAMBÉM viaja em --betf: durante a transição os
     // efeitos vencem o inline (!important) mas compõem a cena via var(--betf,)
     if (tf) el.style.setProperty('--betf', tf);
     else el.style.removeProperty('--betf');
-    const op = String(opacity);
+    const op = String(Math.max(0, Math.min(1, opacity * animOp)));
     if (el.style.opacity !== op) el.style.opacity = op;
     // MÁSCARA da cena (WYSIWYG — o Railway aplica igual no export):
     // círculo = radial-gradient (suavizar nativo); retângulo = SVG com rx
@@ -759,6 +786,12 @@ export function mountEditor(root, store, opts = {}) {
         const sp = ov.speed ?? 1;
         $('#beOvSpeed').value = speedToSlider(sp); $('#beOvSpeedVal').textContent = fmtSpeed(sp);
         $('#beOvRot').value = Math.round(ov.rotation || 0); $('#beOvRotVal').textContent = Math.round(ov.rotation || 0) + '°';
+      }
+      // som embutido: o rótulo segue o estado A CADA sync (fora do filledOvId,
+      // senão o clique no próprio botão não atualizava o texto); imagem não tem som
+      if (ov) {
+        $('#beOvMute').style.display = ov.kind === 'image' ? 'none' : '';
+        $('#beOvMute').textContent = ov.muted ? '🔊 Devolver o som da camada' : '🔇 Remover o som da camada';
       }
     } else { filledOvId = null; }
     if (showClip) {
@@ -1317,7 +1350,42 @@ export function mountEditor(root, store, opts = {}) {
     $('#bePropsClip').querySelectorAll('.be-cfg-panel').forEach(p =>
       p.style.display = p.dataset.panel === tab ? 'flex' : 'none');
   });
-  // troca de sub-aba dentro de Vídeo (Básico/Remover fundo/Mascarar/Retoque)
+  // ── ABA ANIMAÇÃO (user 14/08): clique aplica na cena selecionada ────────
+  {
+    let animCat = 'in';
+    const cards = $('#beAnimCards');
+    const renderAnimCards = () => {
+      const st = store.getState();
+      const clip = st.clips.find((c) => c.id === st.selected_clip_id);
+      const campo = animCat === 'in' ? 'anim_in' : animCat === 'out' ? 'anim_out' : 'anim_loop';
+      const atual = clip?.[campo] || null;
+      cards.innerHTML = [
+        `<button type="button" class="be-anim-card${atual == null ? ' active' : ''}" data-anim=""><span class="be-anim-ico">⃠</span><span>Nenhum</span></button>`,
+        ...ANIMACOES_CENA.filter((a) => a.slot === animCat).map((a) =>
+          `<button type="button" class="be-anim-card${atual === a.id ? ' active' : ''}" data-anim="${a.id}"><span class="be-anim-ico">${a.icone}</span><span>${a.nome}</span></button>`),
+      ].join('');
+    };
+    $('#beAnimCats').addEventListener('click', (e) => {
+      const btn = e.target.closest('[data-acat]'); if (!btn) return;
+      animCat = btn.dataset.acat;
+      $('#beAnimCats').querySelectorAll('.be-cfg-subtab').forEach((b) => b.classList.toggle('active', b === btn));
+      renderAnimCards();
+    });
+    cards.addEventListener('click', (e) => {
+      const card = e.target.closest('[data-anim]'); if (!card) return;
+      const st = store.getState();
+      if (st.selected_clip_id == null) { toast('Selecione uma cena primeiro.', true); return; }
+      const id = card.dataset.anim || null;
+      store.dispatch(act.setClipAnim(st.selected_clip_id, animCat, id));
+      renderAnimCards();
+      toast(id ? `Animação aplicada: ${ANIM_POR_ID.get(id)?.nome} ✓` : 'Animação removida ✓');
+    });
+    // re-render quando a seleção muda (o sync geral já roda a cada dispatch)
+    store.subscribe(() => { if ($('#bePropsClip').style.display !== 'none') renderAnimCards(); });
+    renderAnimCards();
+  }
+
+  // troca de sub-aba dentro de Vídeo (Básico/Remover fundo/Mascarar)
   $('#beCfgSubtabs').addEventListener('click', (e) => {
     const btn = e.target.closest('.be-cfg-subtab'); if (!btn) return;
     const sub = btn.dataset.sub;
@@ -2048,6 +2116,10 @@ export function mountEditor(root, store, opts = {}) {
     const id = store.getState().selected_overlay_id;
     if (id != null) store.dispatch(act.deleteOverlay(id));
   });
+  $('#beOvMute').addEventListener('click', () => {
+    const id = store.getState().selected_overlay_id;
+    if (id != null) store.dispatch(act.toggleOverlayMuted(id));
+  });
   $('#beAudioItemDelete').addEventListener('click', () => {
     const id = store.getState().selected_audio_id;
     if (id != null) store.dispatch(act.deleteAudioClip(id));
@@ -2115,10 +2187,11 @@ export function mountEditor(root, store, opts = {}) {
     } catch { /* fallback = link visível "⬇ Baixar vídeo" */ }
   }
   // 1) clicar em Exportar abre as OPÇÕES (nome/resolução/formato) — CapCut
-  // Dimensões da EXPORTAÇÃO a partir do formato do projeto. 720p mantém a
-  // proporção (fator 2/3 do tier 1080); tudo par, h264 yuv420p exige.
+  // Dimensões da EXPORTAÇÃO a partir do formato do projeto: o tier (480p…4K)
+  // escala a proporção inteira (fator res/1080); tudo par, h264 yuv420p exige.
+  // Acima de 1080 é upscale quando a fonte é menor — igual CapCut permite.
   function dimsDoExport(fp, res) {
-    const fator = res === 720 ? 2 / 3 : 1;
+    const fator = (res > 0 ? res : 1080) / 1080;
     const par = (n) => Math.max(128, Math.round(n * fator / 2) * 2);
     return { w: par(fp.w), h: par(fp.h) };
   }
@@ -2132,11 +2205,15 @@ export function mountEditor(root, store, opts = {}) {
     }
     const dur = totalDuration(st);
     $('#beExportEst').textContent = `Duração: ${Math.floor(dur / 60)}m ${Math.round(dur % 60)}s`;
-    // resoluções REAIS deste projeto (o formato manda; 720p = mesma proporção)
+    // resoluções REAIS deste projeto (o formato manda; cada tier escala junto)
     const fp = formatoDoProjeto(st);
-    const d720 = dimsDoExport(fp, 720);
-    $('#beExportRes option[value="1080"]').textContent = `1080p (Full HD) · ${fp.w}×${fp.h}`;
-    $('#beExportRes option[value="720"]').textContent = `720p · ${d720.w}×${d720.h}`;
+    // a prévia do modal segue o formato do projeto (era 9:16 cravado)
+    document.querySelector('.be-export-optthumb-wrap')?.style.setProperty('--be-export-ar', fp.w + ' / ' + fp.h);
+    const NOMES_RES = { 2160: '4K (2160p)', 1440: '2K (1440p)', 1080: '1080p (Full HD)', 720: '720p', 480: '480p' };
+    for (const opt of $('#beExportRes').options) {
+      const d = dimsDoExport(fp, parseInt(opt.value, 10));
+      opt.textContent = `${NOMES_RES[opt.value] || opt.value + 'p'} · ${d.w}×${d.h}`;
+    }
     showExportStep('beExportOptions');
     exportModal.classList.add('open');
   });
@@ -2884,7 +2961,6 @@ function buildTemplate() {
           <button data-sub="basico" class="be-cfg-subtab active">Básico</button>
           <button data-sub="fundo" class="be-cfg-subtab">Remover fundo</button>
           <button data-sub="mascarar" class="be-cfg-subtab">Mascarar</button>
-          <button data-sub="retoque" class="be-cfg-subtab">Retoque</button>
         </div>
         <div class="be-cfg-sub" data-sub="basico">
           <label class="be-slider-label">Escala <b id="beClipScaleVal">100%</b>
@@ -2917,29 +2993,6 @@ function buildTemplate() {
           </div>
           <div class="be-dim">A máscara recorta a cena na forma escolhida. Suavizar mescla a borda; cantos só valem pro retângulo.</div>
         </div>
-        <!-- RETOQUE = correção de cor da cena (2026-07-29). Era placeholder;
-             agora os controles mexem na imagem de verdade (filtro SVG). Os
-             grupos e nomes seguem o padrão do CapCut. Montado em JS a partir
-             de CAMPOS_COR pra lista e comportamento não saírem de sincronia. -->
-        <div class="be-cfg-sub" data-sub="retoque" style="display:none">
-          <div class="be-grade-topo">
-            <span class="be-dim">Ajustes desta cena</span>
-            <button type="button" id="beGradeReset" class="be-tool-btn" title="Voltar tudo ao neutro">↺ Redefinir</button>
-          </div>
-          <!-- as 4 abas do print: Básico | HSL | Curvas | Roda de cores.
-               Todos os controles usam data-grade="<chave plana>", então o
-               listener e o preenchimento já existentes valem pros novos. -->
-          <div class="be-cfg-subtabs be-grade-abas" id="beGradeAbas">
-            <button type="button" data-gaba="basico" class="be-cfg-subtab active">Básico</button>
-            <button type="button" data-gaba="hsl" class="be-cfg-subtab">HSL</button>
-            <button type="button" data-gaba="curvas" class="be-cfg-subtab">Curvas</button>
-            <button type="button" data-gaba="roda" class="be-cfg-subtab">Roda de cores</button>
-          </div>
-          <div id="beGradeCampos" class="be-grade-campos" data-gaba-painel="basico"></div>
-          <div id="beGradeHsl" class="be-grade-campos" data-gaba-painel="hsl" style="display:none"></div>
-          <div id="beGradeCurvas" class="be-grade-campos" data-gaba-painel="curvas" style="display:none"></div>
-          <div id="beGradeRoda" class="be-grade-campos" data-gaba-painel="roda" style="display:none"></div>
-        </div>
       </div>
 
       <!-- demais abas (placeholder até implementarmos) -->
@@ -2954,11 +3007,40 @@ function buildTemplate() {
         <div class="be-dim">Arraste pra desacelerar (até 0.10x) ou acelerar (até 100x). Afeta só esta cena — a duração na timeline muda junto.</div>
         <button id="beClipSpeedReset" class="be-tool-btn">↺ Voltar pra 1.00x</button>
       </div>
+      <!-- ANIMAÇÃO da cena (user 14/08): Entrada / Saída / Combinação.
+           Clique APLICA na cena selecionada (nada de arrastar): entrada no
+           comecinho, saída no fim, combinação a cena inteira. Catálogo
+           fechado em core/animacoes-cena.js — cada uma testada por pixel. -->
       <div class="be-cfg-panel" data-panel="animacao" style="display:none">
-        <div class="be-dim">🎬 Animações de entrada/saída — <b>em breve</b>.</div>
+        <div class="be-cfg-subtabs" id="beAnimCats">
+          <button type="button" data-acat="in" class="be-cfg-subtab active">Entrada</button>
+          <button type="button" data-acat="out" class="be-cfg-subtab">Saída</button>
+          <button type="button" data-acat="loop" class="be-cfg-subtab">Combinação</button>
+        </div>
+        <div id="beAnimCards" class="be-anim-cards"></div>
+        <div class="be-dim">Clique aplica na cena selecionada. Entrada anima o começo, saída o fim, combinação dura a cena inteira.</div>
       </div>
+      <!-- AJUSTE = o Retoque (correção de cor). Morava como sub-aba de Vídeo
+           e a aba Ajuste ficou com "em breve" — o user clicava aqui e achava
+           que a feature tinha sumido (print 14/08). Uma casa só, a natural. -->
       <div class="be-cfg-panel" data-panel="ajuste" style="display:none">
-        <div class="be-dim">🎚 Brilho, contraste, saturação, temperatura — <b>em breve</b>.</div>
+        <div class="be-grade-topo">
+          <span class="be-dim">Ajustes desta cena</span>
+          <button type="button" id="beGradeReset" class="be-tool-btn" title="Voltar tudo ao neutro">↺ Redefinir</button>
+        </div>
+        <!-- as 4 abas do print: Básico | HSL | Curvas | Roda de cores.
+             Todos os controles usam data-grade="<chave plana>", então o
+             listener e o preenchimento já existentes valem pros novos. -->
+        <div class="be-cfg-subtabs be-grade-abas" id="beGradeAbas">
+          <button type="button" data-gaba="basico" class="be-cfg-subtab active">Básico</button>
+          <button type="button" data-gaba="hsl" class="be-cfg-subtab">HSL</button>
+          <button type="button" data-gaba="curvas" class="be-cfg-subtab">Curvas</button>
+          <button type="button" data-gaba="roda" class="be-cfg-subtab">Roda de cores</button>
+        </div>
+        <div id="beGradeCampos" class="be-grade-campos" data-gaba-painel="basico"></div>
+        <div id="beGradeHsl" class="be-grade-campos" data-gaba-painel="hsl" style="display:none"></div>
+        <div id="beGradeCurvas" class="be-grade-campos" data-gaba-painel="curvas" style="display:none"></div>
+        <div id="beGradeRoda" class="be-grade-campos" data-gaba-painel="roda" style="display:none"></div>
       </div>
     </div>
 
@@ -2972,6 +3054,8 @@ function buildTemplate() {
         <input id="beOvRot" type="range" min="0" max="359" step="1" value="0"/>
       </label>
       <div class="be-dim">Botão direito na camada = Copiar/Cortar/frente-trás. Q/W cortam no cursor.</div>
+      <!-- som embutido da camada (user 14/08): permanece a menos que remova -->
+      <button id="beOvMute" class="be-tool-btn">🔇 Remover o som da camada</button>
       <button id="beOverlayDelete" class="be-danger-btn">🗑 Excluir camada</button>
     </div>
 
@@ -3139,8 +3223,11 @@ function buildTemplate() {
           </label>
           <label class="be-export-field">Resolução
             <select id="beExportRes">
-              <option value="1080">1080p (Full HD) · 1080×1920</option>
-              <option value="720">720p · 720×1280</option>
+              <option value="2160">4K (2160p)</option>
+              <option value="1440">2K (1440p)</option>
+              <option value="1080" selected>1080p (Full HD)</option>
+              <option value="720">720p</option>
+              <option value="480">480p</option>
             </select>
           </label>
           <label class="be-export-field">Formato

@@ -484,6 +484,10 @@ export function exportPayload(state) {
     // menu Editar: congelar / reverso / espelhar (Railway aplica no render)
     ...(seg.clip.frozen ? { frozen: true, freeze_src: round3(seg.clip.freeze_src || 0), freeze_dur: round3(clipTimelineDur(seg.clip)) } : {}),
     ...(dono('reversed') ? { reversed: true } : {}),
+    // animações da cena — o render aplica com filtros em t (fade/scale/crop)
+    ...(seg.clip.anim_in ? { anim_in: seg.clip.anim_in } : {}),
+    ...(seg.clip.anim_out ? { anim_out: seg.clip.anim_out } : {}),
+    ...(seg.clip.anim_loop ? { anim_loop: seg.clip.anim_loop } : {}),
     ...(dono('mirrored') ? { mirrored: true } : {}),
     ...(dono('muted') ? { muted: true } : {}),          // áudio removido da cena
     // mídia com proporção diferente do quadro entra INTEIRA (tamanho real,
@@ -558,6 +562,9 @@ export function exportPayload(state) {
       scale: Math.round(o.scale * 100) / 100,
       speed: Math.round(clipSpeed(o) * 1000) / 1000,
       ...(o.rotation ? { rotation: Math.round(o.rotation) } : {}),
+      // som embutido da camada (user 14/08): o render mixa o áudio da camada,
+      // a menos que o user o tenha removido — muted viaja explícito
+      ...(o.muted ? { muted: true } : {}),
       lane: o.lane || 1, // ordem de composicao
     })),
     transitions: remapTransicoes(state),

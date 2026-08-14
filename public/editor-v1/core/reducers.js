@@ -884,6 +884,11 @@ export function reduce(state, action) {
         x_pct: 0.5, y_pct: 0.5, scale: 1,
         lane: laneFinal,
         active: true,
+        // O SOM EMBUTIDO SOBE JUNTO (user 14/08: "a menos que eu remova o som
+        // ele deve permanecer"). Antes o convert descartava o áudio em silêncio
+        // — a camada nascia muda sem opção de devolver. Herda o mudo do clipe.
+        ...(clip.muted ? { muted: true } : {}),
+        ...(typeof clip.speed === 'number' ? { speed: clip.speed } : {}),
       };
       return touch({
         ...state,
@@ -893,6 +898,15 @@ export function reduce(state, action) {
         selected_overlay_id: overlay.id,
         selected_clip_id: null,
       });
+    }
+
+    case A.TOGGLE_OVERLAY_MUTED: {
+      // 🔇 da CAMADA (menu/painel) — espelho do clip.muted da cena principal
+      const idx = state.overlays.findIndex(o => o.id === action.overlayId);
+      if (idx < 0 || state.overlays[idx].kind === 'image') return state;
+      const overlays = state.overlays.map(o =>
+        o.id === action.overlayId ? { ...o, muted: !o.muted } : o);
+      return touch({ ...state, overlays });
     }
 
     case A.SPLIT_OVERLAY: {
@@ -1484,6 +1498,24 @@ export function reduce(state, action) {
       const f = state.formato || {};
       if (f.id === novo.id && f.w === novo.w && f.h === novo.h) return state;
       return touch({ ...state, formato: novo });
+    }
+
+    case A.SET_CLIP_ANIM: {
+      // Animação da CENA (aba Animação, user 14/08): entrada/saída/combinação.
+      // Guarda só o ID (catálogo fechado em animacoes-cena.js — o payload e o
+      // preview validam por lá); null remove o slot.
+      const campo = action.slot === 'in' ? 'anim_in' : action.slot === 'out' ? 'anim_out' : action.slot === 'loop' ? 'anim_loop' : null;
+      if (!campo) return state;
+      const idx = state.clips.findIndex(c => c.id === action.clipId);
+      if (idx < 0) return state;
+      const clips = state.clips.map(c => {
+        if (c.id !== action.clipId) return c;
+        const novo = { ...c };
+        if (action.animId) novo[campo] = action.animId;
+        else delete novo[campo];
+        return novo;
+      });
+      return touch({ ...state, clips });
     }
 
     case A.SET_ASPECT: {

@@ -320,6 +320,10 @@ export function createTimelineController({ canvas, store, player, onEditText, on
       { label: 'Cortar', hint: 'Ctrl X', fn: () => clip.cutSel(store) },
       { label: 'Excluir', hint: '⌫', fn: () => store.dispatch(act.deleteOverlay(hit.overlayId)) },
       { sep: true },
+      // som embutido da camada (user 14/08): permanece a menos que remova
+      ...(ov && ov.kind !== 'image' ? [
+        { label: ov.muted ? '🔊 Devolver o som' : '🔇 Remover o som', fn: () => store.dispatch(act.toggleOverlayMuted(hit.overlayId)) },
+      ] : []),
       ...(ov?.kind === 'image' ? [
         { label: '↺ Resetar giro', fn: () => store.dispatch(act.setOverlayTransform(hit.overlayId, { rotation: 0 })) },
       ] : []),

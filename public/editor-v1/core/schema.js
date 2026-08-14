@@ -164,6 +164,10 @@ export function normalizeLoadedState(raw) {
       ...(c.frozen ? { frozen: true, freeze_src: Math.max(0, c.freeze_src || 0), freeze_dur: Math.max(0.1, c.freeze_dur || 3) } : {}),
       ...(c.reversed ? { reversed: true } : {}),
       ...(c.mirrored ? { mirrored: true } : {}),
+      // animações da cena (catálogo fechado; id desconhecido morre no load)
+      ...(typeof c.anim_in === 'string' ? { anim_in: c.anim_in } : {}),
+      ...(typeof c.anim_out === 'string' ? { anim_out: c.anim_out } : {}),
+      ...(typeof c.anim_loop === 'string' ? { anim_loop: c.anim_loop } : {}),
       ...(c.muted ? { muted: true } : {}),  // áudio removido SÓ desta cena
       // máscara da cena (CapCut: círculo/retângulo + suavizar + cantos)
       ...(c.mask && ['circle', 'rect'].includes(c.mask.shape) ? { mask: {
@@ -258,6 +262,9 @@ export function normalizeLoadedState(raw) {
       ...(o.media_id != null && mediaIds.has(o.media_id) ? { media_id: o.media_id } : {}),
       ...(o.kind === 'image' && o.url ? { kind: 'image', url: o.url, img_w: o.img_w || 0, img_h: o.img_h || 0 } : {}),
       ...(typeof o.speed === 'number' ? { speed: clamp(o.speed, 0.1, 100) } : {}),
+      // som embutido da camada (user 14/08): sem copiar aqui, reabrir o
+      // projeto devolveria o som a uma camada que o user tinha silenciado
+      ...(o.muted ? { muted: true } : {}),
       start: Math.max(0, o.start || 0),
       x_pct: clamp01(o.x_pct ?? 0.5), y_pct: clamp01(o.y_pct ?? 0.5),
       scale: Math.min(2, Math.max(0.1, o.scale ?? 0.5)),
