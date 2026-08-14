@@ -146,15 +146,26 @@ module.exports = async function handler(req, res) {
       // `long` (+20min) cobre a metade de cima da faixa pedida (15-50min);
       // `medium` (4-20min) cobre a de baixo. Alterna entre as duas.
       const balde = i % 2 === 0 ? 'long' : 'medium';
+      // ⚠️ `order=viewCount` devolve os MAIS VISTOS DE TODOS OS TEMPOS pro
+      // termo — ou seja, justamente os canais famosos que a regra dos 70 mil
+      // inscritos existe pra excluir. MEDIDO: 4 buscas assim renderam 1 vídeo,
+      // com 23 dos 24 canais grandes demais.
+      // `order=date` + janela recente inverte isso: traz o que é NOVO, e quem
+      // decide se é viral passa a ser o piso de views. Canal de 20 mil
+      // inscritos com 300 mil views em 30 dias é a assinatura do dark.
+      const ordem = req.query.order === 'viewCount' ? 'viewCount' : 'date';
+      const dias = Math.max(0, parseInt(req.query.dias || '90', 10));
       try {
-        const r = await youtubeRequest('search', {
+        const params = {
           part: 'snippet',
           type: 'video',
           q: termo,
           videoDuration: balde,
-          order: 'viewCount',
+          order: ordem,
           maxResults: 50,
-        });
+        };
+        if (ordem === 'date' && dias) params.publishedAfter = new Date(Date.now() - dias * 864e5).toISOString();
+        const r = await youtubeRequest('search', params);
         relatorio.custo.buscas_gastas++;
         const itens = (r && r.items) || [];
         relatorio.por_categoria[`${termo} (${balde})`] = itens.length;
