@@ -4,7 +4,7 @@
 // com cabecalhos de track. Store continua a unica fonte de verdade.
 
 import * as act from '../core/actions.js';
-import { totalDuration, canExport, timelineSegments, captionAudioPlan, mainTrackItems, compoundTemAudio, propriedadeDaCena, segmentAt, mediaUrlFor } from '../core/selectors.js';
+import { totalDuration, canExport, timelineSegments, captionAudioPlan, mainTrackItems, compoundTemAudio, propriedadeDaCena, segmentAt, mediaUrlFor, fitDaCena } from '../core/selectors.js';
 import { TEXT_FONTS, TEXT_SIZES, MAX_AUDIO_LANE } from '../core/schema.js';
 import { ANIMACOES } from '../core/text-anim.js';
 import { agruparFrases, normalizarIdioma, podeMudarCaixa } from '../core/idioma.js';
@@ -198,14 +198,34 @@ export function mountEditor(root, store, opts = {}) {
     } catch (e) {}
     const state = store.getState();
     const t = player.getTime();
+    // TRANSIÇÃO RODANDO: cada elemento recebe o visual da SUA cena — o que
+    // sai com a cena que sai, o que entra com a que entra. Aplicar só no
+    // ativo deixava máscara/escala VELHAS no vídeo que entrava (2026-08-07).
+    const roles = fxTransicao.rolesAtuais?.();
+    if (roles) {
+      aplicarVisualDaCena(roles.elSai, segmentAt(state, roles.jun - 1e-3));
+      aplicarVisualDaCena(roles.elEntra, segmentAt(state, roles.jun + 1e-3));
+      return;
+    }
+    // aplica no elemento ATIVO do double-buffer (pode ter trocado no swap)
+    const el = player.getDisplayEl ? player.getDisplayEl() : videoEl;
+    aplicarVisualDaCena(el, segmentAt(state, t));
+  }
+
+  function aplicarVisualDaCena(el, seg) {
+    if (!el) return;
+    const state = store.getState();
     // ⚠️ MESMO RESOLVEDOR DO EXPORT (propriedadeDaCena): o preview lia do
     // BLOCO (mainTrackItems) e o export lia do SUB-CLIPE — exatamente opostos.
     // Resultado: máscara/retoque aplicados no composto sumiam no arquivo, e
     // aplicados numa cena de dentro não apareciam na tela. Agora os dois usam
     // a mesma regra: valor da cena vence, na falta herda do bloco.
-    const seg = segmentAt(state, t);
     const dono = (campo) => propriedadeDaCena(state, seg, campo);
-    const clip = seg?.clip;
+    // mídia com proporção diferente do quadro (vídeo horizontal em projeto
+    // vertical) entra INTEIRA — 'contain' por cena, mesma regra do export
+    const fitGlobal = state.aspect_strategy === 'letterbox' ? 'contain' : 'cover';
+    const of = fitDaCena(state, seg) || fitGlobal;
+    if (el.style.objectFit !== of) el.style.objectFit = of;
     const scale = dono('scale') ?? 1;
     const opacity = dono('opacity') ?? 1;
     const sx = dono('mirrored') ? -scale : scale;   // Espelhar = inverte no eixo X
@@ -214,9 +234,11 @@ export function mountEditor(root, store, opts = {}) {
     const px = (dono('pos_x') ?? 0) * 100, py = (dono('pos_y') ?? 0) * 100;
     const mover = (px || py) ? `translate(${px.toFixed(2)}%, ${py.toFixed(2)}%) ` : '';
     const tf = (scale !== 1 || dono('mirrored') || px || py) ? `${mover}scale(${sx}, ${scale})` : '';
-    // aplica no elemento ATIVO do double-buffer (pode ter trocado no swap)
-    const el = player.getDisplayEl ? player.getDisplayEl() : videoEl;
     if (el.style.transform !== tf) el.style.transform = tf;
+    // o transform da cena TAMBÉM viaja em --betf: durante a transição os
+    // efeitos vencem o inline (!important) mas compõem a cena via var(--betf,)
+    if (tf) el.style.setProperty('--betf', tf);
+    else el.style.removeProperty('--betf');
     const op = String(opacity);
     if (el.style.opacity !== op) el.style.opacity = op;
     // MÁSCARA da cena (WYSIWYG — o Railway aplica igual no export):

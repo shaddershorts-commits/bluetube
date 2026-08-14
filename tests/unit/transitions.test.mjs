@@ -101,49 +101,86 @@ test('transição entra no payload de export', () => {
   assert.equal(p.transitions[0].xfade, 'zoomin');
 });
 
-// ── A MATEMÁTICA DO XFADE ───────────────────────────────────────────────────
-// Réplica do cálculo do render (railway-ffmpeg/server.js). Se esta conta
-// diverge, o vídeo sai com as cenas fora do lugar depois da 1ª transição.
-function cadeiaXfade(duracoes, transicoes) {
-  const porJuncao = new Map(transicoes.map(t => [t.between, t]));
-  const fc = [];
-  let rotulo = '0:v';
-  let acumulado = duracoes[0];
-  for (let i = 1; i < duracoes.length; i++) {
-    const tr = porJuncao.get(i - 1);
-    const saida = (i === duracoes.length - 1) ? 'vout' : `vx${i}`;
-    const dur = tr ? Math.min(tr.duration, duracoes[i - 1] - 0.05, duracoes[i] - 0.05) : 0.04;
-    const nome = tr ? tr.xfade : 'fade';
-    const offset = Math.max(0, acumulado - dur);
-    fc.push({ nome, dur, offset, saida });
-    acumulado = acumulado + duracoes[i] - dur;
-    rotulo = saida;
-  }
-  return { fc, total: acumulado, rotulo };
-}
+// ── A MATEMÁTICA DA CADEIA (modelo de EMPRÉSTIMO, 2026-08-07) ───────────────
+// A função é extraída do FONTE do render (railway-ffmpeg/server.js) — não é
+// réplica, não pode divergir. A régua é SAGRADA: o xfade antigo encurtava o
+// vídeo em `dur` por junção enquanto o áudio ficava na régua cheia — todo
+// arquivo com transição saía dessincronizado depois da primeira emenda.
+import fs from 'node:fs';
+const srvTxt = fs.readFileSync(new URL('../../railway-ffmpeg/server.js', import.meta.url), 'utf8');
+const planejarCadeia = new Function(
+  srvTxt.slice(srvTxt.indexOf('function planejarCadeia('), srvTxt.indexOf('// ── FIM planejarCadeia'))
+  + '\nreturn planejarCadeia;')();
 
-test('offset do xfade: cada transição sobrepoe, e a seguinte compensa', () => {
-  // 3 clipes de 10s, transição de 1s nas duas junções
-  const r = cadeiaXfade([10, 10, 10], [
-    { between: 0, duration: 1, xfade: 'fade' },
-    { between: 1, duration: 1, xfade: 'slidedown' },
-  ]);
-  assert.equal(r.fc[0].offset, 9, '1a transição começa 1s antes do fim do 1o clip');
-  // depois da 1a sobreposição a cadeia tem 19s; a 2a começa em 18
-  assert.equal(r.fc[1].offset, 18, '2a transição tem que descontar a sobreposição anterior');
-  assert.equal(r.total, 28, '3x10s com 2 sobreposições de 1s = 28s');
+test('a régua NÃO encolhe: total = soma das cenas, com 2 transições', () => {
+  const r = planejarCadeia(
+    [{ idx: 0, dur: 10 }, { idx: 1, dur: 10 }, { idx: 2, dur: 10 }],
+    [{ between: 0, duration: 1, xfade: 'fade' }, { between: 1, duration: 1, xfade: 'slidedown' }]);
+  assert.equal(r.total, 30, '3x10s continuam 30s — o áudio depende disto');
+  // janela CENTRADA na emenda: clip 0 termina (na régua) em 10 e ganhou 0,5s
+  // de borda; o xfade começa 1s antes do fim do arquivo dele => offset 9,5
+  assert.equal(r.passos[0].offset, 9.5, '1ª janela = [9,5 .. 10,5], centrada na emenda de t=10');
+  assert.equal(r.passos[1].offset, 19.5, '2ª janela centrada na emenda de t=20');
+});
+
+test('cada vizinho empresta dur/2 de borda (é o que o xfade consome)', () => {
+  const r = planejarCadeia(
+    [{ idx: 0, dur: 10 }, { idx: 1, dur: 10 }, { idx: 2, dur: 10 }],
+    [{ between: 0, duration: 1, xfade: 'fade' }]);
+  assert.deepEqual(r.borrows.get(0), { antes: 0, depois: 0.5 });
+  assert.deepEqual(r.borrows.get(1), { antes: 0.5, depois: 0 });
+  assert.deepEqual(r.borrows.get(2), { antes: 0, depois: 0 });
 });
 
 test('duração da transição nunca engole o clipe inteiro', () => {
-  // clipe de 0,5s com transição pedida de 3s
-  const r = cadeiaXfade([0.5, 10], [{ between: 0, duration: 3, xfade: 'fade' }]);
-  assert.ok(r.fc[0].dur < 0.5, 'encurtou pra caber: ' + r.fc[0].dur);
-  assert.ok(r.fc[0].offset >= 0, 'offset nunca negativo');
+  const r = planejarCadeia([{ idx: 0, dur: 0.5 }, { idx: 1, dur: 10 }],
+    [{ between: 0, duration: 3, xfade: 'fade' }]);
+  assert.ok(r.passos[0].dur < 0.5, 'encurtou pra caber: ' + r.passos[0].dur);
+  assert.ok(r.passos[0].offset >= 0, 'offset nunca negativo');
+  assert.equal(r.total, 10.5, 'régua intacta mesmo com o clamp');
 });
 
-test('junção SEM transição não desalinha as seguintes', () => {
-  const r = cadeiaXfade([10, 10, 10], [{ between: 1, duration: 1, xfade: 'fade' }]);
-  assert.ok(Math.abs(r.total - (30 - 0.04 - 1)) < 0.001, 'total: ' + r.total);
+test('junção SEM transição é concat de verdade (o fade fake de 0,04s roubava régua)', () => {
+  const r = planejarCadeia(
+    [{ idx: 0, dur: 10 }, { idx: 1, dur: 10 }, { idx: 2, dur: 10 }],
+    [{ between: 1, duration: 1, xfade: 'fade' }]);
+  assert.equal(r.passos[0].tipo, 'concat');
+  assert.equal(r.passos[1].tipo, 'xfade');
+  assert.equal(r.total, 30);
+});
+
+test('clip pulado no trim (<0,05s) desloca a emenda: transição vira seca, nunca cai no lugar errado', () => {
+  // idx 1 sumiu do plano (era minúsculo); a transição estava na junção 0
+  const r = planejarCadeia([{ idx: 0, dur: 10 }, { idx: 2, dur: 10 }],
+    [{ between: 0, duration: 1, xfade: 'fade' }]);
+  assert.equal(r.passos[0].tipo, 'concat', 'não pode aplicar o xfade numa emenda que não é a dela');
+  assert.equal(r.temXfade, false);
+});
+
+// ── REMAP DO between NO EXPORT (compostos achatados, 2026-08-07) ───────────
+import { remapTransicoes } from '../../public/editor-v1/core/selectors.js';
+
+test('composto antes da emenda: between é remapeado pro clip achatado', () => {
+  const store = createStore();
+  store.dispatch(act.setVideo({ url: 'u', path: 'p', filename: 'v.mp4', duration: 30, width: 1080, height: 1920, size_bytes: 1 }));
+  store.dispatch(act.splitClipAt(10));
+  store.dispatch(act.splitClipAt(20));
+  const [c1, c2] = store.getState().clips;
+  store.dispatch(act.setMultiSelect([{ type: 'clip', id: c1.id }, { type: 'clip', id: c2.id }]));
+  store.dispatch(act.createCompound());
+  // main track agora: [composto(2 cenas), cena3] — 1 junção de ITEM (indice 0)
+  store.dispatch(act.setTransition(0, 'dissolver', 0.5));
+  const p = exportPayload(store.getState());
+  assert.equal(p.clips.length, 3, 'export achata o composto');
+  assert.equal(p.transitions.length, 1);
+  assert.equal(p.transitions[0].between, 1,
+    'a emenda do ITEM 0 é a junção entre o 2º e o 3º clip ACHATADO');
+});
+
+test('sem composto o remap é identidade', () => {
+  const store = storeCom2Clips();
+  store.dispatch(act.setTransition(0, 'dissolver', 0.5));
+  assert.equal(remapTransicoes(store.getState())[0].between, 0);
 });
 
 // ── MARCADOR NA TIMELINE (2026-07-29) ──────────────────────────────────────

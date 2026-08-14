@@ -26,7 +26,21 @@ export function attachResizers(root, onResize) {
     // barra de edição"). A ALTURA da timeline agora é via grid-template-rows
     // (robusto) — antes setava height do .be-timeline-wrap, que tem flex:1 e
     // ignorava. col1 = biblioteca | col2 = config (flexível) | col3 = preview.
-    const maxTl = Math.max(420, Math.round(window.innerHeight * 0.78));
+    // ENQUADRAMENTO VERTICAL (2026-08-07): a timeline nunca pode espremer a
+    // linha de cima abaixo do mínimo útil — a biblioteca tem conteúdo de
+    // altura fixa (rail + importar + dica) que NÃO encolhe; sem esta trava o
+    // conteúdo dela vazava por cima da timeline (era a "invasão" do user;
+    // janela baixa + divisor salvo alto = linha de cima de ~80px).
+    const MIN_TOP = 240;
+    const csV = getComputedStyle(ws);
+    const padY = (parseFloat(csV.paddingTop) || 0) + (parseFloat(csV.paddingBottom) || 0);
+    const vaoY = parseFloat(csV.rowGap) || 0;
+    // workspace ainda OCULTO no mount mede 0: cai num fallback conservador
+    // (janela menos header/margens) — quando ele aparece, o observer abaixo
+    // reaplica com a medida real
+    const altura = (ws.clientHeight || (window.innerHeight - 120)) - padY - vaoY;
+    const maxTl = Math.min(Math.max(420, Math.round(window.innerHeight * 0.78)),
+      Math.max(120, altura - MIN_TOP));
     const maxPrev = Math.max(560, Math.round(window.innerWidth * 0.5));
     const maxLib = Math.max(320, Math.round(window.innerWidth * 0.32));
     sizes.libW = Math.min(maxLib, Math.max(MIN_LIB, sizes.libW || 232));
@@ -60,6 +74,11 @@ export function attachResizers(root, onResize) {
   }
   apply();
   window.addEventListener('resize', apply);
+  // o workspace nasce display:none (home na frente): quando ele aparece de
+  // verdade, reaplica com o clientHeight REAL — o clamp da timeline depende
+  // da medida certa pra não espremer a linha de cima
+  const vis = new IntersectionObserver((es) => { if (es.some(e => e.isIntersecting)) apply(); });
+  vis.observe(ws);
   function save() {
     try { localStorage.setItem(LS_KEY, JSON.stringify(sizes)); } catch {}
   }

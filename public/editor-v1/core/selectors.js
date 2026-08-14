@@ -395,6 +395,52 @@ export function textsAt(state, t) {
     t >= x.start_sec - 1e-9 && t <= x.end_sec + 1e-9);
 }
 
+/** Como a cena SENTA no quadro 9:16 do projeto (2026-08-07).
+ *
+ *  Vídeo horizontal importado entrava esmagado no `cover` global — o certo,
+ *  combinado com o user: entra NO TAMANHO REAL (inteiro, com barras), o
+ *  preview segue vertical e ele ajusta escala/posição por cima.
+ *
+ *  A regra é DERIVADA (nada novo no estado): proporção da mídia difere do
+ *  quadro além de 5% → 'contain'. Preview e export usam ESTA mesma função —
+ *  é o que garante WYSIWYG. Devolve null = segue o padrão do projeto. */
+export function fitDaCena(state, seg) {
+  if (!seg) return null;
+  const c = seg.clip;
+  const m = c.media_id != null
+    ? (state.media || []).find(x => x.id === c.media_id)
+    : state.video;
+  if (!m || !(m.width > 0) || !(m.height > 0)) return null;
+  const arM = m.width / m.height;
+  const arP = 9 / 16;   // o quadro do projeto é vertical
+  return Math.abs(arM - arP) / arP > 0.05 ? 'contain' : null;
+}
+
+/** `transitions[].between` conta junções de ITENS da main track (composto = 1
+ *  bloco), mas o export ACHATA compostos em sub-clips — no render a junção é
+ *  entre clips achatados. Sem o remap, qualquer composto antes da emenda
+ *  empurrava a transição pro lugar errado no arquivo (achado 2026-08-07). */
+export function remapTransicoes(state) {
+  const trans = state.transitions || [];
+  if (!trans.length) return [];
+  const items = mainTrackItems(state);
+  const segs = timelineSegments(state);
+  // quantos clips ACHATADOS cada item ocupa no payload
+  const porItem = items.map(it => it.isCompound
+    ? segs.filter(s => s.compoundId === it.clip.compound_id).length
+    : 1);
+  const out = [];
+  for (const t of trans) {
+    const k = t.between;
+    if (k == null || k < 0 || k >= items.length - 1) continue;
+    let flat = 0;
+    for (let i = 0; i <= k; i++) flat += porItem[i];
+    if (flat < 1) continue;   // item vazio (composto sem sub ativo) não tem emenda
+    out.push({ ...t, between: flat - 1 });
+  }
+  return out;
+}
+
 /** Payload de export — espelha exatamente o contrato edit-v0 do Vercel.
  *  A validacao do backend: clips efetivos ordenados por source_in, totalDur >= 0.5. */
 export function exportPayload(state) {
@@ -424,6 +470,9 @@ export function exportPayload(state) {
     ...(dono('reversed') ? { reversed: true } : {}),
     ...(dono('mirrored') ? { mirrored: true } : {}),
     ...(dono('muted') ? { muted: true } : {}),          // áudio removido da cena
+    // mídia com proporção diferente do quadro entra INTEIRA (tamanho real,
+    // barras) — mesma regra do preview (fitDaCena) = WYSIWYG
+    ...(fitDaCena(state, seg) === 'contain' ? { fit: 'contain' } : {}),
     // Aprimorar áudio da CENA (áudio embutido no vídeo) — o render aplica na
     // extração do áudio deste clipe
     ...(dono('fx_ruido') ? { fx_ruido: true } : {}),
@@ -492,7 +541,7 @@ export function exportPayload(state) {
       ...(o.rotation ? { rotation: Math.round(o.rotation) } : {}),
       lane: o.lane || 1, // ordem de composicao
     })),
-    transitions: state.transitions || [],
+    transitions: remapTransicoes(state),
     // com audio destacado o video renderiza MUDO (audio vem dos clips)
     volumes: state.audio_detached ? { ...state.volumes, video: 0 } : state.volumes,
     aspect_strategy: state.aspect_strategy,

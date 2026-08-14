@@ -22,9 +22,16 @@ export function createPlayer(videoEl, opts, store) {
   // double buffer: els[active] mostra, els[1-active] pré-carrega
   const els = [videoEl, opts?.bufferEl].filter(Boolean);
   let active = 0;
-  // enquanto uma transicao roda, o buffer mostra a cena que ENTRA — o player
-  // nao pode reaproveitar ele pra pre-carregar outra fonte no meio disso
-  let travaBuffer = false;
+  // ── TRANSIÇÃO EM CURSO (2026-08-07) ──────────────────────────────────────
+  // Antes a transição e o double-buffer disputavam os MESMOS dois elementos:
+  // no meio do efeito o swap de fronteira trocava os papéis (ativo↔buffer),
+  // as classes CSS ficavam presas nos elementos antigos e o resultado era a
+  // tela preta + os dois vídeos duplicados que o user viu. Agora a transição
+  // SEGURA a fronteira: o ativo continua tocando a cena que SAI (material
+  // emprestado além do corte, igual ao xfade do render) e o swap acontece UMA
+  // vez, no fim do efeito, dentro de concluirTransicao().
+  // { jun, dur, fim, sailId, entraId, urlEntra } — jun = t da emenda.
+  let trans = null;
   const disp = () => els[active];
   const buf = () => (els.length > 1 ? els[1 - active] : null);
 
@@ -44,6 +51,14 @@ export function createPlayer(videoEl, opts, store) {
       try { el.currentTime = el._pendingSeek; } catch {}
       el._pendingSeek = null;
       if (playing && el === disp()) el.play().catch(() => {});
+    });
+    // mídia que FALHA não pode prender o relógio: o tick segura o tempo
+    // enquanto houver _pendingSeek — um load com erro deixava tudo travado
+    // pra sempre (o frame fica preto, mas a timeline segue)
+    el.addEventListener('error', () => {
+      el._pendingSeek = null;
+      el._swapTo = null;
+      el.dataset.loadedUrl = '';
     });
   });
 
@@ -65,6 +80,11 @@ export function createPlayer(videoEl, opts, store) {
   }
 
   function syncVideoToVirtual(seekVideo = true) {
+    // transição segurando a fronteira: o display está tocando a cena que SAI
+    // (possivelmente além do source_out dela) e o buffer mostra a que ENTRA.
+    // Mexer em qualquer um aqui desfaria o efeito no meio — quem encerra é
+    // concluirTransicao()/abortarTransicao().
+    if (trans) return;
     const state = store.getState();
     const dur = totalDuration(state);
     // ALÉM DO FIM DO VÍDEO = PRETO (fix 2026-07-29). O clamp abaixo existe pra
@@ -108,9 +128,7 @@ export function createPlayer(videoEl, opts, store) {
       // fonte e marca a troca pendente; o tick segura o ÚLTIMO FRAME congelado
       // e troca quando o buffer decodifica. PAUSADO (scrub): não há tick pra
       // dirigir a troca, então load direto (pisca uma vez, aceitável no scrub).
-      // durante uma transição o buffer está mostrando a cena que ENTRA — não
-      // pode ser requisitado pra pré-carregar outra fonte no meio do efeito
-      const bb = travaBuffer ? null : buf();
+      const bb = buf();
       if (bb && playing) {
         if (bb.dataset.loadedUrl !== url) {
           bb.dataset.loadedUrl = url;
@@ -152,7 +170,7 @@ export function createPlayer(videoEl, opts, store) {
   // pré-carrega a PRÓXIMA fonte no buffer (só durante playback, só se a fonte
   // muda — clips do mesmo arquivo não precisam de swap)
   function preloadNext(state) {
-    if (travaBuffer) return;   // buffer ocupado mostrando a cena que ENTRA
+    if (trans) return;   // buffer ocupado mostrando a cena que ENTRA
     const b = buf();
     if (!b) return;
     const cur = segmentAt(state, virtualTime);
@@ -276,6 +294,48 @@ export function createPlayer(videoEl, opts, store) {
     lastTick = ts;
     const d = disp();
 
+    // ── TRANSIÇÃO SEGURANDO A FRONTEIRA ────────────────────────────────────
+    // O display toca a cena que SAI até o FIM do efeito (material emprestado
+    // além do corte, espelho do xfade do render); o buffer toca a que ENTRA.
+    // Nada de swap no meio — ele acontece uma vez, em concluirTransicao().
+    if (trans) {
+      const sSai = trans.segSai;
+      const c = sSai.clip;
+      // relógio: segue o vídeo que SAI. Se a fonte acabou (EOF) ou é um quadro
+      // parado, anda por rAF — o efeito nunca congela esperando frame.
+      let derivado = null;
+      if (!c.frozen && !c.reversed && !d.ended && d.readyState >= 2) {
+        derivado = sSai.tStart + Math.max(0, d.currentTime - c.source_in) / segSpeed(sSai);
+      }
+      if (derivado != null && derivado > virtualTime - 0.001 && derivado < virtualTime + 1.0) {
+        virtualTime = Math.max(virtualTime, derivado);
+      } else {
+        virtualTime += dt;
+      }
+      if (c.frozen || c.reversed || d.ended) { if (!d.paused) d.pause(); }
+      else if (d.paused) d.play().catch(() => {});
+      d.playbackRate = segSpeed(sSai);
+      // o CORTE DE ÁUDIO fica na emenda (igual ao render): até jun soa a cena
+      // que sai; depois, a que entra. O visual atravessa a emenda inteiro.
+      const b = buf();
+      const depois = virtualTime >= trans.jun;
+      d.muted = depois ? true : vidMuted(state, sSai);
+      d.volume = Math.min(1, state.volumes?.video ?? 1);
+      if (b) {
+        b.muted = depois ? vidMuted(state, segmentAt(state, virtualTime)) : true;
+        b.volume = Math.min(1, state.volumes?.video ?? 1);
+        if (!trans.entraParado && b.paused && b.readyState >= 2 && b._pendingSeek == null) {
+          b.play().catch(() => {});
+        }
+      }
+      if (virtualTime >= trans.fim - 0.02 || virtualTime >= total) concluirTransicao();
+      if (virtualTime >= total) { pause(); virtualTime = total; emit(); return; }
+      syncAudios(virtualTime);
+      emit();
+      rafId = requestAnimationFrame(tick);
+      return;
+    }
+
     // TROCA PENDENTE pra fonte nova (take seguinte): mantém o último frame no
     // lugar do preto e troca assim que o buffer decodifica — playback fluido.
     if (d._swapTo) {
@@ -307,7 +367,13 @@ export function createPlayer(videoEl, opts, store) {
         return;
       } else {
         const espera = (typeof performance !== 'undefined' ? performance.now() : Date.now()) - (d._swapTo.t0 || 0);
-        if (espera > 4000) {
+        if (bb && bb.error) {
+          // o buffer FALHOU (rede/arquivo): não adianta esperar os 4s — cai
+          // direto no load do display (pisca uma vez, mas não trava)
+          const u = d._swapTo.url, s = d._swapTo.src; d._swapTo = null;
+          bb.dataset.loadedUrl = '';
+          d.src = u; d.load(); d._pendingSeek = s;
+        } else if (espera > 4000) {
           // buffer não veio em 4s (rede ruim): aceita o load (pisca uma vez, mas
           // não trava pra sempre)
           const u = d._swapTo.url, s = d._swapTo.src; d._swapTo = null;
@@ -326,6 +392,16 @@ export function createPlayer(videoEl, opts, store) {
     }
 
     const seg = segmentAt(state, virtualTime);
+    if (seg && d.error) {
+      // vídeo QUEBRADO (fonte inválida, rede): a timeline NÃO congela por
+      // causa dele — quadro preto, relógio por rAF, o áudio segue tocando
+      virtualTime += dt;
+      if (virtualTime >= total) { pause(); virtualTime = total; emit(); return; }
+      syncAudios(virtualTime);
+      emit();
+      rafId = requestAnimationFrame(tick);
+      return;
+    }
     if (seg && d._pendingSeek != null) {
       // trocando de fonte (load em andamento): segura o relógio
       rafId = requestAnimationFrame(tick);
@@ -352,7 +428,13 @@ export function createPlayer(videoEl, opts, store) {
       d.playbackRate = segSpeed(seg);
       preloadNext(state); // aquece o buffer com a próxima fonte
       const vSrc = d.currentTime;
-      if (vSrc >= seg.clip.source_in - 0.08 && vSrc <= seg.clip.source_out + 0.2) {
+      // A FONTE PODE ACABAR ANTES do source_out (metadado de duração
+      // arredondado pra cima é comum em take usado inteiro). Sem tratar o
+      // `ended`, o vSrc congelava abaixo do limiar e o relógio esperava pra
+      // sempre um frame que não existe — era o "preto e trava" na troca de
+      // mídia (user 2026-08-07).
+      const fimDoArquivo = d.ended === true;
+      if (!fimDoArquivo && vSrc >= seg.clip.source_in - 0.08 && vSrc <= seg.clip.source_out + 0.2) {
         virtualTime = seg.tStart + Math.max(0, vSrc - seg.clip.source_in) / segSpeed(seg);
         if (vSrc >= seg.clip.source_out - 0.03) {
           // fim do clip: se o próximo é CONTÍGUO na mesma fonte (split simples,
@@ -366,6 +448,13 @@ export function createPlayer(videoEl, opts, store) {
             syncVideoToVirtual();
           }
         }
+      } else if (fimDoArquivo) {
+        // arquivo acabou no meio da cena: pula pra próxima fronteira — mesmo
+        // contíguo não há mais material pra "deixar fluir"
+        const nextT = seg.tEnd + 0.001;
+        if (nextT >= total) { pause(); virtualTime = total; emit(); return; }
+        virtualTime = nextT;
+        syncVideoToVirtual();
       } else {
         syncVideoToVirtual();
       }
@@ -379,6 +468,133 @@ export function createPlayer(videoEl, opts, store) {
     syncAudios(virtualTime);
     emit();
     rafId = requestAnimationFrame(tick);
+  }
+
+  // ── TRANSIÇÃO DE VERDADE (reescrita 2026-08-07) ───────────────────────────
+  // O contrato antigo (prepararEntrada/liberarEntrada) deixava o swap de
+  // fronteira acontecer NO MEIO do efeito: os papéis dos dois <video>
+  // invertiam, as classes CSS ficavam presas nos elementos antigos e sobrava
+  // tela preta + imagem duplicada. Agora o player é o único dono da mecânica:
+  // a transição SEGURA a fronteira e o swap é o ato final dela.
+
+  /** Arma o efeito na emenda `jun` (só faz sentido tocando, antes da emenda).
+   *  A cena que entra carrega no buffer começando dur/2 ANTES do corte —
+   *  o mesmo material emprestado que o xfade do render usa. */
+  function prepararTransicao({ jun, dur }) {
+    const b = buf();
+    if (!b) return false;
+    if (trans) return Math.abs(trans.jun - jun) < 0.01;   // já segurando esta emenda
+    const state = store.getState();
+    const sSai = segmentAt(state, jun - 1e-3);
+    const sEnt = segmentAt(state, jun + 1e-3);
+    if (!sSai || !sEnt || sSai === sEnt) return false;
+    if (virtualTime >= jun - 0.02) return false;          // tarde demais: corte seco honesto
+    const url = urlForClip(state, sEnt.clip);
+    if (!url) return false;
+    const cE = sEnt.clip;
+    const spE = segSpeed(sEnt);
+    const src0 = cE.frozen ? (cE.freeze_src || 0)
+      : cE.reversed ? (cE.source_out + (dur / 2) * spE)
+      : Math.max(0, cE.source_in - (dur / 2) * spE);
+    const d = disp();
+    d._swapTo = null;                                     // o hold assume a fronteira
+    if (b.dataset.loadedUrl !== url) {
+      b.dataset.loadedUrl = url;
+      b._pendingSeek = src0;
+      b.muted = true;
+      b.src = url;
+      b.load();
+    } else if (b._pendingSeek == null) {
+      try { if (Math.abs(b.currentTime - src0) > 0.12) b.currentTime = src0; } catch {}
+    }
+    b.muted = true;                                       // o áudio da entrada só vale após a emenda
+    b.playbackRate = spE;
+    trans = {
+      jun, dur, fim: jun + dur / 2,
+      segSai: sSai,
+      sailId: sSai.clip.id, entraId: cE.id,
+      urlEntra: url,
+      // congelado/reverso não "toca" pra frente: fica num frame parado
+      entraParado: cE.frozen === true || cE.reversed === true,
+    };
+    if (!trans.entraParado && playing && b.readyState >= 2) b.play().catch(() => {});
+    return true;
+  }
+
+  /** O ato final: troca ativo↔buffer UMA vez, com a entrada já no tempo certo
+   *  (material emprestado = zero seek na cara do usuário). */
+  function concluirTransicao() {
+    if (!trans) return;
+    const t = trans; trans = null;
+    const state = store.getState();
+    const b = buf(), d = disp();
+    const pronto = b && b.dataset.loadedUrl === t.urlEntra && b.readyState >= 2 && b._pendingSeek == null;
+    if (!pronto) {
+      // a entrada nunca decodificou (rede/arquivo ruim): piscar uma vez é
+      // melhor que segurar o palco — cai no caminho normal de troca
+      syncVideoToVirtual();
+      return;
+    }
+    d.pause();
+    d._swapTo = null;
+    active = 1 - active;
+    applyVisibility();
+    const nd = disp();
+    const seg = segmentAt(state, virtualTime);
+    nd._pendingSeek = null; nd._swapTo = null; nd.style.visibility = '';
+    nd.muted = vidMuted(state, seg);
+    nd.volume = Math.min(1, state.volumes?.video ?? 1);
+    nd.playbackRate = seg ? segSpeed(seg) : 1;
+    const alvo = seg ? srcForSeg(seg, virtualTime) : null;
+    if (alvo != null && Math.abs(nd.currentTime - alvo) > 0.12) { try { nd.currentTime = alvo; } catch {} }
+    if (playing && seg && !seg.clip.frozen && !seg.clip.reversed) nd.play().catch(() => {});
+    const nb = buf();
+    if (nb) { nb.pause(); nb.dataset.loadedUrl = ''; }
+  }
+
+  /** Desiste do efeito sem swap (seek pra fora, edição que mudou a emenda). */
+  function abortarTransicao() {
+    if (!trans) return;
+    trans = null;
+    const b = buf();
+    if (b) b.pause();
+    syncVideoToVirtual();
+  }
+
+  /** PAUSADO (scrub dentro da janela do efeito): o display mostra o lado sob a
+   *  agulha (comportamento normal do seek); aqui o buffer recebe o OUTRO lado,
+   *  parado no frame coerente com o instante — o palco compõe os dois. */
+  function prepararLadoPausado({ t, jun }) {
+    const b = buf();
+    if (!b) return null;
+    if (trans) return { sai: disp(), entra: b };          // pausou no meio do hold
+    const state = store.getState();
+    const sSai = segmentAt(state, jun - 1e-3);
+    const sEnt = segmentAt(state, jun + 1e-3);
+    if (!sSai || !sEnt) return null;
+    const d = disp();
+    const antes = t < jun;
+    const outro = antes ? sEnt : sSai;
+    const url = urlForClip(state, outro.clip);
+    if (!url) return null;
+    const sp = segSpeed(outro);
+    const cO = outro.clip;
+    const src = cO.frozen ? (cO.freeze_src || 0)
+      : cO.reversed
+        ? Math.max(0, antes ? cO.source_out + (jun - t) * sp : cO.source_in - (t - jun) * sp)
+        : Math.max(0, antes ? cO.source_in - (jun - t) * sp : cO.source_out + (t - jun) * sp);
+    if (b.dataset.loadedUrl !== url) {
+      b.dataset.loadedUrl = url;
+      b._pendingSeek = src;
+      b.muted = true;
+      b.src = url;
+      b.load();
+    } else if (b._pendingSeek == null) {
+      try { if (Math.abs(b.currentTime - src) > 0.1) b.currentTime = src; } catch {}
+    }
+    b.muted = true;
+    b.pause();
+    return antes ? { sai: d, entra: b } : { sai: b, entra: d };
   }
 
   function play() {
@@ -395,6 +611,7 @@ export function createPlayer(videoEl, opts, store) {
     lastTick = 0;
     fxMotor.retomar();   // gesto de play destrava o AudioContext suspenso
     if (segmentAt(state, virtualTime)) d.play().catch(() => {});
+    preloadNext(state);  // aquece o buffer JÁ no play (fronteira logo à frente)
     syncAudios(virtualTime);
     rafId = requestAnimationFrame(tick);
     emit();
@@ -409,6 +626,9 @@ export function createPlayer(videoEl, opts, store) {
   }
 
   function seek(t) {
+    // seek manda: solta o hold da transição (o efeito se rearma sozinho se a
+    // agulha cair de novo dentro da janela)
+    if (trans) { trans = null; const b = buf(); if (b) b.pause(); }
     const total = playableDuration(store.getState());
     virtualTime = Math.min(Math.max(0, t), total);
     syncVideoToVirtual();
@@ -426,7 +646,18 @@ export function createPlayer(videoEl, opts, store) {
     const state = store.getState();
     const total = playableDuration(state);
     if (virtualTime > total) { virtualTime = total; emit(); }
-    disp().muted = vidMuted(state, segmentAt(state, virtualTime));
+    // edição no meio de uma transição em curso: a emenda ainda existe?
+    if (trans) {
+      const sSai = segmentAt(state, trans.jun - 1e-3);
+      const sEnt = segmentAt(state, trans.jun + 1e-3);
+      if (!sSai || !sEnt || sSai.clip.id !== trans.sailId || sEnt.clip.id !== trans.entraId) {
+        abortarTransicao();
+      } else {
+        trans.segSai = sSai;   // referência fresca do estado novo
+      }
+    }
+    // durante o hold o mudo é do ramo de transição do tick (corte na emenda)
+    if (!trans) disp().muted = vidMuted(state, segmentAt(state, virtualTime));
     if (!playing) syncVideoToVirtual();
     syncPool();
   });
@@ -459,45 +690,23 @@ export function createPlayer(videoEl, opts, store) {
       fxIndisponivel: !!e.fxIndisponivel,
       comCadeiaFx: !!e._fx,
     })),
-    // ── TRANSIÇÃO DE VERDADE (2026-07-29) ──────────────────────────────────
-    // A primeira versão desenhava uma camada POR CIMA do vídeo: dava pra ver
-    // um brilho ou uma tarja, mas "Deslizar" não deslizava nada — o vídeo que
-    // entra nunca aparecia. Transição de verdade precisa dos DOIS vídeos na
-    // tela ao mesmo tempo.
-    //
-    // O elemento de buffer (que já existe pro double-buffer) passa a mostrar a
-    // cena que ENTRA, no tempo certo dela, enquanto o ativo segue tocando a que
-    // sai. O CSS move/mistura os dois. Enquanto isso o player não mexe no
-    // buffer por conta própria — daí a trava.
+    // ── TRANSIÇÃO DE VERDADE ────────────────────────────────────────────────
+    // Os DOIS vídeos na tela: o ativo é a cena que SAI, o buffer a que ENTRA.
+    // O transition-fx só cuida do VISUAL (classes + --p); a mecânica (hold da
+    // fronteira, material emprestado, swap único no fim) vive aqui.
     getBufferEl: () => buf(),
-    prepararEntrada(url, srcTime) {
-      const b = buf();
-      if (!b || !url) return false;
-      travaBuffer = true;
-      if (b.dataset.loadedUrl !== url) {
-        b.dataset.loadedUrl = url;
-        b.src = url;
-        b._pendingSeek = srcTime;
-        b.load();
-      } else {
-        try { if (Math.abs(b.currentTime - srcTime) > 0.12) b.currentTime = srcTime; } catch {}
-      }
-      b.muted = true;                    // o áudio da cena que entra só vale depois
-      if (playing) b.play().catch(() => {});
-      else b.pause();
-      return true;
-    },
-    liberarEntrada() {
-      travaBuffer = false;
-      const b = buf();
-      if (b) { b.pause(); }
-    },
+    prepararTransicao,
+    prepararLadoPausado,
+    abortarTransicao,
+    /** Papéis em curso do hold — null fora de transição tocando. */
+    transRoles: () => (trans ? { sai: disp(), entra: buf(), jun: trans.jun } : null),
     // Reaplica o mudo no elemento QUE ESTÁ EM EXIBIÇÃO. O player é o único dono
     // dessa decisão (ele conhece o segmento sob o playhead, o mudo por cena e
     // qual dos dois elementos do double-buffer está visível). A shell chama
     // isto quando o estado muda com o vídeo pausado — aí não há tick pra
     // reaplicar sozinho.
     refreshMute() {
+      if (trans) return;   // durante o hold o mudo é do ramo de transição do tick
       const state = store.getState();
       disp().muted = vidMuted(state, segmentAt(state, virtualTime));
       disp().volume = Math.min(1, state.volumes?.video ?? 1);

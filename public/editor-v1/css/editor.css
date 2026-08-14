@@ -243,6 +243,10 @@ body {
   display: flex; flex-direction: column; gap: 8px; min-height: 0;
   background: var(--card); border: 1px solid var(--blue-border);
   border-radius: 14px; padding: 10px;
+  /* contenção: o conteúdo fixo (rail/importar/dica) não encolhe — se a linha
+     de cima ficar menor que ele, CLIPA no cartão em vez de vazar por cima da
+     timeline (o resizer já evita chegar aqui; isto fecha a classe) */
+  overflow: hidden;
 }
 .be-library-body { display: flex; flex-direction: column; gap: 8px; min-height: 0; flex: 1; }
 .be-library-list { display: flex; flex-direction: column; gap: 6px; overflow-y: auto; min-height: 0; flex: 1; }
@@ -1087,47 +1091,55 @@ body {
 }
 
 
-/* ── TRANSIÇÃO DE VERDADE NO PLAYER (2026-07-29) ────────────────────────────
-   Os DOIS vídeos ficam visíveis: o ativo é a cena que SAI, o buffer é a que
-   ENTRA. O JS escreve só --p (0..1) no palco; tudo aqui deriva dali.
-   A primeira versão pintava uma camada por cima e o "Deslizar" não deslizava
-   nada — o vídeo que entra nem aparecia. */
+/* ── TRANSIÇÃO DE VERDADE NO PLAYER (2026-07-29 · papéis 2026-08-07) ────────
+   Os DOIS vídeos ficam visíveis: quem tem .be-trans-saindo é a cena que SAI,
+   quem tem .be-trans-entrando é a que ENTRA (o transition-fx reconcilia as
+   classes com os papéis do player a cada frame). O JS escreve só --p (0..1)
+   no palco; tudo aqui deriva dali.
+
+   !important NOS EFEITOS: a shell escreve transform/opacity INLINE no elemento
+   ativo (escala/posição/opacidade da cena) — sem !important o inline vencia e
+   o efeito não animava nada durante a transição. O transform da CENA continua
+   valendo: viaja na custom property --betf e cada efeito COMPÕE var(--betf,). */
 .be-em-transicao video.be-trans-entrando {
   visibility: visible !important;   /* vence o .be-buffering do double-buffer */
   z-index: 2;
 }
+/* entrada ainda SEM frame decodificado fica invisível: elemento visível sem
+   frame pinta PRETO por cima da cena que sai (era o "preto antes" do user) */
+.be-em-transicao video.be-trans-entrando:not(.be-trans-pronta) { opacity: 0 !important }
 .be-em-transicao video.be-trans-saindo { z-index: 1 }
 .be-em-transicao video { will-change: transform, opacity, clip-path, filter }
 
 /* dissolver: a que entra aparece por cima */
-[data-fx="cross"] video.be-trans-entrando { opacity: var(--p) }
+[data-fx="cross"] video.be-trans-entrando { opacity: var(--p) !important }
 /* esmaecer preto/branco: escurece/clareia no miolo e a nova surge */
-[data-fx="flash"] video.be-trans-saindo   { filter: brightness(calc(1 + (0.5 - abs(var(--p) - 0.5)) * 3)) }
-[data-fx="flash"] video.be-trans-entrando { opacity: var(--p); filter: brightness(calc(1 + (0.5 - abs(var(--p) - 0.5)) * 3)) }
+[data-fx="flash"] video.be-trans-saindo   { filter: brightness(calc(1 + (0.5 - abs(var(--p) - 0.5)) * 3)) !important }
+[data-fx="flash"] video.be-trans-entrando { opacity: var(--p) !important; filter: brightness(calc(1 + (0.5 - abs(var(--p) - 0.5)) * 3)) !important }
 /* DESLIZAR: a cena que entra REALMENTE entra pela borda */
-[data-fx="slide"] video.be-trans-entrando { transform: translateY(calc((1 - var(--p)) * 100%)) }
-[data-fx="slide"] video.be-trans-saindo   { transform: translateY(calc(var(--p) * -18%)) }
+[data-fx="slide"] video.be-trans-entrando { transform: translateY(calc((1 - var(--p)) * 100%)) var(--betf,) !important }
+[data-fx="slide"] video.be-trans-saindo   { transform: translateY(calc(var(--p) * -18%)) var(--betf,) !important }
 /* varredura: a nova é revelada por uma faixa que corre */
-[data-fx="wipe"] video.be-trans-entrando  { clip-path: inset(calc((1 - var(--p)) * 100%) 0 0 0) }
+[data-fx="wipe"] video.be-trans-entrando  { clip-path: inset(calc((1 - var(--p)) * 100%) 0 0 0) !important }
 /* radial / círculo: revela em círculo a partir do centro */
-[data-fx="radial"] video.be-trans-entrando  { clip-path: circle(calc(var(--p) * 110%) at 50% 50%) }
-[data-fx="circulo"] video.be-trans-entrando { clip-path: circle(calc(var(--p) * 110%) at 50% 50%) }
+[data-fx="radial"] video.be-trans-entrando  { clip-path: circle(calc(var(--p) * 110%) at 50% 50%) !important }
+[data-fx="circulo"] video.be-trans-entrando { clip-path: circle(calc(var(--p) * 110%) at 50% 50%) !important }
 /* desfoque: as duas borram no encontro */
-[data-fx="blur"] video.be-trans-saindo   { filter: blur(calc((0.5 - abs(var(--p) - 0.5)) * 18px)); opacity: calc(1 - var(--p)) }
-[data-fx="blur"] video.be-trans-entrando { filter: blur(calc((0.5 - abs(var(--p) - 0.5)) * 18px)); opacity: var(--p) }
+[data-fx="blur"] video.be-trans-saindo   { filter: blur(calc((0.5 - abs(var(--p) - 0.5)) * 18px)) !important; opacity: calc(1 - var(--p)) !important }
+[data-fx="blur"] video.be-trans-entrando { filter: blur(calc((0.5 - abs(var(--p) - 0.5)) * 18px)) !important; opacity: var(--p) !important }
 /* zoom de choque: a que sai cresce, a que entra chega grande e assenta */
-[data-fx="zoom"] video.be-trans-saindo   { transform: scale(calc(1 + var(--p) * 0.6)); opacity: calc(1 - var(--p)) }
-[data-fx="zoom"] video.be-trans-entrando { transform: scale(calc(1.6 - var(--p) * 0.6)); opacity: var(--p) }
+[data-fx="zoom"] video.be-trans-saindo   { transform: scale(calc(1 + var(--p) * 0.6)) var(--betf,) !important; opacity: calc(1 - var(--p)) !important }
+[data-fx="zoom"] video.be-trans-entrando { transform: scale(calc(1.6 - var(--p) * 0.6)) var(--betf,) !important; opacity: var(--p) !important }
 /* agitação: sacode as duas no encontro */
 [data-fx="shake"] video.be-trans-saindo,
-[data-fx="shake"] video.be-trans-entrando { transform: translateX(calc(sin(var(--p) * 30rad) * (0.5 - abs(var(--p) - 0.5)) * 12%)) }
-[data-fx="shake"] video.be-trans-entrando { opacity: var(--p) }
+[data-fx="shake"] video.be-trans-entrando { transform: translateX(calc(sin(var(--p) * 30rad) * (0.5 - abs(var(--p) - 0.5)) * 12%)) var(--betf,) !important }
+[data-fx="shake"] video.be-trans-entrando { opacity: var(--p) !important }
 /* pixel/falha: bandas + salto lateral na cena que entra */
-[data-fx="pixel"] video.be-trans-entrando  { opacity: var(--p); filter: contrast(calc(1 + (0.5 - abs(var(--p) - 0.5)) * 3)) saturate(1.6) }
+[data-fx="pixel"] video.be-trans-entrando  { opacity: var(--p) !important; filter: contrast(calc(1 + (0.5 - abs(var(--p) - 0.5)) * 3)) saturate(1.6) !important }
 [data-fx="glitch"] video.be-trans-entrando {
-  opacity: var(--p);
-  clip-path: inset(calc(abs(sin(var(--p) * 18rad)) * 22%) 0 calc(abs(cos(var(--p) * 14rad)) * 18%) 0);
-  transform: translateX(calc(sin(var(--p) * 40rad) * 2.5%));
+  opacity: var(--p) !important;
+  clip-path: inset(calc(abs(sin(var(--p) * 18rad)) * 22%) 0 calc(abs(cos(var(--p) * 14rad)) * 18%) 0) !important;
+  transform: translateX(calc(sin(var(--p) * 40rad) * 2.5%)) var(--betf,) !important;
 }
 @media (prefers-reduced-motion: reduce) {
   .be-em-transicao video.be-trans-entrando { transform: none !important; clip-path: none !important }

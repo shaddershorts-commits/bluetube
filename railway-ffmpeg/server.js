@@ -2172,6 +2172,74 @@ function filtrosDaCena(c, W, H) {
   return out;
 }
 
+/**
+ * Plano da cadeia de transições (PURO — o unit test e a sonda importam DESTE
+ * fonte, não de uma réplica).
+ *
+ * REGRA DE OURO: a régua NÃO encolhe. O xfade "puro" sobrepõe os vizinhos e
+ * ENCURTA o vídeo em `dur` por junção — mas o áudio (passo 5), as máscaras e
+ * os textos continuam na régua cheia: todo arquivo com transição saía
+ * dessincronizado depois da primeira emenda (achado 2026-08-07).
+ *
+ * O modelo agora é o de EMPRÉSTIMO, o mesmo do preview: cada vizinho estende
+ * a própria borda em dur/2 (material além do corte; sem material, clona o
+ * frame da ponta) e o xfade consome EXATAMENTE o que foi emprestado. A cena
+ * que sai desaparece na emenda, a que entra pousa no tempo certo da régua, e
+ * o total do arquivo = soma das cenas, com áudio alinhado.
+ *
+ * clips: [{ idx, dur }] — idx = posição ORIGINAL em p.clips (clip de <0,05s
+ * é pulado no trim; junção com buraco no meio vira emenda seca), dur =
+ * duracaoDaCena (régua). trans: p.transitions ({ between, duration, xfade }).
+ *
+ * Devolve:
+ *   borrows: Map(idx -> { antes, depois })   segundos emprestados por borda
+ *   passos:  [{ tipo:'xfade', nome, dur, offset } | { tipo:'concat' }]
+ *   total:   duração final do vídeo (== soma das cenas, régua intacta)
+ *   temXfade: a cadeia tem pelo menos uma transição de verdade
+ */
+function planejarCadeia(clips, trans) {
+  const porJuncao = new Map();
+  for (const t of (trans || [])) {
+    if (!t || t.between == null) continue;
+    const dur = Math.max(0.1, Math.min(3, Number(t.duration) || 0.5));
+    const nome = typeof t.xfade === 'string' && /^[a-z]+$/.test(t.xfade) ? t.xfade : 'fade';
+    porJuncao.set(t.between | 0, { dur, nome });
+  }
+  const borrows = new Map(clips.map(c => [c.idx, { antes: 0, depois: 0 }]));
+  const juncoes = [];   // junção k fica entre clips[k] e clips[k+1]
+  for (let k = 0; k < clips.length - 1; k++) {
+    const a = clips[k], b = clips[k + 1];
+    // clip pulado no meio (dur < 0,05s no trim) desloca a emenda: sem par
+    // exato, a junção é seca — nunca aplica a transição no lugar errado
+    const tr = (b.idx === a.idx + 1) ? porJuncao.get(a.idx) : null;
+    if (!tr) { juncoes.push(null); continue; }
+    // a transição nunca engole a cena vizinha
+    const dur = Math.min(tr.dur, Math.max(0, a.dur - 0.05), Math.max(0, b.dur - 0.05));
+    if (dur <= 0.05) { juncoes.push(null); continue; }
+    borrows.get(a.idx).depois = dur / 2;
+    borrows.get(b.idx).antes = dur / 2;
+    juncoes.push({ dur, nome: tr.nome });
+  }
+  // comprimento REAL de cada arquivo cortado = cena + bordas emprestadas
+  const len = (c) => c.dur + borrows.get(c.idx).antes + borrows.get(c.idx).depois;
+  const passos = [];
+  let acumulado = clips.length ? len(clips[0]) : 0;
+  for (let k = 1; k < clips.length; k++) {
+    const j = juncoes[k - 1];
+    if (j) {
+      // o xfade come exatamente os dois empréstimos: a janela fica CENTRADA
+      // na emenda ([jun-dur/2, jun+dur/2]) e o acumulado volta pra régua
+      passos.push({ tipo: 'xfade', nome: j.nome, dur: j.dur, offset: Math.max(0, acumulado - j.dur) });
+      acumulado = acumulado + len(clips[k]) - j.dur;
+    } else {
+      passos.push({ tipo: 'concat' });
+      acumulado = acumulado + len(clips[k]);
+    }
+  }
+  return { borrows, passos, total: acumulado, temXfade: passos.some(x => x.tipo === 'xfade') };
+}
+// ── FIM planejarCadeia (marcador pro unit test extrair o fonte) ─────────────
+
 /** Inverte um clipe JÁ CORTADO, em pedaços, e devolve no MESMO caminho.
  *  Pedaço de 3s a 1080×1920/30fps ≈ 90 quadros crus — cabe folgado; o clipe
  *  inteiro na memória, não. */
@@ -2314,49 +2382,97 @@ async function processEditV0(jobId, p) {
     // -c copy — normaliza cada trim pro formato de saida ANTES do concat
     const NORM_W = p.output_width || 1080;
     const NORM_H = p.output_height || 1920;
-    const normVf = (p.aspect_strategy || 'crop_center') === 'letterbox'
-      ? `scale=${NORM_W}:${NORM_H}:force_original_aspect_ratio=decrease,pad=${NORM_W}:${NORM_H}:(ow-iw)/2:(oh-ih)/2,setsar=1`
-      : `scale=${NORM_W}:${NORM_H}:force_original_aspect_ratio=increase,crop=${NORM_W}:${NORM_H},setsar=1`;
+    // fit POR CENA (2026-08-07): mídia com proporção diferente do quadro entra
+    // INTEIRA (letterbox daquela cena), espelhando o `fitDaCena` do preview —
+    // era o "vídeo horizontal entra deformado". Sem fit → estratégia global.
+    const normPara = (c) => {
+      const modo = c?.fit === 'contain' ? 'letterbox'
+        : c?.fit === 'cover' ? 'crop_center'
+        : (p.aspect_strategy || 'crop_center');
+      return modo === 'letterbox'
+        ? `scale=${NORM_W}:${NORM_H}:force_original_aspect_ratio=decrease,pad=${NORM_W}:${NORM_H}:(ow-iw)/2:(oh-ih)/2,setsar=1`
+        : `scale=${NORM_W}:${NORM_H}:force_original_aspect_ratio=increase,crop=${NORM_W}:${NORM_H},setsar=1`;
+    };
+    // ── FIM normPara (marcador pra sonda extrair o fonte) ──
+    // um clip com fit próprio força a normalização de TODOS (senão o concat
+    // mistura resoluções — mesmo motivo do multiSource)
+    const temFitProprio = (p.clips || []).some(c => c && c.fit);
+    // TRANSIÇÕES entram JÁ NO TRIM: os vizinhos de cada emenda ganham dur/2 de
+    // material EMPRESTADO na borda (além do corte; sem material, clona o frame
+    // da ponta) — é o que o xfade consome sem encurtar a régua. Ver
+    // planejarCadeia pro porquê (áudio dessincronizado era o sintoma).
+    const clipsPlano = [];
+    for (let i = 0; i < p.clips.length; i++) {
+      const c = p.clips[i];
+      if ((c.source_out - c.source_in) < 0.05) continue;
+      clipsPlano.push({ idx: i, dur: duracaoDaCena(c) });
+    }
+    const plano = planejarCadeia(clipsPlano, p.transitions);
     const clipFiles = [];
     for (let i = 0; i < p.clips.length; i++) {
       const c = p.clips[i];
       const out = path.join(dir, `clip_${i}.mp4`);
       const dur = (c.source_out - c.source_in);
       if (dur < 0.05) continue;
+      const bw = plano.borrows.get(i) || { antes: 0, depois: 0 };
+      const comBorrow = bw.antes > 0 || bw.depois > 0;
+      const alvo = duracaoDaCena(c) + bw.antes + bw.depois;   // comprimento EXATO do arquivo
       // CORREÇÃO DE COR da cena: entra AQUI, no trim, porque o grade é POR
       // CLIPE — depois do concat não dá mais pra saber de quem era o ajuste.
       // Antes o Retoque não chegava no arquivo de jeito nenhum.
       const fGrade = filtrosDoGrade(c.grade_render);
       // CONGELAR QUADRO: a cena é UM frame parado por freeze_dur segundos.
       // Não é trim — é uma imagem em loop; por isso sai do caminho normal.
+      // (borda emprestada = mais tempo do MESMO frame: só estica o -t)
       if (c.frozen === true) {
-        const durF = duracaoDaCena(c);
         const still = path.join(dir, `freeze_${i}.png`);
         await run('ffmpeg', ['-y', '-ss', String(num(c.freeze_src, 0, 0, 86400)),
           '-i', srcFor(c), '-frames:v', '1', still]);
-        const vfF = [...(multiSource ? [normVf] : []), ...fGrade,
+        const vfF = [...((multiSource || temFitProprio) ? [normPara(c)] : []), ...fGrade,
           ...filtrosDaCena({ ...c, speed: 1 }, NORM_W, NORM_H)].filter(Boolean);
         await run('ffmpeg', [
-          '-y', '-loop', '1', '-t', String(durF), '-i', still,
+          '-y', '-loop', '1', '-t', String(alvo), '-i', still,
           '-vf', [...vfF, `fps=30`].join(','), '-r', '30', '-pix_fmt', 'yuv420p',
           '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '23',
           '-force_key_frames', 'expr:gte(t,0)', '-an', out,
         ]);
-        clipFiles.push({ path: out, duration: durF });
+        clipFiles.push({ path: out, duration: alvo });
         continue;
       }
+      const v = velocidadeDaCena(c);
+      // REVERSO toca o arquivo de trás pra frente: a borda ANTES da cena (na
+      // régua) é material DEPOIS do source_out no arquivo, e vice-versa
+      const headSrc = (c.reversed === true ? bw.depois : bw.antes) * v;
+      const tailSrc = (c.reversed === true ? bw.antes : bw.depois) * v;
+      const ssSrc = Math.max(0, c.source_in - headSrc);
+      // arquivo sem cabeça pra emprestar (source_in ~ 0): completa clonando o
+      // primeiro frame — o comprimento do arquivo cortado é SAGRADO (a conta
+      // da cadeia inteira depende dele)
+      const faltaHeadOut = (headSrc - (c.source_in - ssSrc)) / v;
+      const lerSrc = (c.source_out + tailSrc) - ssSrc;
       const vfPartes = [
-        ...(multiSource ? [normVf] : []),
+        ...((multiSource || temFitProprio) ? [normPara(c)] : []),
         ...fGrade,
         // velocidade/espelho/escala/posição/opacidade da cena
         ...filtrosDaCena(c, NORM_W, NORM_H),
       ].filter(Boolean);
+      // GARANTIA DE COMPRIMENTO (só quando há empréstimo): clona o frame da
+      // ponta pra cobrir cabeça sem material e EOF antes da hora, e corta no
+      // alvo exato. Pro reverso a garantia roda DEPOIS da inversão.
+      if (comBorrow && c.reversed !== true) {
+        if (faltaHeadOut > 0.001) vfPartes.push(`tpad=start_mode=clone:start_duration=${faltaHeadOut.toFixed(3)}`);
+        vfPartes.push(`tpad=stop_mode=clone:stop_duration=${(Math.max(bw.antes, bw.depois) + 0.3).toFixed(3)}`);
+        vfPartes.push(`trim=duration=${alvo.toFixed(3)}`, 'setpts=PTS-STARTPTS');
+      }
       // -ss antes do -i = fast seek (keyframe). Pra accuracy: -ss depois do -i (frame accurate, lento)
       // V0 usa fast seek + re-encode pra balance
+      // com transição na cadeia TODO clip sai 30fps/yuv420p: xfade e concat de
+      // filter_complex exigem fps/formato iguais entre as entradas
       await run('ffmpeg', [
-        '-y', '-ss', String(c.source_in), '-t', String(dur),
+        '-y', '-ss', String(ssSrc), '-t', String(lerSrc),
         '-i', srcFor(c),
-        ...(vfPartes.length ? ['-vf', vfPartes.join(','), '-r', '30', '-pix_fmt', 'yuv420p'] : []),
+        ...(vfPartes.length ? ['-vf', vfPartes.join(','), '-r', '30', '-pix_fmt', 'yuv420p']
+          : (plano.temXfade ? ['-r', '30', '-pix_fmt', 'yuv420p'] : [])),
         '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '23',
         '-c:a', 'aac', '-b:a', '128k',
         '-force_key_frames', 'expr:gte(t,0)',
@@ -2368,9 +2484,19 @@ async function processEditV0(jobId, p) {
       // cortado é fatiado, cada pedaço é invertido e eles voltam na ordem
       // contrária. Memória fica presa ao tamanho do PEDAÇO, não do clipe.
       if (c.reversed === true) {
-        await inverterClipe(out, dir, `rev_${i}`, duracaoDaCena(c));
+        await inverterClipe(out, dir, `rev_${i}`, alvo);
+        if (comBorrow) {
+          // garantia de comprimento pós-inversão (falta de material vira clone
+          // na ponta; a conta da cadeia exige o alvo exato)
+          const fix = path.join(dir, `revfix_${i}.mp4`);
+          await run('ffmpeg', ['-y', '-i', out,
+            '-vf', `tpad=stop_mode=clone:stop_duration=2,trim=duration=${alvo.toFixed(3)},setpts=PTS-STARTPTS`,
+            '-r', '30', '-pix_fmt', 'yuv420p',
+            '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '23', '-an', fix]);
+          if (fs.existsSync(fix)) fs.renameSync(fix, out);
+        }
       }
-      clipFiles.push({ path: out, duration: duracaoDaCena(c) });
+      clipFiles.push({ path: out, duration: alvo });
     }
     if (clipFiles.length === 0) throw new Error('Nenhum clip valido apos trim');
 
@@ -2384,19 +2510,14 @@ async function processEditV0(jobId, p) {
       // Concat via demuxer. Paths RELATIVOS ao .txt (demuxer resolve assim) —
       // absolutos quebram no Windows (dev local) e relativos funcionam igual
       // no Linux porque clips e concat.txt vivem no mesmo dir.
-      // ── TRANSIÇÕES (2026-07-29) ─────────────────────────────────────────
-      // Até aqui o concat era SEMPRE `-c copy` = corte seco, e o array
-      // `transitions` do projeto nunca chegava no ffmpeg. Quem escolhia "Fade"
-      // via o efeito no preview e recebia corte seco no arquivo.
-      //
-      // Agora, havendo transição, monta uma cadeia de xfade: cada junção
-      // sobrepõe os dois clipes por `duration` segundos. O offset é o tempo
-      // ACUMULADO menos as sobreposições anteriores — errar isso desalinha
-      // tudo depois da primeira transição.
-      const trans = Array.isArray(p.transitions) ? p.transitions : [];
-      const temTransicao = trans.length > 0 && clipFiles.length > 1;
-
-      if (!temTransicao) {
+      // ── TRANSIÇÕES (2026-07-29 · modelo de EMPRÉSTIMO 2026-08-07) ────────
+      // O plano foi montado ANTES do trim (planejarCadeia): cada vizinho de
+      // emenda já saiu do trim com dur/2 de material emprestado na borda, e o
+      // xfade consome exatamente isso — a janela fica CENTRADA na emenda e o
+      // total do arquivo é a soma das cenas (régua intacta = áudio, máscaras
+      // e textos alinhados). Junção SEM transição vira concat de verdade
+      // (o xfade fake de 0,04s encurtava a régua a cada emenda seca).
+      if (!plano.temXfade) {
         const listFile = path.join(dir, 'concat.txt');
         fs.writeFileSync(listFile, clipFiles.map(c => `file '${path.basename(c.path)}'`).join('\n'));
         await run('ffmpeg', [
@@ -2404,36 +2525,22 @@ async function processEditV0(jobId, p) {
           '-c:v', 'copy', concatPath,
         ]);
       } else {
-        const porJuncao = new Map();
-        for (const t of trans) {
-          if (!t || t.between == null) continue;
-          const dur = Math.max(0.1, Math.min(3, Number(t.duration) || 0.5));
-          // aceita o nome do ffmpeg direto (t.xfade) ou cai no fade
-          const nome = typeof t.xfade === 'string' && /^[a-z]+$/.test(t.xfade) ? t.xfade : 'fade';
-          porJuncao.set(t.between | 0, { dur, nome });
-        }
         const args = ['-y'];
         for (const c of clipFiles) args.push('-i', c.path);
-
         const fc = [];
-        let rotulo = '0:v';
-        let acumulado = clipFiles[0].duration;   // duração da cadeia montada até aqui
+        // mp4 cru entra com timebase próprio (ex.: 1/15360) e concat/xfade
+        // EXIGEM timebases iguais nas duas pontas — normaliza tudo pra AVTB
+        // antes da cadeia (medido: sem isto o elo concat→xfade aborta -22)
+        for (let i = 0; i < clipFiles.length; i++) fc.push(`[${i}:v]settb=AVTB[e${i}]`);
+        let rotulo = 'e0';
         for (let i = 1; i < clipFiles.length; i++) {
-          const tr = porJuncao.get(i - 1);
+          const passo = plano.passos[i - 1];
           const saida = (i === clipFiles.length - 1) ? 'vout' : `vx${i}`;
-          if (tr) {
-            const dur = Math.min(tr.dur, clipFiles[i - 1].duration - 0.05, clipFiles[i].duration - 0.05);
-            if (dur > 0.05) {
-              const offset = Math.max(0, acumulado - dur);
-              fc.push(`[${rotulo}][${i}:v]xfade=transition=${tr.nome}:duration=${dur.toFixed(3)}:offset=${offset.toFixed(3)}[${saida}]`);
-              acumulado = acumulado + clipFiles[i].duration - dur;   // sobreposição encurta o total
-              rotulo = saida;
-              continue;
-            }
+          if (passo && passo.tipo === 'xfade') {
+            fc.push(`[${rotulo}][e${i}]xfade=transition=${passo.nome}:duration=${passo.dur.toFixed(3)}:offset=${passo.offset.toFixed(3)}[${saida}]`);
+          } else {
+            fc.push(`[${rotulo}][e${i}]concat=n=2:v=1:a=0[${saida}]`);
           }
-          // sem transição nessa junção: emenda seca dentro da mesma cadeia
-          fc.push(`[${rotulo}][${i}:v]xfade=transition=fade:duration=0.04:offset=${Math.max(0, acumulado - 0.04).toFixed(3)}[${saida}]`);
-          acumulado = acumulado + clipFiles[i].duration - 0.04;
           rotulo = saida;
         }
         await run('ffmpeg', [
