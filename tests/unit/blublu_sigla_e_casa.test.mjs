@@ -128,20 +128,27 @@ test('BlueClean é anunciado como Master (ele responde 403 pro Full)', () => {
   );
 });
 
-test('editor de vídeo e "criar com IA" ficam explicitamente proibidos', () => {
+// ATUALIZADO 15/08: o BlueEditor SAIU do teaser e foi lançado (commits 71851db
+// e 7447a41, "Lancamento: exclusivo MASTER + URL limpa /blueEditor"), então a
+// versão anterior deste teste — que exigia dizer "lista de espera" — passou a
+// travar uma mentira. O que continua valendo é a regra que originou tudo:
+// só se recomenda o que está NO AR, com o plano certo.
+test('BlueEditor é recomendado como lançado e MASTER', () => {
+  const linha = FONTE.split('\n').find((l) => l.includes('• BlueEditor ('));
+  assert.ok(linha, 'BlueEditor saiu da lista da casa — ele está no ar e é do Master');
+  assert.match(linha, /\/blueEditor/, 'a rota tem que estar certa');
+  assert.match(linha, /\(Master\)/, 'sem a marca de Master, o Blublu manda Full pra tela travada');
+});
+
+test('geração de vídeo por IA continua explicitamente proibida', () => {
+  // Essa parte NÃO foi lançada. Prometer tela que não existe é o defeito do
+  // "Advogado YPP" — foi o motivo de a proibição existir.
   assert.ok(
     /NÃO EXISTE AINDA/.test(FONTE),
-    'sem a proibição escrita, o modelo inventa que a casa tem editor',
+    'sem a proibição escrita, o modelo inventa que a casa gera vídeo do zero',
   );
-  assert.ok(
-    /BlueEditor é só lista de espera|lista de espera/.test(FONTE),
-    'o estado real do BlueEditor (lista de espera) precisa estar dito',
-  );
-  // e não pode estar recomendado como se funcionasse
-  assert.ok(
-    !/• BlueEditor \(/.test(FONTE),
-    'BlueEditor não pode entrar na lista de ferramentas enquanto for teaser',
-  );
+  const bloco = FONTE.slice(FONTE.indexOf('NÃO EXISTE AINDA'), FONTE.indexOf('NÃO EXISTE AINDA') + 260);
+  assert.match(bloco, /IA/, 'a proibição precisa nomear a geração por IA');
 });
 
 test('a regra de nunca indicar ferramenta de fora sobreviveu', () => {
