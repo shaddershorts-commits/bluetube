@@ -18,7 +18,9 @@ module.exports = async function handler(req, res) {
   if (req.method !== 'GET') return res.status(405).json({ error: 'method_not_allowed' });
 
   const envVal = String(process.env.EDITOR_V0_ENABLED || '').toLowerCase().trim();
-  const envEnabled = envVal === 'true' || envVal === '1';
+  // LANÇAMENTO (14/08): ligado por padrão; EDITOR_V0_ENABLED=false desliga
+  // (kill-switch preservado — antes era o contrário e a produção nascia OFF)
+  const envEnabled = envVal !== 'false' && envVal !== '0';
 
   // Detecta preview deploy: VERCEL_ENV vem 'preview' em deploys de branches.
   // Em preview, libera automatico pra teste — produ continua respeitando env.
