@@ -105,6 +105,25 @@ const TERMOS = [
   // religião e mitologia
   'mitologia grega', 'curiosidades da bíblia', 'histórias bíblicas',
   'mitologia nórdica',
+  // ── REFORÇO EM INGLÊS (15/08, pedido do dono) ─────────────────────────
+  // Medido antes de escrever: de 200 candidatos, 58 morrem no teto de 70 mil
+  // inscritos e só 2 entram. Ou seja, disparar mais rodada NÃO enche o acervo
+  // — o vocabulário é que é o teto. Estes termos miram nicho sem rosto onde
+  // canal pequeno ainda tem espaço, em vez de repetir os genéricos que já
+  // trazem sempre os mesmos gigantes.
+  'faceless channel', 'narrated story', 'story time animation',
+  'creepy encounters', 'disturbing history', 'dark history',
+  'forgotten history', 'declassified files', 'conspiracy explained',
+  'deep sea mysteries', 'space mysteries explained', 'lost civilizations',
+  'aviation disaster', 'shipwreck story', 'survival story',
+  'mountain disaster', 'expedition gone wrong', 'cave exploration',
+  'ancient egypt documentary', 'roman empire documentary', 'medieval life',
+  'unsolved disappearance', 'missing persons case', 'internet mystery',
+  'ai explained', 'science documentary', 'physics explained',
+  'true scary stories', 'horror narration', 'ghost stories narrated',
+  'sleep meditation story', 'rain sounds story', 'calm narration',
+  'business collapse', 'company downfall', 'billionaire story',
+  'true crime narration', 'murder case explained', 'court case explained',
 ];
 
 const seg = (iso) => {
