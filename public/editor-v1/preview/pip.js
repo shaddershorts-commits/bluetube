@@ -6,8 +6,9 @@
 // por scroll (a selecionada).
 
 import * as act from '../core/actions.js';
-import { effectiveOverlays, mediaUrlFor, overlayTimelineDur, clipSpeed } from '../core/selectors.js';
+import { effectiveOverlays, mediaUrlFor, overlayTimelineDur, clipSpeed, caixaDaCamada } from '../core/selectors.js';
 import { ANIM_POR_ID, progressoDaAnimacao, previewDaAnimacao, previewDoLoop } from '../core/animacoes-cena.js';
+import { posNoTempo } from '../core/keyframes.js';
 
 export function createPip(container, videoSrcEl, store, player) {
   const pool = new Map(); // overlay.id -> <video>
@@ -97,27 +98,37 @@ export function createPip(container, videoSrcEl, store, player) {
            : (videoSrcEl.dataset.primaryChoice || videoSrcEl.currentSrc || videoSrcEl.src));
       if (src && el.dataset.src !== src) { el.src = src; el.dataset.src = src; }
       el.style.display = 'block';
-      el.style.left = (ov.x_pct * 100) + '%';
-      el.style.top = (ov.y_pct * 100) + '%';
-      el.style.width = (ov.scale * 100) + '%';
-      // a caixa da camada de VÍDEO tem a proporção do QUADRO (largura% e
-      // altura% do mesmo palco): com object-fit:cover o vídeo preenche
-      // cortando o excedente — exatamente o que a faixa principal faz.
+      // QUADROS-CHAVE de movimento (user 14/08): com kf, a posição é a curva
+      // interpolada no instante; sem kf, o transform estático de sempre
+      const posKf = posNoTempo(ov.kf, t - (ov.start || 0));
+      const px = posKf ? posKf.x : ov.x_pct;
+      const py = posKf ? posKf.y : ov.y_pct;
+      el.style.left = (px * 100) + '%';
+      el.style.top = (py * 100) + '%';
+      // a caixa da camada tem a proporção da MÍDIA (contain no quadro ×
+      // escala — caixaDaCamada): subir uma cena pra camada NÃO reenquadra
+      // nada (user 14/08: "todas tem o mesmo formato"). O object-fit:cover
+      // vira no-op com a proporção casada — e segue cobrindo se a mídia não
+      // tem dimensões conhecidas (caixa cai na proporção do quadro).
+      const caixa = caixaDaCamada(state, ov);
+      el.style.width = (caixa.w * 100) + '%';
       // Imagem fica com altura automática pra manter a proporção dela.
-      if (kind !== 'image') el.style.height = (ov.scale * 100) + '%';
+      if (kind !== 'image') el.style.height = (caixa.h * 100) + '%';
       // ANIMAÇÃO DA CAMADA (user 14/08): compõe transform/opacity por tick,
-      // relativa à JANELA da camada na régua (start..start+dur/velocidade)
+      // relativa à JANELA da camada na régua (start..start+dur/velocidade).
+      // IMAGEM anima igual (user 14/08 parte 2) — o render tem par real.
       let animTf = '', animOp = 1;
-      if (kind !== 'image' && (ov.anim_in || ov.anim_out || ov.anim_loop)) {
+      if (ov.anim_in || ov.anim_out || ov.anim_loop) {
         const tLocal = t - (ov.start || 0);
         const durCam = Math.max(0.01, overlayTimelineDur(ov));
         const compoe = (id, slot) => {
           const def = ANIM_POR_ID.get(id);
           if (!def) return;
           let fx = null;
-          if (slot === 'loop') fx = previewDoLoop(id, t);
+          if (slot === 'loop') fx = previewDoLoop(id, t, ov.anim_loop_dur);
           else {
-            const p2 = progressoDaAnimacao(def, slot, tLocal, durCam) ?? 1;
+            const durEsc = slot === 'in' ? ov.anim_in_dur : ov.anim_out_dur;
+            const p2 = progressoDaAnimacao(def, slot, tLocal, durCam, durEsc) ?? 1;
             if (p2 >= 0.999) return;   // assentada
             fx = previewDaAnimacao(id, p2);
           }
@@ -136,11 +147,12 @@ export function createPip(container, videoSrcEl, store, player) {
       const sel = state.selected_overlay_id === ov.id;
       el.style.borderColor = sel ? 'rgba(169,127,238,.95)' : 'rgba(169,127,238,0)';
       if (sel) {
-        // alça de girar acima da imagem/camada
+        // alça de girar acima da imagem/camada (segue a posição EFETIVA — com
+        // quadros-chave a alça acompanha a curva, não o transform estático)
         const h = ensureRotHandle();
         const box = container.getBoundingClientRect();
-        const cx = ov.x_pct * box.width;
-        const topY = ov.y_pct * box.height - (el.offsetHeight / 2) - 22;
+        const cx = px * box.width;
+        const topY = py * box.height - (el.offsetHeight / 2) - 22;
         h.style.left = cx + 'px';
         h.style.top = Math.max(10, topY) + 'px';
         h.style.zIndex = String(10 + (ov.lane || 1) + 1);
@@ -189,10 +201,18 @@ export function createPip(container, videoSrcEl, store, player) {
       e.preventDefault(); e.stopPropagation();
       el.setPointerCapture(e.pointerId);
       store.dispatch(act.selectOverlay(id));
+      // COM quadros-chave, o arrasto GRAVA a posição no instante da agulha
+      // (CapCut: depois do primeiro diamante, todo movimento vira quadro-chave).
+      // A base do arrasto é a posição EFETIVA agora (curva), não o estático.
+      const temKf = Array.isArray(ov.kf) && ov.kf.length > 0;
+      const tRel = Math.max(0, player.getTime() - (ov.start || 0));
+      const base = temKf ? (posNoTempo(ov.kf, tRel) || { x: ov.x_pct, y: ov.y_pct })
+                         : { x: ov.x_pct, y: ov.y_pct };
       dragging = {
         id, el, pointerId: e.pointerId,
         x0: e.clientX, y0: e.clientY,
-        ox: ov.x_pct, oy: ov.y_pct,
+        ox: base.x, oy: base.y,
+        kf: temKf, tRel,
         g: 'pip' + (gestureSeq++),
       };
       el.style.cursor = 'grabbing';
@@ -200,11 +220,12 @@ export function createPip(container, videoSrcEl, store, player) {
     el.addEventListener('pointermove', (e) => {
       if (!dragging || dragging.el !== el || dragging.pointerId !== e.pointerId) return;
       const box = container.getBoundingClientRect();
+      const nx = dragging.ox + (e.clientX - dragging.x0) / box.width;
+      const ny = dragging.oy + (e.clientY - dragging.y0) / box.height;
       store.dispatch({
-        ...act.setOverlayTransform(dragging.id, {
-          x_pct: dragging.ox + (e.clientX - dragging.x0) / box.width,
-          y_pct: dragging.oy + (e.clientY - dragging.y0) / box.height,
-        }),
+        ...(dragging.kf
+          ? act.setOverlayKf(dragging.id, dragging.tRel, nx, ny)
+          : act.setOverlayTransform(dragging.id, { x_pct: nx, y_pct: ny })),
         gestureId: dragging.g,
       });
     });

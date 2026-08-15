@@ -112,6 +112,9 @@ export function computeLayout(state, vp, hint = null) {
       selected: state.selected_overlay_id === o.id,
       multi: multiKeys.has('overlay:' + o.id),
       hidden: hidOv.includes(o.lane || 1),
+      // indicador de animação ativa (user 14/08) + diamantes de quadro-chave
+      animIn: !!o.anim_in, animOut: !!o.anim_out, animLoop: !!o.anim_loop,
+      kfTs: Array.isArray(o.kf) ? o.kf.map(k => k.t) : [],
     };
   });
 
@@ -142,6 +145,8 @@ export function computeLayout(state, vp, hint = null) {
       sourceOut: it.isCompound ? (firstSub?.source_out ?? 1) : it.clip.source_out,
       frozen: !!it.clip.frozen,             // cena congelada: resize por freeze_dur
       reversed: !!it.clip.reversed, mirrored: !!it.clip.mirrored,
+      // indicador de animação ativa na faixa (user 14/08: "não tem nada sinalizando")
+      animIn: !!it.clip.anim_in, animOut: !!it.clip.anim_out, animLoop: !!it.clip.anim_loop,
       x, y: yVideo, w, h: VH,
       selected: state.selected_clip_id === it.clip.id,
       multi: multiKeys.has('clip:' + it.clip.id),

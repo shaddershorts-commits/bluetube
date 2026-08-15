@@ -9,7 +9,8 @@ import { A } from './actions.js';
 import { ANIM_POR_ID } from './animacoes-cena.js';
 import { createInitialState, normalizeLoadedState, validarFormato, createFullClip, clamp, clamp01, MIN_CLIP_DURATION, MIN_TEXT_DURATION, TEXT_FONTS, TEXT_SIZES, clampLane, TEXT_DEFAULT_LANE, OVERLAY_DEFAULT_LANE, MAX_LANE, MAX_AUDIO_LANE, MAX_EXTRA_LANES } from './schema.js';
 import { transicaoPorId } from './transitions.js';
-import { timelineSegments, segmentAt, mainTrackItems, clipSpeed, clipTimelineDur, audioTimelineDur, overlayTimelineDur, audioLaneMap, captionAudioPlan } from './selectors.js';
+import { timelineSegments, segmentAt, mainTrackItems, clipSpeed, clipTimelineDur, audioTimelineDur, overlayTimelineDur, audioLaneMap, captionAudioPlan, cenaTemAudio } from './selectors.js';
+import { upsertKf, KF_EPS } from './keyframes.js';
 // REGRAS DE CAMADA (2026-07-29): faixa de texto so aceita texto, dois itens
 // nao se sobrepoem na mesma camada. O reducer e o funil — validar aqui (e nao
 // na UI) garante que arrasto, colar e menu de contexto obedecem a mesma regra.
@@ -886,10 +887,20 @@ export function reduce(state, action) {
         lane: laneFinal,
         active: true,
         // O SOM EMBUTIDO SOBE JUNTO (user 14/08: "a menos que eu remova o som
-        // ele deve permanecer"). Antes o convert descartava o áudio em silêncio
-        // — a camada nascia muda sem opção de devolver. Herda o mudo do clipe.
-        ...(clip.muted ? { muted: true } : {}),
+        // ele deve permanecer"). E o inverso vale igual (user 14/08 parte 2:
+        // "to precisando remover duas vezes o audio"): se a cena JÁ estava sem
+        // som efetivo — mudo, áudio separado (detach) ou volume da faixa em 0 —
+        // a camada nasce MUDA, senão o som dobra com a trilha destacada.
+        ...(!cenaTemAudio(state, clip) || (state.volumes?.video ?? 1) <= 0.001
+          ? { muted: true } : {}),
         ...(typeof clip.speed === 'number' ? { speed: clip.speed } : {}),
+        // animações da cena viajam junto (só as que existem em camada)
+        ...(clip.anim_in && ANIM_POR_ID.get(clip.anim_in)?.camada !== false ? { anim_in: clip.anim_in } : {}),
+        ...(clip.anim_out && ANIM_POR_ID.get(clip.anim_out)?.camada !== false ? { anim_out: clip.anim_out } : {}),
+        ...(clip.anim_loop && ANIM_POR_ID.get(clip.anim_loop)?.camada !== false ? { anim_loop: clip.anim_loop } : {}),
+        ...(typeof clip.anim_in_dur === 'number' ? { anim_in_dur: clip.anim_in_dur } : {}),
+        ...(typeof clip.anim_out_dur === 'number' ? { anim_out_dur: clip.anim_out_dur } : {}),
+        ...(typeof clip.anim_loop_dur === 'number' ? { anim_loop_dur: clip.anim_loop_dur } : {}),
       };
       return touch({
         ...state,
@@ -1224,6 +1235,15 @@ export function reduce(state, action) {
         ...(ov.media_id != null ? { media_id: ov.media_id } : {}),
         source_in: ov.source_in, source_out: ov.source_out,
         ...(ov.speed > 0 && ov.speed !== 1 ? { speed: ov.speed } : {}),
+        // o MUDO desce junto (user 14/08: sem isto, descer a camada devolvia o
+        // som que o user tinha removido — a outra metade do "remover duas vezes")
+        ...(ov.muted ? { muted: true } : {}),
+        ...(typeof ov.anim_in === 'string' ? { anim_in: ov.anim_in } : {}),
+        ...(typeof ov.anim_out === 'string' ? { anim_out: ov.anim_out } : {}),
+        ...(typeof ov.anim_loop === 'string' ? { anim_loop: ov.anim_loop } : {}),
+        ...(typeof ov.anim_in_dur === 'number' ? { anim_in_dur: ov.anim_in_dur } : {}),
+        ...(typeof ov.anim_out_dur === 'number' ? { anim_out_dur: ov.anim_out_dur } : {}),
+        ...(typeof ov.anim_loop_dur === 'number' ? { anim_loop_dur: ov.anim_loop_dur } : {}),
         active: true,
       };
       const atT = Math.max(0, action.atT || ov.start || 0);
@@ -1521,13 +1541,14 @@ export function reduce(state, action) {
 
     case A.SET_OVERLAY_ANIM: {
       // animação da CAMADA (user 14/08: "também deve ser possível em camadas")
-      // — só as anims com par real na composição (camada !== false) e só em
-      // camada de VÍDEO (imagem não tem timeline própria no filtro)
+      // — só as anims com par real na composição (camada !== false). IMAGEM
+      // também anima (user 14/08 parte 2): fades viram -loop+fade no render,
+      // deslizes/balanço são expressão do overlay — tudo com par real.
       const campo = action.slot === 'in' ? 'anim_in' : action.slot === 'out' ? 'anim_out' : action.slot === 'loop' ? 'anim_loop' : null;
       if (!campo) return state;
       if (action.animId != null && ANIM_POR_ID.get(action.animId)?.camada === false) return state;
       const idx = state.overlays.findIndex(o => o.id === action.overlayId);
-      if (idx < 0 || state.overlays[idx].kind === 'image') return state;
+      if (idx < 0) return state;
       const overlays = state.overlays.map(o => {
         if (o.id !== action.overlayId) return o;
         const novo = { ...o };
@@ -1535,6 +1556,80 @@ export function reduce(state, action) {
         else delete novo[campo];
         return novo;
       });
+      return touch({ ...state, overlays });
+    }
+
+    case A.SET_ANIM_DUR: {
+      // slider "Duração" da animação (user 14/08, régua do CapCut 0.1–5s).
+      // Guarda por slot (anim_in_dur/anim_out_dur/anim_loop_dur); o preview e
+      // o render leem o MESMO número — WYSIWYG por construção.
+      const campo = action.slot === 'in' ? 'anim_in_dur' : action.slot === 'out' ? 'anim_out_dur' : action.slot === 'loop' ? 'anim_loop_dur' : null;
+      if (!campo) return state;
+      const dur = Math.round(clamp(Number(action.dur) || 0.5, 0.1, 5) * 100) / 100;
+      const lista = action.alvo === 'overlay' ? state.overlays : state.clips;
+      const idx = lista.findIndex(x => x.id === action.id);
+      if (idx < 0 || lista[idx][campo] === dur) return state;
+      const nova = lista.slice();
+      nova[idx] = { ...nova[idx], [campo]: dur };
+      return touch(action.alvo === 'overlay' ? { ...state, overlays: nova } : { ...state, clips: nova });
+    }
+
+    case A.SET_OVERLAY_KF: {
+      // grava/atualiza um quadro-chave de MOVIMENTO no instante tRel (segundos
+      // desde o início da camada). Ver core/keyframes.js pro modelo.
+      const idx = state.overlays.findIndex(o => o.id === action.overlayId);
+      if (idx < 0) return state;
+      const o = state.overlays[idx];
+      const tRel = Number(action.tRel);
+      if (!Number.isFinite(tRel) || tRel < 0) return state;
+      const kf = upsertKf(o.kf, tRel, clamp01(action.x_pct), clamp01(action.y_pct));
+      if (kf === o.kf) return state;
+      const overlays = state.overlays.slice();
+      overlays[idx] = { ...o, kf };
+      return touch({ ...state, overlays });
+    }
+
+    case A.DEL_OVERLAY_KF: {
+      const idx = state.overlays.findIndex(o => o.id === action.overlayId);
+      if (idx < 0) return state;
+      const o = state.overlays[idx];
+      if (!Array.isArray(o.kf) || action.index < 0 || action.index >= o.kf.length) return state;
+      const kf = o.kf.filter((_, i) => i !== action.index);
+      const overlays = state.overlays.slice();
+      // última âncora removida: a camada volta pro transform estático — o campo
+      // some do estado (kf vazio ≠ sem kf pro payload/normalize, melhor sumir)
+      if (kf.length) overlays[idx] = { ...o, kf };
+      else { const { kf: _k, ...resto } = o; overlays[idx] = resto; }
+      return touch({ ...state, overlays });
+    }
+
+    case A.MOVE_OVERLAY_KF: {
+      // arrastar o diamante na faixa: reposiciona o kf no tempo. Identificado
+      // pelo TEMPO de origem (índice muda quando a lista reordena no arrasto).
+      const idx = state.overlays.findIndex(o => o.id === action.overlayId);
+      if (idx < 0 || !Array.isArray(state.overlays[idx].kf)) return state;
+      const o = state.overlays[idx];
+      const from = Number(action.fromT);
+      let i = -1, best = KF_EPS + 1e-9;
+      for (let k = 0; k < o.kf.length; k++) {
+        const d = Math.abs(o.kf[k].t - from);
+        if (d < best) { best = d; i = k; }
+      }
+      if (i < 0) return state;
+      const durJanela = overlayTimelineDur(o);
+      let toT = clamp(Number(action.toT) || 0, 0, Math.max(0, durJanela));
+      // não deixa ENGOLIR um vizinho: encosta a KF_EPS dele (perder um
+      // quadro-chave por arrasto seria perda de conteúdo silenciosa)
+      for (let k = 0; k < o.kf.length; k++) {
+        if (k !== i && Math.abs(o.kf[k].t - toT) < KF_EPS) {
+          toT = o.kf[k].t + (toT >= o.kf[i].t ? -KF_EPS : KF_EPS);
+        }
+      }
+      toT = clamp(Math.round(toT * 1000) / 1000, 0, Math.max(0, durJanela));
+      if (Math.abs(toT - o.kf[i].t) < 1e-9) return state;
+      const kf = o.kf.map((k, j) => j === i ? { ...k, t: toT } : k).sort((a, b) => a.t - b.t);
+      const overlays = state.overlays.slice();
+      overlays[idx] = { ...o, kf };
       return touch({ ...state, overlays });
     }
 

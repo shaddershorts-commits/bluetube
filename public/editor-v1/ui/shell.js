@@ -4,7 +4,8 @@
 // com cabecalhos de track. Store continua a unica fonte de verdade.
 
 import * as act from '../core/actions.js';
-import { totalDuration, canExport, timelineSegments, captionAudioPlan, mainTrackItems, compoundTemAudio, propriedadeDaCena, segmentAt, mediaUrlFor, fitDaCena, formatoDoProjeto } from '../core/selectors.js';
+import { totalDuration, canExport, timelineSegments, captionAudioPlan, mainTrackItems, compoundTemAudio, propriedadeDaCena, segmentAt, mediaUrlFor, fitDaCena, formatoDoProjeto, overlayTimelineDur } from '../core/selectors.js';
+import { posNoTempo, kfIndexEm, KF_EPS } from '../core/keyframes.js';
 import { TEXT_FONTS, TEXT_SIZES, MAX_AUDIO_LANE, FORMATOS } from '../core/schema.js';
 import { ANIMACOES } from '../core/text-anim.js';
 import { agruparFrases, normalizarIdioma, podeMudarCaixa } from '../core/idioma.js';
@@ -22,7 +23,7 @@ import { createFrameUI } from '../preview/frame-ui.js';
 import { createTransitionsPanel } from './transitions-panel.js';
 import { createTransitionFx } from '../preview/transition-fx.js';
 import { transicaoPorId, TRANSICOES } from '../core/transitions.js';
-import { ANIMACOES_CENA, ANIM_CATEGORIAS, ANIM_POR_ID, progressoDaAnimacao, previewDaAnimacao, previewDoLoop } from '../core/animacoes-cena.js';
+import { ANIMACOES_CENA, ANIM_CATEGORIAS, ANIM_POR_ID, progressoDaAnimacao, previewDaAnimacao, previewDoLoop, duracaoDaAnimacao } from '../core/animacoes-cena.js';
 import { criarGuardiao } from '../core/guardiao.js';
 import {
   CAMPOS_COR, svgDoGrade, vinhetaCss, temAjuste, TODAS_CHAVES,
@@ -354,9 +355,11 @@ export function mountEditor(root, store, opts = {}) {
         const def = ANIM_POR_ID.get(id);
         if (!def) return;
         let fx = null;
-        if (slot === 'loop') fx = previewDoLoop(id, tNow);
+        // duração do slider (user 14/08): o preview lê o MESMO campo do payload
+        if (slot === 'loop') fx = previewDoLoop(id, tNow, seg?.clip?.anim_loop_dur);
         else {
-          const p = progressoDaAnimacao(def, slot, tLocal, durCena) ?? 1;
+          const durEsc = slot === 'in' ? seg?.clip?.anim_in_dur : seg?.clip?.anim_out_dur;
+          const p = progressoDaAnimacao(def, slot, tLocal, durCena, durEsc) ?? 1;
           if (p >= 0.999) return;   // assentada: fora da janela não escreve nada
           fx = previewDaAnimacao(id, p);
         }
@@ -814,6 +817,17 @@ export function mountEditor(root, store, opts = {}) {
       if (ov) {
         $('#beOvMute').style.display = ov.kind === 'image' ? 'none' : '';
         $('#beOvMute').textContent = ov.muted ? '🔊 Devolver o som da camada' : '🔇 Remover o som da camada';
+        // IMAGEM: velocidade não faz sentido (user 14/08) — some; título diz o tipo
+        $('#beOvSpeedRow').style.display = ov.kind === 'image' ? 'none' : '';
+        $('#beOvTitle').textContent = ov.kind === 'image' ? '🖼 Imagem' : '⧉ Camada';
+        // Tamanho fora do filledOvId: o scroll no preview também escala e o
+        // slider precisa acompanhar (não é campo que o user digita)
+        if (document.activeElement !== $('#beOvScale')) {
+          const sc = Math.round((ov.scale ?? 1) * 100);
+          $('#beOvScale').value = Math.min(200, Math.max(10, sc));
+          $('#beOvScaleVal').textContent = sc + '%';
+        }
+        syncKfUI(ov);
       }
     } else { filledOvId = null; }
     if (showClip) {
@@ -1372,6 +1386,49 @@ export function mountEditor(root, store, opts = {}) {
     $('#bePropsClip').querySelectorAll('.be-cfg-panel').forEach(p =>
       p.style.display = p.dataset.panel === tab ? 'flex' : 'none');
   });
+  // ── PRÉVIA AUTOMÁTICA da animação (user 14/08: clicar já reproduz o trecho
+  // pra mostrar como é — entrada toca o comecinho, saída o fim, combinação um
+  // ciclo a partir do início) ──────────────────────────────────────────────
+  let previaAnimTimer = null;
+  function tocarTrecho(t0, t1) {
+    if (previaAnimTimer) { clearTimeout(previaAnimTimer); previaAnimTimer = null; }
+    player.seek(Math.max(0, t0));
+    player.play();
+    previaAnimTimer = setTimeout(() => {
+      previaAnimTimer = null;
+      if (player.isPlaying()) player.pause();
+    }, Math.max(150, (t1 - t0) * 1000) + 80);
+  }
+  function previaDaAnimacao(alvo, id, slot) {
+    const st = store.getState();
+    let ini, fim, durEscolhida;
+    if (alvo === 'overlay') {
+      const ov = st.overlays.find((o) => o.id === id);
+      if (!ov) return;
+      ini = ov.start || 0; fim = ini + overlayTimelineDur(ov);
+      durEscolhida = ov['anim_' + slot + '_dur'];
+    } else {
+      const it = mainTrackItems(st).find((x) => x.clip.id === id);
+      if (!it) return;
+      ini = it.tStart; fim = it.tEnd;
+      durEscolhida = it.clip['anim_' + slot + '_dur'];
+    }
+    const durAnim = duracaoDaAnimacao(durEscolhida, Math.max(0.2, fim - ini));
+    if (slot === 'in') tocarTrecho(ini, ini + durAnim + 0.15);
+    else if (slot === 'out') tocarTrecho(Math.max(ini, fim - durAnim - 0.15), fim);
+    else tocarTrecho(ini, Math.min(fim, ini + Math.max(2, durAnim)));
+  }
+  // slider "Duração" (0.1–5s, régua do CapCut): mostra só com animação no slot
+  const syncAnimDurRow = (rowSel, valSel, inputSel, item, campo) => {
+    const row = $(rowSel); if (!row) return;
+    const tem = !!(item && item[campo]);
+    row.style.display = tem ? '' : 'none';
+    if (!tem) return;
+    const dur = Number(item[campo + '_dur']) > 0 ? Number(item[campo + '_dur']) : 0.5;
+    $(valSel).textContent = dur.toFixed(1) + 's';
+    if (document.activeElement !== $(inputSel)) $(inputSel).value = Math.round(dur * 10);
+  };
+
   // ── ABA ANIMAÇÃO (user 14/08): clique aplica na cena selecionada ────────
   {
     let animCat = 'in';
@@ -1386,6 +1443,7 @@ export function mountEditor(root, store, opts = {}) {
         ...ANIMACOES_CENA.filter((a) => a.slot === animCat).map((a) =>
           `<button type="button" class="be-anim-card${atual === a.id ? ' active' : ''}" data-anim="${a.id}"><span class="be-anim-ico">${a.icone}</span><span>${a.nome}</span></button>`),
       ].join('');
+      syncAnimDurRow('#beAnimDurRow', '#beAnimDurVal', '#beAnimDur', clip, campo);
     };
     $('#beAnimCats').addEventListener('click', (e) => {
       const btn = e.target.closest('[data-acat]'); if (!btn) return;
@@ -1400,23 +1458,35 @@ export function mountEditor(root, store, opts = {}) {
       const id = card.dataset.anim || null;
       store.dispatch(act.setClipAnim(st.selected_clip_id, animCat, id));
       renderAnimCards();
+      // clicou = já REPRODUZ o trecho pra mostrar como fica (user 14/08)
+      if (id) previaDaAnimacao('clip', st.selected_clip_id, animCat);
       toast(id ? `Animação aplicada: ${ANIM_POR_ID.get(id)?.nome} ✓` : 'Animação removida ✓');
+    });
+    $('#beAnimDur').addEventListener('input', (e) => {
+      const id = store.getState().selected_clip_id; if (id == null) return;
+      const dur = parseInt(e.target.value, 10) / 10;
+      $('#beAnimDurVal').textContent = dur.toFixed(1) + 's';
+      store.dispatch({ ...act.setAnimDur('clip', id, animCat, dur), gestureId: 'animdur-' + id });
+    });
+    $('#beAnimDur').addEventListener('change', () => {
+      store.endGesture();
+      const id = store.getState().selected_clip_id;
+      if (id != null) previaDaAnimacao('clip', id, animCat);   // replay com a duração nova
     });
     // re-render quando a seleção muda (o sync geral já roda a cada dispatch)
     store.subscribe(() => { if ($('#bePropsClip').style.display !== 'none') renderAnimCards(); });
     renderAnimCards();
   }
 
-  // ── ANIMAÇÃO DA CAMADA (painel da camada — user 14/08) ──────────────────
+  // ── ANIMAÇÃO DA CAMADA (painel da camada — user 14/08; IMAGEM também) ────
   {
     let ovAnimCat = 'in';
     const cards = $('#beOvAnimCards');
     const renderOvAnim = () => {
       const st = store.getState();
       const ov = st.overlays.find((o) => o.id === st.selected_overlay_id);
-      // imagem não tem timeline própria no filtro — sem animação por ora
-      $('#beOvAnimSec').style.display = ov && ov.kind !== 'image' ? '' : 'none';
-      if (!ov || ov.kind === 'image') return;
+      $('#beOvAnimSec').style.display = ov ? '' : 'none';
+      if (!ov) return;
       const campo = ovAnimCat === 'in' ? 'anim_in' : ovAnimCat === 'out' ? 'anim_out' : 'anim_loop';
       const atual = ov[campo] || null;
       cards.innerHTML = [
@@ -1424,6 +1494,7 @@ export function mountEditor(root, store, opts = {}) {
         ...ANIMACOES_CENA.filter((a) => a.slot === ovAnimCat && a.camada !== false).map((a) =>
           `<button type="button" class="be-anim-card${atual === a.id ? ' active' : ''}" data-oanim="${a.id}"><span class="be-anim-ico">${a.icone}</span><span>${a.nome}</span></button>`),
       ].join('');
+      syncAnimDurRow('#beOvAnimDurRow', '#beOvAnimDurVal', '#beOvAnimDur', ov, campo);
     };
     $('#beOvAnimCats').addEventListener('click', (e) => {
       const btn = e.target.closest('[data-oacat]'); if (!btn) return;
@@ -1438,7 +1509,19 @@ export function mountEditor(root, store, opts = {}) {
       const id = card.dataset.oanim || null;
       store.dispatch(act.setOverlayAnim(st.selected_overlay_id, ovAnimCat, id));
       renderOvAnim();
+      if (id) previaDaAnimacao('overlay', st.selected_overlay_id, ovAnimCat);
       toast(id ? `Animação da camada: ${ANIM_POR_ID.get(id)?.nome} ✓` : 'Animação removida ✓');
+    });
+    $('#beOvAnimDur').addEventListener('input', (e) => {
+      const id = store.getState().selected_overlay_id; if (id == null) return;
+      const dur = parseInt(e.target.value, 10) / 10;
+      $('#beOvAnimDurVal').textContent = dur.toFixed(1) + 's';
+      store.dispatch({ ...act.setAnimDur('overlay', id, ovAnimCat, dur), gestureId: 'ovanimdur-' + id });
+    });
+    $('#beOvAnimDur').addEventListener('change', () => {
+      store.endGesture();
+      const id = store.getState().selected_overlay_id;
+      if (id != null) previaDaAnimacao('overlay', id, ovAnimCat);
     });
     store.subscribe(() => { if ($('#bePropsOverlay').style.display !== 'none') renderOvAnim(); });
   }
@@ -1555,6 +1638,72 @@ export function mountEditor(root, store, opts = {}) {
     store.dispatch({ ...act.setOverlayTransform(id, { rotation: deg }), gestureId: 'ovrot-' + id });
   });
   $('#beOvRot').addEventListener('change', () => store.endGesture());
+  // Tamanho da camada/imagem (user 14/08: PNG precisava de controle explícito)
+  $('#beOvScale').addEventListener('input', (e) => {
+    const id = store.getState().selected_overlay_id;
+    if (id == null) return;
+    const sc = parseInt(e.target.value, 10);
+    $('#beOvScaleVal').textContent = sc + '%';
+    store.dispatch({ ...act.setOverlayTransform(id, { scale: sc / 100 }), gestureId: 'ovscale-' + id });
+  });
+  $('#beOvScale').addEventListener('change', () => store.endGesture());
+
+  // ── QUADROS-CHAVE de movimento (user 14/08) ──────────────────────────────
+  // ◇ = marca a posição efetiva no instante da agulha (vira ◆ quando a agulha
+  // está numa marca; clicar de novo remove); ‹ › pulam a agulha entre marcas.
+  function kfContexto() {
+    const st = store.getState();
+    const ov = st.overlays.find((o) => o.id === st.selected_overlay_id);
+    if (!ov) return null;
+    const dur = overlayTimelineDur(ov);
+    const tRel = Math.min(Math.max(0, player.getTime() - (ov.start || 0)), dur);
+    return { ov, tRel, dur };
+  }
+  let kfUiCache = '';
+  function syncKfUI(ov) {
+    const dur = overlayTimelineDur(ov);
+    const tRel = Math.min(Math.max(0, player.getTime() - (ov.start || 0)), dur);
+    const n = (ov.kf || []).length;
+    const noKf = kfIndexEm(ov.kf, tRel) >= 0;
+    const chave = ov.id + '|' + n + '|' + noKf;
+    if (chave === kfUiCache) return;
+    kfUiCache = chave;
+    $('#beKfToggle').textContent = noKf ? '◆' : '◇';
+    $('#beKfToggle').style.color = noKf ? '#a97fee' : '';
+    $('#beKfInfo').textContent = n ? `${n} marca${n > 1 ? 's' : ''}` : 'sem marcas';
+    const desabilita = n === 0;
+    $('#beKfPrev').disabled = desabilita; $('#beKfNext').disabled = desabilita;
+  }
+  $('#beKfToggle').addEventListener('click', () => {
+    const c = kfContexto(); if (!c) return;
+    const i = kfIndexEm(c.ov.kf, c.tRel);
+    if (i >= 0) {
+      store.dispatch(act.delOverlayKf(c.ov.id, i));
+      toast('Quadro-chave removido ✓');
+    } else {
+      const pos = posNoTempo(c.ov.kf, c.tRel) || { x: c.ov.x_pct, y: c.ov.y_pct };
+      store.dispatch(act.setOverlayKf(c.ov.id, c.tRel, pos.x, pos.y));
+      toast((c.ov.kf?.length ? '' : 'Movimento ligado — mova a camada no preview em outros instantes e o caminho é gravado. ') + 'Quadro-chave marcado ✓');
+    }
+  });
+  $('#beKfPrev').addEventListener('click', () => {
+    const c = kfContexto(); if (!c || !c.ov.kf?.length) return;
+    const antes = c.ov.kf.filter((k) => k.t < c.tRel - KF_EPS);
+    const alvo = antes.length ? antes[antes.length - 1] : c.ov.kf[0];
+    player.seek((c.ov.start || 0) + alvo.t);
+  });
+  $('#beKfNext').addEventListener('click', () => {
+    const c = kfContexto(); if (!c || !c.ov.kf?.length) return;
+    const alvo = c.ov.kf.find((k) => k.t > c.tRel + KF_EPS) || c.ov.kf[c.ov.kf.length - 1];
+    player.seek((c.ov.start || 0) + alvo.t);
+  });
+  // o estado do ◇/◆ depende da AGULHA, não só do estado — segue o relógio
+  player.onUpdate(() => {
+    if ($('#bePropsOverlay').style.display === 'none') return;
+    const st = store.getState();
+    const ov = st.overlays.find((o) => o.id === st.selected_overlay_id);
+    if (ov) syncKfUI(ov);
+  });
 
   $('#beZoomIn').addEventListener('click', () => timeline.zoomBy(1.25));
   $('#beZoomOut').addEventListener('click', () => timeline.zoomBy(1 / 1.25));
@@ -1704,7 +1853,11 @@ export function mountEditor(root, store, opts = {}) {
   // rail "Áudio": abre a BIBLIOTECA (Músicas/Efeitos/Favoritos), não importa direto
   $('#beAddAudio').addEventListener('click', () => {
     audioLibOpen = !audioLibOpen;
-    if (audioLibOpen) { captionsPanelOpen = false; store.dispatch(act.selectClip(null)); }
+    // O ÚLTIMO clique manda (user 14/08: "to tendo que desmarcar a faixa pra
+    // abrir outra janela"): selectClip(null) era no-op quando a seleção era
+    // áudio/camada/texto — o painel da seleção seguia na frente e a biblioteca
+    // nunca aparecia. clearSelection limpa QUALQUER seleção.
+    if (audioLibOpen) { captionsPanelOpen = false; store.dispatch(act.clearSelection()); }
     sync();
   });
   $('#beAddAudio2').addEventListener('click', pickAudio); // botão do painel de projeto = importar
@@ -2462,7 +2615,8 @@ export function mountEditor(root, store, opts = {}) {
   // rail "Legendas": ABRE o painel dedicado (escolher estilo ANTES de gerar)
   $('#beAutoCaptions').addEventListener('click', () => {
     captionsPanelOpen = !captionsPanelOpen;
-    if (captionsPanelOpen) { store.dispatch(act.selectClip(null)); }
+    // clearSelection, não selectClip(null): o último clique manda (ver ♪ Áudio)
+    if (captionsPanelOpen) { store.dispatch(act.clearSelection()); }
     sync();
   });
   $('#beCapClose').addEventListener('click', () => { captionsPanelOpen = false; sync(); });
@@ -3077,7 +3231,10 @@ function buildTemplate() {
           <button type="button" data-acat="loop" class="be-cfg-subtab">Combinação</button>
         </div>
         <div id="beAnimCards" class="be-anim-cards"></div>
-        <div class="be-dim">Clique aplica na cena selecionada. Entrada anima o começo, saída o fim, combinação dura a cena inteira.</div>
+        <label class="be-slider-label" id="beAnimDurRow" style="display:none">Duração <b id="beAnimDurVal">0.5s</b>
+          <input id="beAnimDur" type="range" min="1" max="50" step="1" value="5"/>
+        </label>
+        <div class="be-dim">Clique aplica na cena selecionada e já reproduz o trecho. Entrada anima o começo, saída o fim, combinação dura a cena inteira.</div>
       </div>
       <!-- AJUSTE = o Retoque (correção de cor). Morava como sub-aba de Vídeo
            e a aba Ajuste ficou com "em breve" — o user clicava aqui e achava
@@ -3104,20 +3261,34 @@ function buildTemplate() {
     </div>
 
     <div id="bePropsOverlay" class="be-props-stack" style="display:none">
-      <div class="be-side-title">⧉ Camada</div>
+      <div class="be-side-title" id="beOvTitle">⧉ Camada</div>
       <div class="be-dim">Arraste no preview pra posicionar · scroll = tamanho · ⟳ acima = girar · bordas na timeline = cortar.</div>
-      <label class="be-slider-label">Velocidade <b id="beOvSpeedVal">1.00x</b>
+      <!-- Tamanho explícito (user 14/08: imagem/PNG precisa de controle) -->
+      <label class="be-slider-label">Tamanho <b id="beOvScaleVal">100%</b>
+        <input id="beOvScale" type="range" min="10" max="200" step="1" value="100"/>
+      </label>
+      <!-- velocidade em IMAGEM não faz sentido (user 14/08) — o sync esconde -->
+      <label class="be-slider-label" id="beOvSpeedRow">Velocidade <b id="beOvSpeedVal">1.00x</b>
         <input id="beOvSpeed" type="range" min="-100" max="200" step="1" value="0"/>
       </label>
       <label class="be-slider-label">Girar <b id="beOvRotVal">0°</b>
         <input id="beOvRot" type="range" min="0" max="359" step="1" value="0"/>
       </label>
+      <!-- MOVIMENTO por quadros-chave (user 14/08: "a seta segue o cachorro") -->
+      <div class="be-side-title">◈ Movimento (quadros-chave)</div>
+      <div class="be-dim">◇ marca a posição no instante da agulha. Depois da 1ª marca, mover a camada no preview grava o caminho; ‹ › pulam entre marcas — arraste os ◆ na faixa pra ajustar o tempo.</div>
+      <div class="be-kf-row" style="display:flex;gap:6px;align-items:center">
+        <button id="beKfPrev" class="be-icon-btn" title="Marca anterior">‹</button>
+        <button id="beKfToggle" class="be-icon-btn" title="Adicionar/remover quadro-chave">◇</button>
+        <button id="beKfNext" class="be-icon-btn" title="Próxima marca">›</button>
+        <span id="beKfInfo" class="be-dim" style="margin:0"></span>
+      </div>
       <div class="be-dim">Botão direito na camada = Copiar/Cortar/frente-trás. Q/W cortam no cursor.</div>
       <!-- som embutido da camada (user 14/08): permanece a menos que remova -->
       <button id="beOvMute" class="be-tool-btn">🔇 Remover o som da camada</button>
       <!-- ANIMAÇÃO DA CAMADA (user 14/08): só as anims com par REAL na
-           composição do arquivo (fades, deslizes, balanço) — zoom/pulso
-           ficam na cena principal até terem par confiável no render -->
+           composição do arquivo (fades, deslizes, balanço) — agora em IMAGEM
+           também (fade = -loop no render; deslize/balanço = expressão) -->
       <div id="beOvAnimSec" class="be-ov-anim">
         <div class="be-side-title">Animação da camada</div>
         <div class="be-cfg-subtabs" id="beOvAnimCats">
@@ -3126,6 +3297,9 @@ function buildTemplate() {
           <button type="button" data-oacat="loop" class="be-cfg-subtab">Combinação</button>
         </div>
         <div id="beOvAnimCards" class="be-anim-cards"></div>
+        <label class="be-slider-label" id="beOvAnimDurRow" style="display:none">Duração <b id="beOvAnimDurVal">0.5s</b>
+          <input id="beOvAnimDur" type="range" min="1" max="50" step="1" value="5"/>
+        </label>
       </div>
       <button id="beOverlayDelete" class="be-danger-btn">🗑 Excluir camada</button>
     </div>

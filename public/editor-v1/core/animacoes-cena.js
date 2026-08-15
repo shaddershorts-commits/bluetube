@@ -36,11 +36,21 @@ export const ANIMACOES_CENA = [
 
 export const ANIM_POR_ID = new Map(ANIMACOES_CENA.map((a) => [a.id, a]));
 
+// régua do slider "Duração" (user 14/08, igual CapCut): 0.1s a 5s — mas nunca
+// mais que metade da cena (entrada e saída não podem se atropelar)
+export const ANIM_DUR_MIN = 0.1;
+export const ANIM_DUR_MAX = 5;
+export function duracaoDaAnimacao(durEscolhida, durCena) {
+  const alvo = Number(durEscolhida) > 0 ? Number(durEscolhida) : 0.5;
+  return Math.max(ANIM_DUR_MIN, Math.min(alvo, ANIM_DUR_MAX, durCena / 2));
+}
+
 /** Fator 0..1 da animação num instante da cena (0 = totalmente "fora").
- *  tLocal/durCena em segundos DA CENA (régua). Devolve null = sem animação. */
-export function progressoDaAnimacao(anim, slot, tLocal, durCena) {
+ *  tLocal/durCena em segundos DA CENA (régua). durEscolhida = slider (user
+ *  14/08); ausente = 0.5s de sempre. Devolve null = sem animação. */
+export function progressoDaAnimacao(anim, slot, tLocal, durCena, durEscolhida) {
   if (!anim) return null;
-  const dur = Math.max(0.15, Math.min(anim.dur || 0.5, durCena / 2));
+  const dur = duracaoDaAnimacao(durEscolhida ?? anim.dur, durCena);
   if (slot === 'in') return Math.max(0, Math.min(1, tLocal / dur));
   if (slot === 'out') return Math.max(0, Math.min(1, (durCena - tLocal) / dur));
   return null; // loop não tem progresso — é contínuo (previewDoLoop)
@@ -61,11 +71,14 @@ export function previewDaAnimacao(animId, p) {
   }
 }
 
-/** transform do PREVIEW pras combinações (t = relógio contínuo em segundos). */
-export function previewDoLoop(animId, t) {
+/** transform do PREVIEW pras combinações (t = relógio contínuo em segundos).
+ *  periodo = slider "Duração" (user 14/08): 1 ciclo completo dura isso.
+ *  Ausente = os períodos de sempre (pulsar 1.6s, balanço 2.2s). */
+export function previewDoLoop(animId, t, periodo) {
+  const per = (p) => (Number(periodo) > 0 ? Number(periodo) : p);
   switch (animId) {
-    case 'pulsar': return { transform: `scale(${(1.05 + 0.04 * Math.sin((2 * Math.PI * t) / 1.6)).toFixed(4)})` };
-    case 'balanco': return { transform: `scale(1.06) translateX(${(2.2 * Math.sin((2 * Math.PI * t) / 2.2)).toFixed(2)}%)` };
+    case 'pulsar': return { transform: `scale(${(1.05 + 0.04 * Math.sin((2 * Math.PI * t) / per(1.6))).toFixed(4)})` };
+    case 'balanco': return { transform: `scale(1.06) translateX(${(2.2 * Math.sin((2 * Math.PI * t) / per(2.2))).toFixed(2)}%)` };
     default: return null;
   }
 }

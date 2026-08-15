@@ -51,7 +51,7 @@ export function transition(fsm, ev, ctx) {
     if (fsm.name !== 'idle') fx.push({ do: 'end-gesture' });
     // Gestos que live-dispatcham precisam de undo do coalescido. Trimming NAO
     // dispatcha durante o gesto (preview puro) — descartar o preview basta.
-    if (fsm.name === 'dragging-clip' || fsm.name === 'dragging-text') {
+    if (fsm.name === 'dragging-clip' || fsm.name === 'dragging-text' || fsm.name === 'dragging-kf') {
       fx.push({ do: 'abort-gesture' }); // adapter faz store.undo() do gesto coalescido
     }
     if (fsm.name === 'trimming' || fsm.name === 'trimming-audio' || fsm.name === 'dragging-audio' ||
@@ -180,6 +180,20 @@ export function transition(fsm, ev, ctx) {
           return { next: { name: 'armed', hit, x0: ev.x, y0: ev.y, touch: !!ev.touch, gestureId: null, group: true }, effects: fx };
         }
         return { next: { name: 'armed', hit, x0: ev.x, y0: ev.y, touch: !!ev.touch, gestureId: null }, effects: fx };
+      }
+      if (hit.type === 'overlay-kf') {
+        // DIAMANTE de quadro-chave (user 14/08): arrasto direto (como os trim
+        // handles). O kf é identificado pelo TEMPO de origem — o índice muda
+        // quando a lista reordena no meio do arrasto.
+        fx.push({ do: 'set-cursor', cursor: 'ew-resize' });
+        return {
+          next: {
+            name: 'dragging-kf', overlayId: hit.overlayId,
+            curT: hit.kfT, itemStart: hit.itemStart,
+            moved: false, gestureId: newGestureId(),
+          },
+          effects: fx,
+        };
       }
       if (hit.type === 'overlay-trim-in' || hit.type === 'overlay-trim-out') {
         const o = ctx.layout.overlayItems.find(k => k.overlayId === hit.overlayId);
@@ -544,6 +558,32 @@ export function transition(fsm, ev, ctx) {
           fx.push({ do: 'dispatch', action: act.trimOverlay(fsm.overlayId, fsm.edge, value) });
         }
         fx.push({ do: 'show-snap', active: false });
+        fx.push({ do: 'set-cursor', cursor: 'default' });
+        return { next: idle(), effects: fx };
+      }
+      return { next: fsm, effects: fx };
+    }
+
+    case 'dragging-kf': {
+      // arrasta o diamante DENTRO da faixa; live-dispatch com gestureId = 1
+      // undo por gesto. curT acompanha o kf (é a chave de identificação).
+      if (ev.kind === 'move') {
+        const item = ctx.layout.overlayItems.find(k => k.overlayId === fsm.overlayId);
+        const base = item ? item.tStart : fsm.itemStart;
+        const alvo = Math.max(0, xToTime(ctx.layout.vp, ev.x) - base);
+        if (Math.abs(alvo - fsm.curT) > 1e-4) {
+          fx.push({ do: 'dispatch', action: { ...act.moveOverlayKf(fsm.overlayId, fsm.curT, alvo), gestureId: fsm.gestureId } });
+          return { next: { ...fsm, curT: alvo, moved: true }, effects: fx };
+        }
+        return { next: fsm, effects: fx };
+      }
+      if (ev.kind === 'up') {
+        fx.push({ do: 'end-gesture' });
+        // clique seco no diamante (sem mover) = leva a agulha pra marca
+        if (!fsm.moved) {
+          const item = ctx.layout.overlayItems.find(k => k.overlayId === fsm.overlayId);
+          fx.push({ do: 'seek', t: (item ? item.tStart : fsm.itemStart) + fsm.curT });
+        }
         fx.push({ do: 'set-cursor', cursor: 'default' });
         return { next: idle(), effects: fx };
       }

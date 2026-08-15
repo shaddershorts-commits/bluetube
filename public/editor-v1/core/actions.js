@@ -63,6 +63,12 @@ export const A = {
   SET_FORMATO: 'SET_FORMATO',
   SET_CLIP_ANIM: 'SET_CLIP_ANIM',
   SET_OVERLAY_ANIM: 'SET_OVERLAY_ANIM',
+  // duração da animação (slider "Duração" — user 14/08, print do CapCut)
+  SET_ANIM_DUR: 'SET_ANIM_DUR',
+  // quadros-chave de MOVIMENTO da camada (user 14/08: "a seta segue o cachorro")
+  SET_OVERLAY_KF: 'SET_OVERLAY_KF',
+  DEL_OVERLAY_KF: 'DEL_OVERLAY_KF',
+  MOVE_OVERLAY_KF: 'MOVE_OVERLAY_KF',
   // compostos (CapCut Alt+G)
   TOGGLE_MULTI_SELECT: 'TOGGLE_MULTI_SELECT',
   SELECT_ALL: 'SELECT_ALL',
@@ -143,6 +149,10 @@ export const UNDOABLE = {
   [A.SET_FORMATO]: U,
   [A.SET_CLIP_ANIM]: U,
   [A.SET_OVERLAY_ANIM]: U,
+  [A.SET_ANIM_DUR]: U,
+  [A.SET_OVERLAY_KF]: U,
+  [A.DEL_OVERLAY_KF]: U,
+  [A.MOVE_OVERLAY_KF]: U,
   [A.CREATE_COMPOUND]: U,
   [A.UNGROUP_COMPOUND]: U,
   [A.UPDATE_COMPOUND]: U,
@@ -230,6 +240,14 @@ export const setFormato = (formato) => ({ type: A.SET_FORMATO, formato });
 // slot: 'in' | 'out' | 'loop'; animId null = remover
 export const setClipAnim = (clipId, slot, animId) => ({ type: A.SET_CLIP_ANIM, clipId, slot, animId });
 export const setOverlayAnim = (overlayId, slot, animId) => ({ type: A.SET_OVERLAY_ANIM, overlayId, slot, animId });
+// alvo 'clip'|'overlay'; slot 'in'|'out'|'loop'; dur em segundos (0.1..5)
+export const setAnimDur = (alvo, id, slot, dur) => ({ type: A.SET_ANIM_DUR, alvo, id, slot, dur });
+// quadro-chave de movimento: grava/atualiza a posição no instante tRel
+// (segundos desde o INÍCIO da camada); overlay sem kf segue o transform fixo
+export const setOverlayKf = (overlayId, tRel, x_pct, y_pct) => ({ type: A.SET_OVERLAY_KF, overlayId, tRel, x_pct, y_pct });
+export const delOverlayKf = (overlayId, index) => ({ type: A.DEL_OVERLAY_KF, overlayId, index });
+// arrastar o diamante na faixa: move o kf `fromT` pra `toT` (tempos relativos)
+export const moveOverlayKf = (overlayId, fromT, toT) => ({ type: A.MOVE_OVERLAY_KF, overlayId, fromT, toT });
 export const setProjectId = (id) => ({ type: A.SET_PROJECT_ID, id });
 export const toggleMultiSelect = (itemType, id) => ({ type: A.TOGGLE_MULTI_SELECT, itemType, id });
 export const selectAll = () => ({ type: A.SELECT_ALL });

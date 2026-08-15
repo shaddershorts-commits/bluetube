@@ -432,6 +432,28 @@ export function fitDaCena(state, seg) {
   return Math.abs(arM - arP) / arP > 0.05 ? 'contain' : null;
 }
 
+/** CAIXA da camada no palco, em FRAÇÃO do quadro do projeto (user 14/08:
+ *  "o formato muda quando movo pra outra camada — todas têm o mesmo formato").
+ *
+ *  A caixa tem a proporção da MÍDIA da camada (contain no quadro) × escala:
+ *  subir uma cena pra camada NÃO pode reenquadrá-la — com escala 1 ela fica
+ *  IGUAL à faixa principal (mesma régua do fitDaCena). Preview (pip) e export
+ *  (box_w_pct/box_h_pct no payload) usam ESTA função — WYSIWYG de uma fonte só.
+ *  Imagem: largura = escala, altura segue a proporção do arquivo (h null).
+ *  Mídia sem dimensões conhecidas: caixa na proporção do quadro (regra antiga). */
+export function caixaDaCamada(state, o) {
+  const s = o.scale ?? 0.5;
+  if (o.kind === 'image') return { w: s, h: null };
+  const m = o.media_id != null
+    ? (state.media || []).find(x => x.id === o.media_id)
+    : state.video;
+  if (!m || !(m.width > 0) || !(m.height > 0)) return { w: s, h: s };
+  const arM = m.width / m.height;
+  const arP = formatoDoProjeto(state).ar;
+  if (arM >= arP) return { w: s, h: s * (arP / arM) };   // mais larga: trava na largura
+  return { w: s * (arM / arP), h: s };                   // mais alta: trava na altura
+}
+
 /** `transitions[].between` conta junções de ITENS da main track (composto = 1
  *  bloco), mas o export ACHATA compostos em sub-clips — no render a junção é
  *  entre clips achatados. Sem o remap, qualquer composto antes da emenda
@@ -488,6 +510,10 @@ export function exportPayload(state) {
     ...(seg.clip.anim_in ? { anim_in: seg.clip.anim_in } : {}),
     ...(seg.clip.anim_out ? { anim_out: seg.clip.anim_out } : {}),
     ...(seg.clip.anim_loop ? { anim_loop: seg.clip.anim_loop } : {}),
+    // duração escolhida no slider (render usa o MESMO número do preview)
+    ...(seg.clip.anim_in ? { anim_in_dur: round3(seg.clip.anim_in_dur ?? 0.5) } : {}),
+    ...(seg.clip.anim_out ? { anim_out_dur: round3(seg.clip.anim_out_dur ?? 0.5) } : {}),
+    ...(seg.clip.anim_loop && seg.clip.anim_loop_dur ? { anim_loop_dur: round3(seg.clip.anim_loop_dur) } : {}),
     ...(dono('mirrored') ? { mirrored: true } : {}),
     ...(dono('muted') ? { muted: true } : {}),          // áudio removido da cena
     // mídia com proporção diferente do quadro entra INTEIRA (tamanho real,
@@ -552,7 +578,9 @@ export function exportPayload(state) {
       ...(a.fx_norm ? { fx_norm: true } : {}),
     })),
     // camadas overlay (render: filter overlay + scale + enable window)
-    overlays: effectiveOverlays(state).map(o => ({
+    overlays: effectiveOverlays(state).map(o => {
+      const cx = caixaDaCamada(state, o);
+      return {
       source_in: round3(o.source_in), source_out: round3(o.source_out),
       // imagem PNG (sticker/seta/círculo com transparência) vs camada de vídeo
       ...(o.kind === 'image' ? { kind: 'image', image_url: o.url } : {}),
@@ -560,6 +588,10 @@ export function exportPayload(state) {
       start: round3(o.start),
       x_pct: round4(o.x_pct), y_pct: round4(o.y_pct),
       scale: Math.round(o.scale * 100) / 100,
+      // CAIXA na proporção da MÍDIA (user 14/08): o render dimensiona por
+      // estes números — a mesma caixa que o preview desenha (caixaDaCamada)
+      box_w_pct: round4(cx.w),
+      ...(cx.h != null ? { box_h_pct: round4(cx.h) } : {}),
       speed: Math.round(clipSpeed(o) * 1000) / 1000,
       ...(o.rotation ? { rotation: Math.round(o.rotation) } : {}),
       // som embutido da camada (user 14/08): o render mixa o áudio da camada,
@@ -568,8 +600,16 @@ export function exportPayload(state) {
       ...(o.anim_in ? { anim_in: o.anim_in } : {}),
       ...(o.anim_out ? { anim_out: o.anim_out } : {}),
       ...(o.anim_loop ? { anim_loop: o.anim_loop } : {}),
+      ...(o.anim_in ? { anim_in_dur: round3(o.anim_in_dur ?? 0.5) } : {}),
+      ...(o.anim_out ? { anim_out_dur: round3(o.anim_out_dur ?? 0.5) } : {}),
+      ...(o.anim_loop && o.anim_loop_dur ? { anim_loop_dur: round3(o.anim_loop_dur) } : {}),
+      // quadros-chave de movimento (user 14/08): o render traça a MESMA reta
+      // por expressão em t — ver keyframes.js (t relativo ao início da camada)
+      ...(Array.isArray(o.kf) && o.kf.length
+        ? { kf: o.kf.map(k => ({ t: round3(k.t), x: round4(k.x), y: round4(k.y) })) } : {}),
       lane: o.lane || 1, // ordem de composicao
-    })),
+      };
+    }),
     transitions: remapTransicoes(state),
     // com audio destacado o video renderiza MUDO (audio vem dos clips)
     volumes: state.audio_detached ? { ...state.volumes, video: 0 } : state.volumes,

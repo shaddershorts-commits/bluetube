@@ -43,6 +43,16 @@ export function hitTest(layout, x, y, opts = {}) {
   // 1b. Overlays (camadas acima da principal): handles no selecionado + corpo
   const selOv = (layout.overlayItems || []).find(o => o.selected);
   if (selOv) {
+    // 1b-0. DIAMANTES de quadro-chave (user 14/08: "posso mover os diamantes
+    // dentro da faixa") — ANTES do corpo, senão o clique viraria drag da camada
+    const pps = layout.vp?.pxPerSec || 0;
+    for (let i = 0; i < (selOv.kfTs || []).length; i++) {
+      const kx = selOv.x + selOv.kfTs[i] * pps;
+      const ky = selOv.y + selOv.h / 2;
+      if (Math.abs(x - kx) <= 7 + extra && Math.abs(y - ky) <= 8 + extra) {
+        return { type: 'overlay-kf', overlayId: selOv.overlayId, kfT: selOv.kfTs[i], itemStart: selOv.tStart };
+      }
+    }
     if (within(x, y, selOv.x - handleW / 2, selOv.y - extra, handleW, selOv.h + extra * 2)) {
       return { type: 'overlay-trim-in', overlayId: selOv.overlayId };
     }

@@ -2109,19 +2109,26 @@ function clipeTemAnimGeo(c) {
 function filtrosDaAnimacao(c, W, H, stIn, durVis) {
   const out = [];
   if (!c || durVis <= 0.2) return out;
-  const d = Math.max(0.15, Math.min(0.5, durVis / 2)).toFixed(3);
-  const stOut = (stIn + durVis) - Number(d);
+  // Duração vinda do slider (user 14/08) — o MESMO número do preview.
+  // Ausente = 0.5s de sempre; presa em 0.1..5s e nunca mais que meia cena.
+  const durSlot = (v) => Math.max(0.1, Math.min(Number(v) > 0 ? Number(v) : 0.5, 5, durVis / 2)).toFixed(3);
+  const dIn = durSlot(c.anim_in_dur);
+  const dOut = durSlot(c.anim_out_dur);
+  const stOut = (stIn + durVis) - Number(dOut);
   // progresso 0..1 preso: entrada sobe a partir de stIn; saída sobe no fim.
   // Duas réguas de tempo: `t` (crop/fade reavaliam por frame) e `on/30`
   // (zoompan conta FRAMES de saída — o scale com eval=frame NÃO reavalia t
   // de verdade nesta build, medido na sonda; zoompan é o filtro certo).
-  const pIn = `min(max((t-${stIn.toFixed(3)})/${d},0),1)`;
-  const pOut = `min(max((t-${stOut.toFixed(3)})/${d},0),1)`;
-  const pInF = `min(max(((on/30)-${stIn.toFixed(3)})/${d},0),1)`;
-  const pOutF = `min(max(((on/30)-${stOut.toFixed(3)})/${d},0),1)`;
+  const pIn = `min(max((t-${stIn.toFixed(3)})/${dIn},0),1)`;
+  const pOut = `min(max((t-${stOut.toFixed(3)})/${dOut},0),1)`;
+  const pInF = `min(max(((on/30)-${stIn.toFixed(3)})/${dIn},0),1)`;
+  const pOutF = `min(max(((on/30)-${stOut.toFixed(3)})/${dOut},0),1)`;
+  // combinação: o slider vira o PERÍODO do ciclo (pulsar 1.6s, balanço 2.2s)
+  const perLoop = (pad) => (Number(c.anim_loop_dur) > 0
+    ? Math.max(0.1, Math.min(Number(c.anim_loop_dur), 5)) : pad).toFixed(3);
   const zoomPan = (zexpr) => out.push(
     `zoompan=z='${zexpr}':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=1:s=${W}x${H}:fps=30`);
-  if (c.anim_in === 'fade_in') out.push(`fade=t=in:st=${stIn.toFixed(3)}:d=${d}`);
+  if (c.anim_in === 'fade_in') out.push(`fade=t=in:st=${stIn.toFixed(3)}:d=${dIn}`);
   if (c.anim_in === 'zoom_in') zoomPan(`(1+0.2*(1-${pInF}))`);
   if (c.anim_in === 'subir') out.push(
     `pad=w=iw:h=3*ih:x=0:y=ih:color=black`,
@@ -2129,16 +2136,40 @@ function filtrosDaAnimacao(c, W, H, stIn, durVis) {
   if (c.anim_in === 'vindo_direita') out.push(
     `pad=w=3*iw:h=ih:x=iw:y=0:color=black`,
     `crop=${W}:${H}:'${W}*(2-${pIn})':0`);
-  if (c.anim_out === 'fade_out') out.push(`fade=t=out:st=${stOut.toFixed(3)}:d=${d}`);
+  if (c.anim_out === 'fade_out') out.push(`fade=t=out:st=${stOut.toFixed(3)}:d=${dOut}`);
   if (c.anim_out === 'zoom_out') zoomPan(`(1+0.2*${pOutF})`);
   if (c.anim_out === 'descer') out.push(
     `pad=w=iw:h=3*ih:x=0:y=ih:color=black`,
     `crop=${W}:${H}:0:'${H}*(1-${pOut})'`);
-  if (c.anim_loop === 'pulsar') zoomPan(`(1.05+0.04*sin(2*PI*(on/30)/1.6))`);
+  if (c.anim_loop === 'pulsar') zoomPan(`(1.05+0.04*sin(2*PI*(on/30)/${perLoop(1.6)}))`);
   if (c.anim_loop === 'balanco') out.push(
     `scale=w='trunc(iw*1.06/2)*2':h='trunc(ih*1.06/2)*2'`,
-    `crop=${W}:${H}:'(iw-${W})/2+(iw-${W})/2*sin(2*PI*t/2.2)':'(ih-${H})/2'`);
+    `crop=${W}:${H}:'(iw-${W})/2+(iw-${W})/2*sin(2*PI*t/${perLoop(2.2)})':'(ih-${H})/2'`);
   return out;
+}
+// ── QUADROS-CHAVE de movimento (user 14/08): reta por partes em t ───────────
+// pts = [{T, V}] em tempo ABSOLUTO da régua final e pixels; a expressão fica
+// presa no primeiro/último valor fora do intervalo (mesma regra do preview —
+// core/keyframes.js posNoTempo). Usada nos x/y do overlay (reavalia por frame).
+function exprPiecewise(pts) {
+  if (!pts.length) return '0';
+  if (pts.length === 1) return String(Math.round(pts[0].V));
+  let expr = String(Math.round(pts[pts.length - 1].V));
+  for (let i = pts.length - 1; i >= 1; i--) {
+    const a = pts[i - 1], b = pts[i];
+    const dt = Math.max(0.001, b.T - a.T);
+    const seg = `(${Math.round(a.V)}+(${Math.round(b.V) - Math.round(a.V)})*(t-${a.T.toFixed(3)})/${dt.toFixed(3)})`;
+    expr = `if(lt(t,${b.T.toFixed(3)}),${seg},${expr})`;
+  }
+  return `if(lt(t,${pts[0].T.toFixed(3)}),${Math.round(pts[0].V)},${expr})`;
+}
+// lista de kf validada (payload é externo: só números finitos entram)
+function kfValidos(o) {
+  if (!Array.isArray(o.kf)) return [];
+  return o.kf
+    .filter((k) => k && Number.isFinite(k.t) && k.t >= 0 && Number.isFinite(k.x) && Number.isFinite(k.y))
+    .slice(0, 100)
+    .sort((a, b) => a.t - b.t);
 }
 // ── FIM filtrosDaAnimacao (marcador pra sonda extrair o fonte) ──
 
@@ -2712,7 +2743,15 @@ async function processEditV0(jobId, p) {
         const imgPath = path.join(dir, `ovimg_${i}` + (o.image_url.match(/\.(png|jpg|jpeg|webp|gif)/i)?.[0] || '.png'));
         try { await downloadFile(o.image_url, imgPath); }
         catch (e) { console.log('[edit-v0] imagem overlay falhou, pulando:', e.message); continue; }
-        ovInputs.push({ idx: inputIdx, o, file: imgPath, isImage: true });
+        // FADE em imagem (user 14/08): o fade precisa de FRAMES ao longo do
+        // tempo — imagem estática tem 1 só. Com fade, a imagem entra em loop
+        // pela janela dela na timeline; sem fade, segue estática (barato).
+        const temFadeImg = o.anim_in === 'fade_in' || o.anim_out === 'fade_out';
+        if (temFadeImg) {
+          const tlDurImg = dur / (Number(o.speed) > 0 ? Number(o.speed) : 1);
+          args.push('-loop', '1', '-framerate', '25', '-t', tlDurImg.toFixed(3));
+        }
+        ovInputs.push({ idx: inputIdx, o, file: imgPath, isImage: true, looped: temFadeImg });
         args.push('-i', imgPath);
         inputIdx++;
         continue;
@@ -2802,52 +2841,73 @@ async function processEditV0(jobId, p) {
     ops.forEach((op, k) => {
       const nextL = `base${k + 1}`;
       if (op.kind === 'ov') {
-        const { idx, o, isImage } = op.ov;
+        const { idx, o, isImage, looped } = op.ov;
         const sp = Number(o.speed) > 0 ? Number(o.speed) : 1;
         const dur = o.source_out - o.source_in;
         const tlDur = dur / sp;                       // duração NA timeline (com velocidade)
         const scaled = `ovs${k}`;
-        const scaleW = Math.round((p.output_width || 1080) * (o.scale ?? 0.5));
-        const xExpr = `${Math.round((p.output_width || 1080) * (o.x_pct ?? 0.5))}-w/2`;
-        const yExpr = `${Math.round((p.output_height || 1920) * (o.y_pct ?? 0.5))}-h/2`;
-        const enable = `between(t,${(o.start ?? 0).toFixed(3)},${((o.start ?? 0) + tlDur).toFixed(3)})`;
+        const OW = p.output_width || 1080, OH = p.output_height || 1920;
+        // CAIXA na proporção da MÍDIA (user 14/08: "todas tem o mesmo
+        // formato"): o editor manda box_w_pct/box_h_pct já com a proporção da
+        // fonte (contain no quadro × escala) — a MESMA caixa do preview.
+        // Payload antigo (sem box): caixa na proporção do quadro, como era.
+        const boxW = Number(o.box_w_pct) > 0 ? Number(o.box_w_pct) : (o.scale ?? 0.5);
+        const scaleW = Math.max(2, Math.round(OW * boxW));
+        // ── QUADROS-CHAVE de movimento (user 14/08): x/y viram reta por
+        // partes em t (overlay reavalia por frame) — mesma curva do preview
+        const kfs = kfValidos(o);
+        const iniAn = (o.start ?? 0), fimAn = iniAn + tlDur;
+        const xExpr = kfs.length
+          ? `(${exprPiecewise(kfs.map(kk => ({ T: iniAn + kk.t, V: OW * kk.x })))})-w/2`
+          : `${Math.round(OW * (o.x_pct ?? 0.5))}-w/2`;
+        const yExpr = kfs.length
+          ? `(${exprPiecewise(kfs.map(kk => ({ T: iniAn + kk.t, V: OH * kk.y })))})-h/2`
+          : `${Math.round(OH * (o.y_pct ?? 0.5))}-h/2`;
+        const enable = `between(t,${iniAn.toFixed(3)},${fimAn.toFixed(3)})`;
+        // ── ANIMAÇÃO DA CAMADA (user 14/08; agora também em IMAGEM) ───────
+        // Fades = alpha no ramo (t da composição = régua final, igual ao
+        // preview); deslizes/balanço = x/y do overlay com expressão em t.
+        // Duração do slider viaja no payload (anim_*_dur) — presa em meia
+        // janela pra entrada e saída não se atropelarem.
+        const durSlotOv = (v) => Math.max(0.1, Math.min(Number(v) > 0 ? Number(v) : 0.5, 5, tlDur / 2));
+        const dIn = durSlotOv(o.anim_in_dur), dOut = durSlotOv(o.anim_out_dur);
+        const perBal = (Number(o.anim_loop_dur) > 0
+          ? Math.max(0.1, Math.min(Number(o.anim_loop_dur), 5)) : 2.2).toFixed(3);
+        const fades = [];
+        if (o.anim_in === 'fade_in') fades.push(`fade=t=in:st=${iniAn.toFixed(3)}:d=${dIn.toFixed(3)}:alpha=1`);
+        if (o.anim_out === 'fade_out') fades.push(`fade=t=out:st=${(fimAn - dOut).toFixed(3)}:d=${dOut.toFixed(3)}:alpha=1`);
+        const PIn = `min(max((t-${iniAn.toFixed(3)})/${dIn.toFixed(3)},0),1)`;
+        const POut = `min(max((t-${(fimAn - dOut).toFixed(3)})/${dOut.toFixed(3)},0),1)`;
+        let xE = xExpr, yE = yExpr;
+        if (o.anim_in === 'vindo_direita') xE = `(${xE})+(${OW}-(${xE}))*(1-${PIn})`;
+        if (o.anim_in === 'subir') yE = `(${yE})+(${OH}-(${yE}))*(1-${PIn})`;
+        if (o.anim_out === 'descer') yE = `(${yE})+(${OH}-(${yE}))*${POut}`;
+        if (o.anim_loop === 'balanco') xE = `(${xE})+${Math.round(OW * 0.02)}*sin(2*PI*t/${perBal})`;
         if (isImage) {
-          // IMAGEM: escala preservando alpha (+ rotação opcional); overlay
-          // estático na janela de tempo
+          // IMAGEM: escala preservando alpha (+ rotação opcional). Com fade, o
+          // input entrou em -loop (frames reais) → setpts posiciona a janela e
+          // o fade anima o alpha; sem fade, frame estático de sempre.
           const deg = Number(o.rotation) || 0;
           const rotF = deg ? `,rotate=${deg}*PI/180:c=none:ow=rotw(${deg}*PI/180):oh=roth(${deg}*PI/180)` : '';
-          fc.push(`[${idx}:v]scale=${scaleW}:-1${rotF}[${scaled}]`);
-          fc.push(`[${vLabel}][${scaled}]overlay=x=${xExpr}:y=${yExpr}:enable='${enable}'[${nextL}]`);
+          if (looped && fades.length) {
+            fc.push(`[${idx}:v]scale=${scaleW}:-1${rotF},format=yuva420p,` +
+                    `setpts=PTS-STARTPTS+${iniAn.toFixed(3)}/TB,${fades.join(',')}[${scaled}]`);
+          } else {
+            fc.push(`[${idx}:v]scale=${scaleW}:-1${rotF}[${scaled}]`);
+          }
+          fc.push(`[${vLabel}][${scaled}]overlay=x='${xE}':y='${yE}':enable='${enable}'[${nextL}]`);
         } else {
-          // ⚠️ CAMADA DE VÍDEO PREENCHE CORTANDO (2026-07-29): era
-          // `scale=W:-2`, que deixa a altura seguir a proporção da FONTE — um
-          // vídeo 16:9 virava uma faixa no meio do quadro 9:16 (as "bordas
-          // pretas" que o usuário viu). A caixa da camada tem a proporção do
-          // QUADRO e o vídeo preenche cortando o excedente, igual à faixa
-          // principal (crop_center) e igual ao object-fit:cover do preview.
-          const scaleH = Math.max(2, Math.round(scaleW * ((p.output_height || 1920) / (p.output_width || 1080))));
+          // CAMADA DE VÍDEO: a caixa tem a proporção da mídia (box_h_pct) —
+          // cover na caixa (no-op com proporção casada; payload antigo cai na
+          // proporção do quadro e corta, como era em 2026-07-29).
+          const scaleH = Number(o.box_h_pct) > 0
+            ? Math.max(2, Math.round(OH * Number(o.box_h_pct)))
+            : Math.max(2, Math.round(scaleW * (OH / OW)));
           const spF = sp !== 1 ? `/${sp}` : '';
-          // ── ANIMAÇÃO DA CAMADA (user 14/08) ────────────────────────────
-          // Fades = alpha no ramo (t da composição = régua final, igual ao
-          // preview); deslizes/balanço = x/y do overlay com expressão em t
-          // (o overlay reavalia x/y por frame). Zoom/pulso não têm par
-          // confiável aqui — o catálogo (camada:false) nem os oferece.
-          const iniAn = (o.start ?? 0), fimAn = iniAn + tlDur, dAn = 0.5;
-          const fades = [];
-          if (o.anim_in === 'fade_in') fades.push(`fade=t=in:st=${iniAn.toFixed(3)}:d=${dAn}:alpha=1`);
-          if (o.anim_out === 'fade_out') fades.push(`fade=t=out:st=${(fimAn - dAn).toFixed(3)}:d=${dAn}:alpha=1`);
           const alphaFx = fades.length ? ',format=yuva420p,' + fades.join(',') : '';
           fc.push(`[${idx}:v]scale=${scaleW}:${scaleH}:force_original_aspect_ratio=increase,` +
                   `crop=${scaleW}:${scaleH},setsar=1,` +
                   `setpts=(PTS-STARTPTS)${spF}+${(o.start ?? 0).toFixed(3)}/TB${alphaFx}[${scaled}]`);
-          const PIn = `min(max((t-${iniAn.toFixed(3)})/${dAn},0),1)`;
-          const POut = `min(max((t-${(fimAn - dAn).toFixed(3)})/${dAn},0),1)`;
-          const OW = p.output_width || 1080, OH = p.output_height || 1920;
-          let xE = xExpr, yE = yExpr;
-          if (o.anim_in === 'vindo_direita') xE = `(${xE})+(${OW}-(${xE}))*(1-${PIn})`;
-          if (o.anim_in === 'subir') yE = `(${yE})+(${OH}-(${yE}))*(1-${PIn})`;
-          if (o.anim_out === 'descer') yE = `(${yE})+(${OH}-(${yE}))*${POut}`;
-          if (o.anim_loop === 'balanco') xE = `(${xE})+${Math.round(OW * 0.02)}*sin(2*PI*t/2.2)`;
           fc.push(`[${vLabel}][${scaled}]overlay=x='${xE}':y='${yE}':enable='${enable}'[${nextL}]`);
         }
       } else {

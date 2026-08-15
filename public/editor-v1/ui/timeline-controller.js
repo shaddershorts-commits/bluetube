@@ -525,7 +525,7 @@ export function createTimelineController({ canvas, store, player, onEditText, on
         const p = evFrom(e);
         const hit = hitTest(layoutNow(), p.x, p.y);
         canvas.style.cursor =
-          hit.type === 'trim-in' || hit.type === 'trim-out' ? 'ew-resize' :
+          hit.type === 'trim-in' || hit.type === 'trim-out' || hit.type === 'overlay-kf' ? 'ew-resize' :
           hit.type === 'clip-body' || hit.type === 'text-block' ? 'grab' :
           hit.type === 'ruler' ? 'col-resize' : 'default';
       }

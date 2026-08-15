@@ -2,6 +2,9 @@
 // Estado canonico do projeto (schema V1 — compativel com editor_jobs.project_state
 // da v0 e com o payload /edit-v0 do Railway). Modulo puro: sem DOM, sem fetch.
 
+import { animValida } from './text-anim.js';
+import { normalizarKf } from './keyframes.js';
+
 /** Enum de tamanhos de texto — espelha sizePct() do railway-ffmpeg/server.js */
 export const TEXT_SIZES = ['small', 'medium', 'large', 'xlarge'];
 
@@ -168,6 +171,10 @@ export function normalizeLoadedState(raw) {
       ...(typeof c.anim_in === 'string' ? { anim_in: c.anim_in } : {}),
       ...(typeof c.anim_out === 'string' ? { anim_out: c.anim_out } : {}),
       ...(typeof c.anim_loop === 'string' ? { anim_loop: c.anim_loop } : {}),
+      // duração escolhida no slider (user 14/08) — sem copiar, reabrir apagava
+      ...(typeof c.anim_in_dur === 'number' ? { anim_in_dur: clamp(c.anim_in_dur, 0.1, 5) } : {}),
+      ...(typeof c.anim_out_dur === 'number' ? { anim_out_dur: clamp(c.anim_out_dur, 0.1, 5) } : {}),
+      ...(typeof c.anim_loop_dur === 'number' ? { anim_loop_dur: clamp(c.anim_loop_dur, 0.1, 5) } : {}),
       ...(c.muted ? { muted: true } : {}),  // áudio removido SÓ desta cena
       // máscara da cena (CapCut: círculo/retângulo + suavizar + cantos)
       ...(c.mask && ['circle', 'rect'].includes(c.mask.shape) ? { mask: {
@@ -209,6 +216,17 @@ export function normalizeLoadedState(raw) {
       end_sec: Math.max(0, t.end_sec || 0),
       caption: t.caption === true,
       lane: clampLane(t.lane, TEXT_DEFAULT_LANE),
+      // ⚠️ CAMPOS QUE SUMIAM AO REABRIR (achado 14/08, mesma classe do grade):
+      // a animação do texto e a ÂNCORA da legenda (src_in/out/url — o que faz
+      // a legenda seguir a fala após cortes) não eram copiados aqui — reabrir
+      // o projeto apagava os dois em silêncio.
+      ...(animValida(t.anim) !== 'nenhuma' ? { anim: animValida(t.anim) } : {}),
+      ...(Number.isFinite(t.src_in) ? {
+        src_in: Math.max(0, t.src_in),
+        src_out: (Number.isFinite(t.src_out) && t.src_out > t.src_in)
+          ? t.src_out : Math.max(0, t.src_in) + Math.max(0.1, (t.end_sec || 0) - (t.start_sec || 0)),
+        ...(t.src_url ? { src_url: String(t.src_url) } : {}),
+      } : {}),
       active: t.active !== false,
     })) : [];
   s.transitions = Array.isArray(raw.transitions) ? raw.transitions : [];
@@ -269,6 +287,11 @@ export function normalizeLoadedState(raw) {
       ...(typeof o.anim_in === 'string' ? { anim_in: o.anim_in } : {}),
       ...(typeof o.anim_out === 'string' ? { anim_out: o.anim_out } : {}),
       ...(typeof o.anim_loop === 'string' ? { anim_loop: o.anim_loop } : {}),
+      ...(typeof o.anim_in_dur === 'number' ? { anim_in_dur: clamp(o.anim_in_dur, 0.1, 5) } : {}),
+      ...(typeof o.anim_out_dur === 'number' ? { anim_out_dur: clamp(o.anim_out_dur, 0.1, 5) } : {}),
+      ...(typeof o.anim_loop_dur === 'number' ? { anim_loop_dur: clamp(o.anim_loop_dur, 0.1, 5) } : {}),
+      // quadros-chave de movimento (14/08) — lista validada; vazia some
+      ...(normalizarKf(o.kf).length ? { kf: normalizarKf(o.kf) } : {}),
       start: Math.max(0, o.start || 0),
       x_pct: clamp01(o.x_pct ?? 0.5), y_pct: clamp01(o.y_pct ?? 0.5),
       scale: Math.min(2, Math.max(0.1, o.scale ?? 0.5)),

@@ -265,6 +265,8 @@ function paint(ctx, canvas, { layout, playhead, fsm, snapIndicator, recGhost, th
       ctx.font = '9px "JetBrains Mono", monospace';
       ctx.fillText(`${dur.toFixed(1)}s`, cx0 + 6, c.y + c.h - 12);
     }
+    // ✦ animação ativa (user 14/08: "não tem nada sinalizando")
+    drawAnimMarks(ctx, c, cx0, cw, c.y, c.h);
   }
 
   // ── FANTASMA da nova camada (arrastando clip pra cima pra criar overlay) ──
@@ -392,6 +394,18 @@ function paint(ctx, canvas, { layout, playhead, fsm, snapIndicator, recGhost, th
       ctx.fillStyle = 'rgba(232,244,255,.8)';
       ctx.font = '9px "JetBrains Mono", monospace';
       ctx.fillText((o.isImage ? '🖼 imagem ' : '⧉ camada ') + (o.lane || 1), ox + 6, o.y + 3);
+    }
+    // ✦ animação ativa na camada (mesma sinalização da cena)
+    drawAnimMarks(ctx, o, ox, ow, o.y, o.h);
+    // ◆ QUADROS-CHAVE de movimento (user 14/08): diamantes na posição de cada
+    // marca; arrastáveis quando a camada está selecionada (hittest overlay-kf)
+    if ((o.kfTs || []).length) {
+      const pps = layout.vp.pxPerSec;
+      for (const kt of o.kfTs) {
+        const kx = ox + kt * pps;
+        if (kx < ox - 2 || kx > ox + ow + 2) continue;
+        drawDiamond(ctx, kx, o.y + o.h / 2, o.selected ? 5 : 3.5, o.selected);
+      }
     }
   }
   ctx.globalAlpha = 1;
@@ -575,6 +589,47 @@ function drawHandle(ctx, x, y, h, side) {
   const cx = rx + w / 2;
   line(ctx, cx - 2, y + h * 0.35, cx - 2, y + h * 0.65);
   line(ctx, cx + 2, y + h * 0.35, cx + 2, y + h * 0.65);
+}
+
+// ✦ marquinhas de ANIMAÇÃO ATIVA (user 14/08): entrada encostada na esquerda,
+// saída na direita, combinação no centro — topo do item, com pastilha escura
+// atrás pra não sumir na miniatura.
+function drawAnimMarks(ctx, item, x, w, y, h) {
+  if (!item.animIn && !item.animOut && !item.animLoop) return;
+  const marks = [];
+  if (item.animIn) marks.push(x + 8);
+  if (item.animLoop) marks.push(x + w / 2);
+  if (item.animOut) marks.push(x + w - 8);
+  ctx.save();
+  roundRect(ctx, x, y, w, h, 5);
+  ctx.clip();
+  for (const mx of marks) {
+    ctx.beginPath();
+    ctx.arc(mx, y + h - 8, 6, 0, Math.PI * 2);
+    ctx.fillStyle = 'rgba(0,0,0,.55)';
+    ctx.fill();
+    ctx.fillStyle = '#c9a6ff';
+    ctx.font = '9px "Syne", sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText('✦', mx, y + h - 12);
+    ctx.textAlign = 'left';
+  }
+  ctx.restore();
+}
+
+// ◆ diamante de quadro-chave (movimento da camada)
+function drawDiamond(ctx, cx, cy, r, bright) {
+  ctx.save();
+  ctx.translate(cx, cy);
+  ctx.rotate(Math.PI / 4);
+  ctx.beginPath();
+  ctx.rect(-r, -r, r * 2, r * 2);
+  ctx.fillStyle = bright ? '#ffffff' : 'rgba(255,255,255,.7)';
+  ctx.fill();
+  ctx.strokeStyle = '#a97fee';
+  ctx.lineWidth = 1.5;
+  ctx.stroke();
+  ctx.restore();
 }
 
 function roundRect(ctx, x, y, w, h, r) {
