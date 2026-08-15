@@ -8,8 +8,11 @@ name: Longos — métricas (ritmo)
 # uma chamada. NÃO usa busca, então não encosta nas ~100 buscas/dia da coleta.
 # Minuto 41 pra não disputar fila com cron de minuto redondo.
 on:
-  # SEM schedule de propósito — ver o comentário no topo. Disparo manual
-  # em Actions → Run workflow, ou pela API com admin_secret.
+  schedule:
+    # De hora em hora. Só usa videos.list (1 unidade por 50 vídeos), então
+    # NÃO passa pelo teto de buscas — não tira nada da Virais. Sem isso o
+    # views/hora da aba Canais congela: o ritmo exige 2 medições.
+    - cron: '41 * * * *'
   workflow_dispatch:
 
 jobs:

@@ -6,8 +6,12 @@ name: Longos — coleta
 # Minuto 23 de propósito: cron do GitHub em minuto redondo disputa fila com o
 # mundo inteiro e atrasa.
 on:
-  # SEM schedule de propósito — ver o comentário no topo. Disparo manual
-  # em Actions → Run workflow, ou pela API com admin_secret.
+  schedule:
+    # De 3 em 3h: 8 rodadas × 8 buscas = 64 buscas/dia (6.400 unidades),
+    # contra as ~250.000 vivas do pool. O teto do dia é LONGOS_BUSCAS_DIA
+    # (200) e é conferido no BANCO antes de cada rodada — cron e disparo
+    # manual gastam do mesmo bolso. Minuto 23 pra não disputar fila.
+    - cron: '23 */3 * * *'
   workflow_dispatch:
     inputs:
       termos:

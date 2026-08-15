@@ -153,6 +153,62 @@ const TERMOS = [
   'accidente aéreo', 'historia de supervivencia', 'expedición fallida',
 ];
 
+// ── MARGEM DE SEGURANÇA DA COTA (15/08/2026, pedido do dono) ───────────────
+// O Longos divide o pool de chaves com a Virais de Shorts, que é produto pago.
+// A regra é simples e inegociável: se a cota apertar, quem para é o Longos.
+//
+// TETO DIÁRIO DE BUSCAS, contado no banco (longos_orcamento) e compartilhado
+// entre cron e disparo manual — os dois gastam do mesmo bolso. O contador
+// PRECISA ser persistido: o `failures` do helper de chaves vive em memória e
+// zera a cada cold start da função, então não serve como freio.
+//
+// FALHA FECHADA: banco fora do ar ou tabela ausente = zero buscas liberadas.
+// Coleta de vídeo longo que não aconteceu volta amanhã; cota que a Virais
+// perdeu hoje não volta.
+const BUSCAS_DIA_PADRAO = 200;   // 20.000 unidades = ~8% da capacidade viva
+function tetoDeBuscas() {
+  const n = parseInt(process.env.LONGOS_BUSCAS_DIA, 10);
+  return Number.isFinite(n) && n >= 0 ? n : BUSCAS_DIA_PADRAO;
+}
+
+async function reservarBuscas(quero, { SU, h }) {
+  const teto = tetoDeBuscas();
+  if (!(quero > 0)) return { concedido: 0, teto, usado: null };
+  const dia = new Date().toISOString().slice(0, 10);
+  for (let tentativa = 0; tentativa < 5; tentativa++) {
+    try {
+      const r = await fetch(`${SU}/rest/v1/longos_orcamento?dia=eq.${dia}&select=buscas`, { headers: h });
+      if (!r.ok) throw new Error(`leitura do orçamento falhou (${r.status})`);
+      const linhas = await r.json();
+      let usado = 0;
+      if (linhas.length) usado = linhas[0].buscas || 0;
+      else {
+        // ignore-duplicates: merge-duplicates ZERARIA o contador de quem chegou
+        // primeiro (o upsert do PostgREST é INSERT…ON CONFLICT).
+        await fetch(`${SU}/rest/v1/longos_orcamento`, {
+          method: 'POST',
+          headers: { ...h, Prefer: 'resolution=ignore-duplicates,return=minimal' },
+          body: JSON.stringify({ dia, buscas: 0 }),
+        });
+      }
+      const concedido = Math.max(0, Math.min(quero, teto - usado));
+      if (concedido === 0) return { concedido: 0, teto, usado };
+      const up = await fetch(`${SU}/rest/v1/longos_orcamento?dia=eq.${dia}&buscas=eq.${usado}`, {
+        method: 'PATCH',
+        headers: { ...h, Prefer: 'return=representation' },
+        body: JSON.stringify({ buscas: usado + concedido, atualizado_em: new Date().toISOString() }),
+      });
+      if (!up.ok) throw new Error(`reserva falhou (${up.status})`);
+      // vazio = outra rodada gravou entre o meu SELECT e o meu UPDATE: releio.
+      if ((await up.json()).length) return { concedido, teto, usado: usado + concedido };
+    } catch (e) {
+      console.log('[longos] cota NEGADA —', e.message);
+      return { concedido: 0, teto, usado: null, erro: e.message };
+    }
+  }
+  return { concedido: 0, teto, usado: null, erro: 'disputa no contador' };
+}
+
 const seg = (iso) => {
   const m = String(iso || '').match(/PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?/);
   return m ? (parseInt(m[1] || 0, 10) * 3600) + (parseInt(m[2] || 0, 10) * 60) + parseInt(m[3] || 0, 10) : 0;
@@ -261,9 +317,29 @@ async function coletar(req, res, { SU, h }) {
     por_termo: {}, erros: [],
   };
 
-  const termos = req.query.termos
+  let termos = req.query.termos
     ? String(req.query.termos).split(',').map((t) => t.trim()).filter(Boolean).slice(0, 12)
     : fatiaDeTermos(BUSCAS_POR_RODADA, Date.now());
+
+  // MARGEM DE SEGURANÇA: reserva a cota ANTES de gastar. Se o teto do dia já
+  // acabou, a rodada nem começa — a Virais fica com o resto. Reserva só o que
+  // couber: pedir 12 e ganhar 3 encurta a rodada em vez de cancelá-la.
+  const orc = await reservarBuscas(termos.length, { SU, h });
+  stat.orcamento = { teto_dia: orc.teto, usado_dia: orc.usado, concedido: orc.concedido };
+  if (orc.concedido === 0) {
+    return res.status(200).json({
+      ok: true, pulado: true,
+      motivo: orc.erro ? 'orcamento_indisponivel' : 'teto_diario_atingido',
+      detalhe: orc.erro
+        ? `não deu pra contar a cota (${orc.erro}) — na dúvida o Longos NÃO gasta, pra não tirar da Virais`
+        : `teto de ${orc.teto} buscas/dia já gasto. Volta amanhã sozinho.`,
+      ...stat, timestamp: new Date().toISOString(),
+    });
+  }
+  if (orc.concedido < termos.length) {
+    stat.cortado_por_orcamento = termos.length - orc.concedido;
+    termos = termos.slice(0, orc.concedido);
+  }
 
   // ── 1) BUSCA — o passo caro. Tudo abaixo custa 1 unidade por lote de 50.
   // Os mercados da BUSCA são os mesmos que o filtro final aceita. Antes a
@@ -274,6 +350,7 @@ async function coletar(req, res, { SU, h }) {
   const mercados = String(req.query.paises || PAISES.join(','))
     .toUpperCase().split(',').map((p) => p.trim()).filter(Boolean);
   const candidatos = new Map();
+  let falhasSeguidas = 0;
   for (let i = 0; i < termos.length; i++) {
     // `long` (+20min) cobre 20-50min da faixa pedida; `medium` (4-20min) cobre
     // 15-20. Alternar aproveita as duas pontas.
@@ -295,8 +372,18 @@ async function coletar(req, res, { SU, h }) {
         const id = it.id && it.id.videoId;
         if (id && !candidatos.has(id)) candidatos.set(id, termos[i]);
       }
+      falhasSeguidas = 0;
     } catch (e) {
       stat.erros.push(`busca "${termos[i]}": ${String(e.message || e).slice(0, 120)}`);
+      falhasSeguidas++;
+      // DISJUNTOR: 3 buscas seguidas falhando quase sempre é o pool doente
+      // (chave suspensa ou cota estourada), não o termo. Insistir nas outras
+      // só queima as chaves que ainda restam pra Virais — então para aqui.
+      if (falhasSeguidas >= 3) {
+        stat.abortado = 'pool_instavel';
+        stat.erros.push('3 buscas seguidas falharam — rodada abortada pra não queimar as chaves da Virais');
+        break;
+      }
     }
   }
   stat.candidatos = candidatos.size;

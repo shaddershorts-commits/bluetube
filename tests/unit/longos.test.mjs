@@ -384,18 +384,6 @@ test('medir custa 1 unidade por 50 vídeos e NÃO usa busca', () => {
   assert.match(WFM, /NÃO usa busca/);
 });
 
-test('os workflows do Longos NÃO têm cron — é disparo manual, de propósito', () => {
-  // `search.list` custa 100 unidades e sai do MESMO pool de chaves da Virais de
-  // Shorts, que é produto pago. Uma varredura completa gastou 7.800 unidades;
-  // com cron de 3 em 3h isso vira 6.400/dia competindo com a Virais. Fica
-  // manual até o Longos ganhar pool próprio (YOUTUBE_API_KEY_LONGOS_*).
-  for (const arq of ['longos-coleta.yml', 'longos-metricas.yml']) {
-    const wf = readFileSync(new URL(`../../.github/workflows/${arq}`, import.meta.url), 'utf8');
-    assert.equal(/^\s*schedule:/m.test(wf), false,
-      `${arq} voltou a ter cron — isso come a cota da Virais sem ninguém pedir`);
-    assert.match(wf, /workflow_dispatch:/, `${arq} precisa continuar disparável na mão`);
-  }
-});
 
 test('a página mostra e ordena por ritmo nas duas abas', () => {
   assert.match(HTML, /data-ordem="ritmo"/);
@@ -486,4 +474,59 @@ test('o monitor cobre a chave sem sufixo — a que estava invisível', () => {
 
 test('sem nenhuma chave o monitor diz isso, em vez de fingir saúde', () => {
   assert.match(MONITOR, /nenhuma chave do YouTube configurada/);
+});
+
+// ═══ MARGEM DE SEGURANÇA DA COTA (15/08/2026) ════════════════════════════════
+//
+// Os crons voltaram, mas com trava: o Longos divide o pool de chaves com a
+// Virais de Shorts, que é produto PAGO. Pedido do dono ao religar: "deixa uma
+// margem, porque se cair a API afeta a Virais". A regra que estes testes
+// prendem é uma só — se a cota apertar, quem para é o Longos.
+
+test('os crons voltaram, na cadência que cabe no teto', () => {
+  const coleta = readFileSync(new URL('../../.github/workflows/longos-coleta.yml', import.meta.url), 'utf8');
+  const metricas = readFileSync(new URL('../../.github/workflows/longos-metricas.yml', import.meta.url), 'utf8');
+  assert.match(coleta, /cron: '23 \*\/3 \* \* \*'/, '8 rodadas × 8 buscas = 64/dia, dentro do teto de 200');
+  assert.match(metricas, /cron: '41 \* \* \* \*'/, 'sem métrica de hora em hora o views/hora congela');
+});
+
+test('a rodada RESERVA cota antes de gastar, e o teto é persistido', () => {
+  assert.match(API, /const orc = await reservarBuscas\(termos\.length/,
+    'reservar DEPOIS de buscar não segura nada');
+  assert.match(API, /longos_orcamento/, 'o contador tem que ser do banco');
+  // memória não serve: o `failures` do helper de chaves zera a cada cold start
+  assert.match(API, /enviados|buscas=eq\.\$\{usado\}/,
+    'incremento sem compare-and-swap deixa duas rodadas gravarem por cima');
+});
+
+test('sem conseguir contar a cota, o Longos NÃO gasta (falha fechada)', () => {
+  assert.match(API, /orcamento_indisponivel/);
+  const bloco = API.slice(API.indexOf('const orc = await reservarBuscas'), API.indexOf('if (orc.concedido < termos.length)'));
+  assert.match(bloco, /concedido === 0/, 'cota zero tem que abortar a rodada, não seguir mesmo assim');
+});
+
+test('cota parcial ENCURTA a rodada em vez de cancelar', () => {
+  assert.match(API, /termos = termos\.slice\(0, orc\.concedido\)/,
+    'pedir 12 e ganhar 3 deve render 3 buscas — cancelar tudo desperdiça o que sobrou');
+  assert.match(API, /cortado_por_orcamento/, 'e o relatório precisa dizer que cortou');
+});
+
+test('disjuntor: 3 falhas seguidas abortam a rodada', () => {
+  // Pool doente (chave suspensa / cota estourada) não se resolve insistindo —
+  // insistir só queima as chaves que ainda restam pra Virais.
+  assert.match(API, /falhasSeguidas >= 3/);
+  assert.match(API, /pool_instavel/);
+  assert.match(API, /falhasSeguidas = 0;/, 'busca boa tem que zerar o contador, senão aborta por falhas antigas');
+});
+
+test('o teto é ajustável por env, com padrão conservador', () => {
+  assert.match(API, /LONGOS_BUSCAS_DIA/);
+  assert.match(API, /BUSCAS_DIA_PADRAO = 200/, '200 buscas = 20.000 unidades ≈ 8% da capacidade viva');
+});
+
+test('existe o SQL do orçamento, com RLS', () => {
+  const sql = readFileSync(new URL('../../sql/longos_orcamento.sql', import.meta.url), 'utf8');
+  assert.match(sql, /create table if not exists longos_orcamento/i);
+  assert.match(sql, /dia\s+date\s+primary key/i);
+  assert.match(sql, /enable row level security/i);
 });
