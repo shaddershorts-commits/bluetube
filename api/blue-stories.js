@@ -67,13 +67,13 @@ module.exports = async function handler(req, res) {
     const origem = req.query?.origem === 'original' ? 'original' : (req.query?.origem === 'royalty' ? 'royalty' : null);
     // Catálogo grande via Jamendo (royalty-free, ~600k faixas) quando a chave
     // estiver setada. 'original' (sons dos próprios usuários) sempre vem do banco.
-    const JAMENDO = process.env.JAMENDO_CLIENT_ID || '';
+    const JAMENDO = process.env.JAMENDO_CLIENT_ID || 'd518f1fc';
     if (JAMENDO && origem !== 'original') {
       try {
         const base = `https://api.jamendo.com/v3.0/tracks/?client_id=${JAMENDO}&format=json&limit=40&audioformat=mp31`;
         const jurl = q
           ? `${base}&namesearch=${encodeURIComponent(q)}&order=popularity_total`
-          : `${base}&order=popularity_month`;
+          : `${base}&order=popularity_total`;
         const jr = await fetch(jurl);
         const jd = jr.ok ? await jr.json() : { results: [] };
         const sons = (jd.results || []).map((t) => ({
