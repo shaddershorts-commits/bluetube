@@ -357,6 +357,15 @@
       ]
     },
     {
+      "source": "/editor-v1/(.*)",
+      "headers": [
+        {
+          "key": "Cache-Control",
+          "value": "no-cache, must-revalidate"
+        }
+      ]
+    },
+    {
       "source": "/blueEditor",
       "headers": [
         {
