@@ -1,23 +1,21 @@
 <!DOCTYPE html>
 <html lang="pt-BR">
 <head>
-<meta charset="utf-8"/>
-<meta name="viewport" content="width=device-width, initial-scale=1"/>
-<title>BlueEditor · BlueTube</title>
-<!-- LANÇAMENTO (14/08/2026): esta era a landing "O Que Está Vindo" — o
-     editor saiu do forno, então /blueEditor agora LEVA pro editor de
-     verdade (/blueEditor-app). Redirect no HTML (e não no vercel.json) de
-     propósito: superfície mínima, zero risco pros outros rewrites, e
-     reverter = restaurar este arquivo. -->
-<meta http-equiv="refresh" content="0;url=/blueEditor-app"/>
-<script>window.location.replace('/blueEditor-app');</script>
-<style>
-  body { background:#040b16; color:#eaf6ff; font-family:system-ui,sans-serif;
-         display:flex; align-items:center; justify-content:center; height:100vh; margin:0 }
-  a { color:#00e5ff }
-</style>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=no,viewport-fit=cover"/>
+<meta name="theme-color" content="#020817"/>
+<title>BlueEditor — Editor de Vídeo</title>
+<meta name="description" content="Editor de vídeo nativo do BlueTube. Cortes, textos, áudio e exportação 9:16 — direto no navegador."/>
+<meta name="robots" content="noindex,nofollow"/>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='8' fill='%2300AAFF'/><path d='M10 9l13 7-13 7V9z' fill='white'/></svg>"/>
+<link rel="preconnect" href="https://fonts.googleapis.com"/>
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=JetBrains+Mono:wght@400;500;600&family=Anton&family=Bebas+Neue&family=Oswald:wght@700&display=swap" rel="stylesheet"/>
+<link rel="stylesheet" href="/editor-v1/css/editor.css?v=20260815a"/>
+<link rel="stylesheet" href="/editor-v1/css/criar-ia.css?v=20260815a"/>
 </head>
 <body>
-  <p>Abrindo o BlueEditor… <a href="/blueEditor-app">clique aqui se não abrir sozinho</a>.</p>
+<div id="beRoot"></div>
+<script type="module" src="/editor-v1/main.js?v=20260815a"></script>
 </body>
 </html>

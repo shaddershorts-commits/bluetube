@@ -33,12 +33,15 @@ async function boot() {
   }
   if (!getToken() || !user) {
     gateScreen('🔒', 'Login necessário', 'Entre na sua conta BlueTube pra usar o editor.',
-      '<a class="be-export-btn" href="/?login=1&next=/blueEditor-app">Fazer login</a>');
+      '<a class="be-export-btn" href="/?login=1&next=/blueEditor">Fazer login</a>');
     return;
   }
+  // EXCLUSIVO MASTER (dono, 15/08 no lançamento): o portão do front espelha a
+  // API (blue-editor.js já devolvia 403 pra não-Master — deixar Full entrar na
+  // UI era só convite pra esbarrar em erro em toda ação)
   const plan = (user.plan || 'free').toLowerCase();
-  if (plan !== 'master' && plan !== 'full') {
-    gateScreen('👑', 'Exclusivo Full e Master', 'O BlueEditor faz parte dos planos Full e Master.',
+  if (plan !== 'master') {
+    gateScreen('👑', 'Exclusivo Master', 'O BlueEditor é exclusivo do plano Master.',
       '<a class="be-export-btn" href="/#planos">Ver planos</a>');
     return;
   }
@@ -98,7 +101,7 @@ async function enterEditor(projectId) {
       if (e.sessaoExpirada) {
         gateScreen('🔒', 'Sua sessão expirou',
           'Entre de novo pra continuar de onde parou. Seu projeto está salvo.',
-          '<a class="be-export-btn" href="/?login=1&next=/blueEditor-app">Fazer login</a>');
+          '<a class="be-export-btn" href="/?login=1&next=/blueEditor">Fazer login</a>');
       } else {
         gateScreen('⚠️', 'Não consegui abrir o projeto', e.message || 'Tenta de novo em instantes.',
           '<button class="be-export-btn" onclick="location.reload()">Tentar de novo</button>');
@@ -121,7 +124,7 @@ async function enterEditor(projectId) {
     gateScreen('⚠️', 'O editor não conseguiu abrir',
       'Deu um erro ao montar a tela. Seu projeto está salvo — nada foi perdido.',
       '<button class="be-export-btn" onclick="location.reload()">Recarregar</button>' +
-      '<a class="be-export-btn" style="margin-left:8px" href="/blueEditor-app">Meus projetos</a>');
+      '<a class="be-export-btn" style="margin-left:8px" href="/blueEditor">Meus projetos</a>');
   }
 }
 
