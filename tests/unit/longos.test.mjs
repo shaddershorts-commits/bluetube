@@ -453,3 +453,37 @@ test('sem ritmo novo, o valor antigo é PRESERVADO (não zerado)', () => {
   assert.match(API, /select=youtube_id[^`]*views_por_hora/,
     'pra preservar o valor antigo ele precisa vir no SELECT');
 });
+
+// ═══ O MONITOR DE CHAVES NÃO PODE TER PONTO CEGO (15/08/2026) ════════════════
+//
+// Caso real: o painel dizia "1 chave ok, 4 falhas" e acusava YT_KEY_1 como
+// "missing" — mas a lista era FIXA em YOUTUBE_API_KEY_1..5 e nunca olhava a
+// `YOUTUBE_API_KEY` sem sufixo, que o pool USA (regex /^YOUTUBE_API_KEY(_\d+)?$/).
+// Relatório de saúde que não enxerga tudo é pior que não ter relatório: leva a
+// decisão errada (no caso, quase criar 7 projetos no Google por diagnóstico
+// incompleto, logo depois de uma suspensão).
+const MONITOR = readFileSync(new URL('../../api/youtube-quota-status.js', import.meta.url), 'utf8');
+
+test('o monitor VARRE o ambiente em vez de listar chaves na mão', () => {
+  assert.equal(/process\.env\.YOUTUBE_API_KEY_1\b/.test(MONITOR), false,
+    'lista fixa volta a criar ponto cego quando nasce chave nova');
+  // substring literal em vez de regex-sobre-regex: escapar duas vezes é como
+  // este teste falhou na primeira escrita, sem o código estar errado.
+  const POOL = readFileSync(new URL('../../api/_helpers/youtube.js', import.meta.url), 'utf8');
+  const padrao = '^YOUTUBE_API_KEY(_\\d+)?$';
+  assert.ok(POOL.includes(padrao), 'o pool mudou de regex — atualizar o monitor junto');
+  assert.ok(MONITOR.includes(padrao),
+    'monitor e pool têm que usar o MESMO padrão, senão o relatório mente sobre quais chaves existem');
+});
+
+test('o monitor cobre a chave sem sufixo — a que estava invisível', () => {
+  const re = /^YOUTUBE_API_KEY(_\d+)?$/i;
+  assert.ok(re.test('YOUTUBE_API_KEY'), 'a sem sufixo faz parte do pool');
+  assert.ok(re.test('YOUTUBE_API_KEY_7'));
+  assert.equal(re.test('YOUTUBE_API_KEY_SECRETOS_1'), false,
+    'o pool secretos é separado e não pode ser contado como virais');
+});
+
+test('sem nenhuma chave o monitor diz isso, em vez de fingir saúde', () => {
+  assert.match(MONITOR, /nenhuma chave do YouTube configurada/);
+});

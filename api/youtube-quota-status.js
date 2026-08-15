@@ -42,13 +42,35 @@ module.exports = async function handler(req, res) {
   if (req.method === 'OPTIONS') return res.status(200).end();
   if (req.method !== 'GET') return res.status(405).json({ error: 'Method not allowed' });
 
+  // ⚠️ A lista era FIXA em YOUTUBE_API_KEY_1..5 e tinha ponto cego: a chave
+  // `YOUTUBE_API_KEY` (sem sufixo) É usada pelo pool — o regex dele é
+  // /^YOUTUBE_API_KEY(_\d+)?$/ — e nunca aparecia aqui. Em 15/08 isso deu um
+  // relatório enganoso: o painel dizia "1 ok, 4 falhas" enquanto uma chave viva
+  // não estava sendo contada, e acusava YT_KEY_1 como "missing" quando a chave
+  // sem sufixo existia e funcionava.
+  //
+  // Agora ele VARRE o ambiente com os mesmos regexes do pool. Chave nova entra
+  // no relatório sozinha, sem ninguém lembrar de editar este arquivo.
+  const nomesOrdenados = (re) => Object.keys(process.env)
+    .filter((k) => re.test(k) && process.env[k])
+    .sort((a, b) => {
+      const n = (x) => parseInt((x.match(/_(\d+)$/) || [, '0'])[1], 10);
+      return n(a) - n(b);
+    });
+
   const keys = [
-    { name: 'YT_KEY_1', value: process.env.YOUTUBE_API_KEY_1, used_by: 'Virais/coletor/canais (compartilhado)' },
-    { name: 'YT_KEY_2', value: process.env.YOUTUBE_API_KEY_2, used_by: 'Virais/coletor/canais (compartilhado)' },
-    { name: 'YT_KEY_3', value: process.env.YOUTUBE_API_KEY_3, used_by: 'Virais/coletor/canais (compartilhado)' },
-    { name: 'YT_KEY_4', value: process.env.YOUTUBE_API_KEY_4, used_by: 'Virais/coletor/canais (compartilhado)' },
-    { name: 'YT_KEY_5', value: process.env.YOUTUBE_API_KEY_5, used_by: 'BlueLens-search DEDICADA' },
+    ...nomesOrdenados(/^YOUTUBE_API_KEY(_\d+)?$/i)
+      .map((nome) => ({ name: nome, value: process.env[nome], used_by: 'Virais/coletor/canais (compartilhado)' })),
+    ...nomesOrdenados(/^YOUTUBE_API_KEY_SECRETOS_\d+$/i)
+      .map((nome) => ({ name: nome, value: process.env[nome], used_by: 'Nichos Secretos (pool dedicado)' })),
   ];
+  // BlueLens tem chave própria e fora dos regexes acima — segue nomeada na mão.
+  if (process.env.YOUTUBE_API_KEY_BLUELENS) {
+    keys.push({ name: 'YOUTUBE_API_KEY_BLUELENS', value: process.env.YOUTUBE_API_KEY_BLUELENS, used_by: 'BlueLens-search DEDICADA' });
+  }
+  if (!keys.length) {
+    return res.status(200).json({ ok: false, error: 'nenhuma chave do YouTube configurada', summary: { total: 0, ok: 0, quota_exceeded: 0, failed: 0 } });
+  }
 
   const results = [];
   for (const k of keys) {
