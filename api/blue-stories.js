@@ -65,6 +65,31 @@ module.exports = async function handler(req, res) {
   if (req.method === 'GET' && action === 'sons') {
     const q = (req.query?.q || '').trim();
     const origem = req.query?.origem === 'original' ? 'original' : (req.query?.origem === 'royalty' ? 'royalty' : null);
+    // Catálogo grande via Jamendo (royalty-free, ~600k faixas) quando a chave
+    // estiver setada. 'original' (sons dos próprios usuários) sempre vem do banco.
+    const JAMENDO = process.env.JAMENDO_CLIENT_ID || '';
+    if (JAMENDO && origem !== 'original') {
+      try {
+        const base = `https://api.jamendo.com/v3.0/tracks/?client_id=${JAMENDO}&format=json&limit=40&audioformat=mp31`;
+        const jurl = q
+          ? `${base}&namesearch=${encodeURIComponent(q)}&order=popularity_total`
+          : `${base}&order=popularity_month`;
+        const jr = await fetch(jurl);
+        const jd = jr.ok ? await jr.json() : { results: [] };
+        const sons = (jd.results || []).map((t) => ({
+          id: 'j_' + t.id,
+          titulo: t.name,
+          artista: t.artist_name,
+          url: t.audio,
+          capa_url: t.image || t.album_image || null,
+          duracao: parseInt(t.duration) || 0,
+          origem: 'royalty',
+          usos: 0,
+        })).filter((s) => s.url && s.titulo);
+        if (sons.length) return res.status(200).json({ sons, fonte: 'jamendo' });
+        // Jamendo vazio/erro → cai no blue_sounds abaixo
+      } catch (_) { /* degrada pro blue_sounds */ }
+    }
     try {
       let url = `${SU}/rest/v1/blue_sounds?select=id,titulo,artista,url,capa_url,duracao,origem,usos&order=usos.desc,created_at.desc&limit=60`;
       if (origem) url += `&origem=eq.${origem}`;
