@@ -164,7 +164,14 @@ module.exports = async function handler(req, res) {
           visto: vistoArr.includes(userId),
           created_at: s.created_at,
           expirado_em: s.expirado_em,
-          video_id: s.video_id || null
+          video_id: s.video_id || null,
+          // Camadas do editor + música + filtro: o viewer redesenha por cima.
+          // Sem isso, overlays/música/filtro NÃO aparecem quando o story é aberto
+          // pelo feed (que é o único caminho que o viewer usa). '|| ' cobre o
+          // shape antigo do fallback acima (colunas ausentes → undefined).
+          overlays: Array.isArray(s.overlays) ? s.overlays : [],
+          musica_url: s.musica_url || null,
+          filtro: s.filtro || null
         });
         grouped.set(s.user_id, arr);
       }
