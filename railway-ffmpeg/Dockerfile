@@ -44,20 +44,26 @@ RUN mkdir -p /root/.config/yt-dlp/plugins \
   && rm /tmp/bgutil-plugin.zip \
   && (yt-dlp -v 2>&1 | grep -iE "plugin|bgutil|pot" | head -5 || true)
 
-# Baixa fontes reais que o BlueEditor usa nos estilos (Bebas Neue + Oswald + Anton)
-# Google Fonts serve direto sem auth. Instalamos em /usr/share/fonts/truetype/bt/
-RUN mkdir -p /usr/share/fonts/truetype/bt && cd /tmp \
-  && curl -fsSL -o bebas.zip "https://fonts.google.com/download?family=Bebas%20Neue" \
-  && unzip -o bebas.zip -d bebas && cp bebas/*.ttf /usr/share/fonts/truetype/bt/ 2>/dev/null || true \
-  && curl -fsSL -o oswald.zip "https://fonts.google.com/download?family=Oswald" \
-  && unzip -o oswald.zip -d oswald && cp oswald/static/*.ttf /usr/share/fonts/truetype/bt/ 2>/dev/null || true \
-  && curl -fsSL -o anton.zip "https://fonts.google.com/download?family=Anton" \
-  && unzip -o anton.zip -d anton && cp anton/*.ttf /usr/share/fonts/truetype/bt/ 2>/dev/null || true \
-  && fc-cache -fv \
-  && rm -rf /tmp/bebas* /tmp/oswald* /tmp/anton*
+# Fontes que o BlueEditor usa nos estilos (Anton + Bebas Neue + Oswald).
+# ⚠️ FONTE CONFIÁVEL (15/08/2026): o endpoint fonts.google.com/download MORREU
+# (devolve a página HTML) e o `|| true` engolia — um rebuild sem cache subia
+# SEM NENHUMA fonte em silêncio (a "fonte trocada" do teste real do dono).
+# Agora: TTFs direto do repositório oficial google/fonts no GitHub, SEM
+# engolir erro, e com verificação que DERRUBA o build se qualquer uma faltar.
+# Oswald é o arquivo VARIÁVEL — instância padrão = Regular 400, igual ao
+# preview (o Oswald-Bold antigo era a outra metade da "fonte diferente").
+RUN mkdir -p /usr/share/fonts/truetype/bt && cd /usr/share/fonts/truetype/bt \
+  && curl -fsSL -o Anton-Regular.ttf "https://github.com/google/fonts/raw/main/ofl/anton/Anton-Regular.ttf" \
+  && curl -fsSL -o BebasNeue-Regular.ttf "https://github.com/google/fonts/raw/main/ofl/bebasneue/BebasNeue-Regular.ttf" \
+  && curl -fsSL -o Oswald.ttf "https://github.com/google/fonts/raw/main/ofl/oswald/Oswald%5Bwght%5D.ttf" \
+  && fc-cache -fv
 
-# Verifica se as fontes foram instaladas (não falha o build se alguma faltar)
-RUN fc-list | grep -iE "bebas|oswald|anton|liberation|dejavu" || true
+# Verificação DURA: build quebra na cara se qualquer fonte não for TTF real
+RUN set -e; for f in Anton-Regular.ttf BebasNeue-Regular.ttf Oswald.ttf; do \
+      test -s "/usr/share/fonts/truetype/bt/$f" || { echo "FONTE FALTANDO: $f"; exit 1; }; \
+      head -c 4 "/usr/share/fonts/truetype/bt/$f" | od -An -tx1 | grep -q "00 01 00 00" \
+        || { echo "FONTE INVÁLIDA (não é TTF): $f"; exit 1; }; \
+    done; fc-list | grep -iE "anton|bebas|oswald"
 
 # Compat glibc pro onnxruntime-node (detector de texto PRÓPRIO da BlueClean).
 # Se falhar em runtime, o server.js cai no fallback (detector externo) sem quebrar.

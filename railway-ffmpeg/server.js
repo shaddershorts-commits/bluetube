@@ -2118,11 +2118,12 @@ function escapeDrawText(s) {
     .replace(/%/g, '\\%');
 }
 function fontFile(fontName) {
-  // Mapeia fonte do user pra TTF instalada no container
+  // Mapeia fonte do user pra TTF instalada no container (Dockerfile).
+  // Oswald: arquivo VARIÁVEL com instância padrão Regular 400 — o antigo
+  // Oswald-Bold saía mais gordo que o preview ("fonte diferente", 15/08).
   const f = (fontName || '').toLowerCase();
   if (f.includes('bebas')) return '/usr/share/fonts/truetype/bt/BebasNeue-Regular.ttf';
-  if (f.includes('oswald')) return '/usr/share/fonts/truetype/bt/Oswald-Bold.ttf';
-  if (f.includes('inter')) return '/usr/share/fonts/truetype/bt/Anton-Regular.ttf'; // fallback
+  if (f.includes('oswald')) return '/usr/share/fonts/truetype/bt/Oswald.ttf';
   return '/usr/share/fonts/truetype/bt/Anton-Regular.ttf';
 }
 function sizePct(size) {
