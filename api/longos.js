@@ -11,9 +11,13 @@
 // ── AS REGRAS, TODAS MEDIDAS EM 13-14/08/2026 ──────────────────────────────
 // · Duração 15-50 min (pedido do dono). Cruza as duas faixas da API, então a
 //   busca pede `long` E `medium` e o corte fino é aqui, com a duração exata.
-// · Até 70 mil inscritos. O pedido era "sem selo de verificado", e o selo NÃO
+// · Até 10 MIL inscritos (15/08). O pedido era "sem selo de verificado", e o selo NÃO
 //   EXISTE na API. O substituto é o número que gera o selo (liberado a partir
-//   de 100 mil); o dono apertou pra 70 mil. É melhor que o original: o YouTube
+//   de 100 mil); o dono apertou pra 70 mil e depois pra 10 mil — mira canal
+//   MESMO pequeno. Custo medido: dos 60 canais do acervo, só 11 sobrevivem a
+//   este teto, e o corte por canal grande já era 83% de tudo que o funil
+//   descartava. Volume baixo aqui é ESCOLHA, não defeito. É melhor que o
+//   critério original: o YouTube
 //   verifica proativamente canais menores famosos FORA do YouTube — justo os
 //   que ele quer excluir.
 // · Descoberta por TERMO. `videoCategoryId` devolve ZERO na busca de vídeo
@@ -33,7 +37,7 @@ const { youtubeRequest } = require('./_helpers/youtube');
 
 const DUR_MIN_S = 15 * 60;
 const DUR_MAX_S = 50 * 60;
-const MAX_INSCRITOS = 70_000;
+const MAX_INSCRITOS = 10_000;   // 15/08: 70k → 10k, pedido do dono
 const PISOS = [30_000, 100_000, 300_000];
 const BUSCAS_POR_RODADA = 8;
 const RETENCAO_DIAS = 90;
