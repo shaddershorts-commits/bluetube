@@ -7,6 +7,9 @@
 import { TEXT_SIZE_PCT } from '../core/schema.js';
 import * as act from '../core/actions.js';
 import { textsAt } from '../core/selectors.js';
+import { layoutDoTexto, familiaDaFonte } from '../core/text-layout.js';
+import { estadoAnim } from '../core/text-anim.js';
+import { textoEhRTL } from '../core/idioma.js';
 
 export function createOverlay(container, store, player, onEditRequest) {
   let els = new Map(); // textId -> div
@@ -54,14 +57,52 @@ export function createOverlay(container, store, player, onEditRequest) {
         container.appendChild(el);
         els.set(txt.id, el);
       }
-      // WYSIWYG: fontsize proporcional a LARGURA do preview (Railway usa OUT_W)
-      const fsPx = TEXT_SIZE_PCT[txt.size] * box.width;
-      el.textContent = txt.content;
-      el.style.left = (txt.x_pct * 100) + '%';
-      el.style.top = (txt.y_pct * 100) + '%';
-      el.style.fontFamily = fontFamilyFor(txt.font);
+      // ── o texto NAO pode passar da borda do quadro ──
+      // Mesma funcao que o exportPayload usa: as linhas e a posicao presa no
+      // quadro sao IDENTICAS na tela e no arquivo (nao ha dois algoritmos).
+      const lay = layoutDoTexto(txt, TEXT_SIZE_PCT[txt.size], box.width || 1080, box.height || 1920);
+      const fsPx = lay.fontePct * box.width;
+      el.textContent = lay.linhas.join('\n');
+      el.style.left = (lay.xPct * 100) + '%';
+      el.style.top = (lay.yPct * 100) + '%';
+      el.style.fontFamily = familiaDaFonte(txt.font);
       el.style.fontSize = fsPx + 'px';
+      el.style.maxWidth = 'none';   // a quebra e nossa, nao do CSS
+      el.style.whiteSpace = 'pre';
+      // arabe/hebraico correm da direita pra esquerda — sem isto a legenda
+      // sai com a pontuacao no lado errado
+      el.style.direction = textoEhRTL(txt.content) ? 'rtl' : 'ltr';
       el.style.color = txt.color;
+      // traçado/borda da letra: espelha o borderw+bordercolor do drawtext.
+      // Cor escolhível (txt.stroke), padrão preto. paint-order deixa o traçado
+      // ATRÁS do preenchimento (não come a letra). box tira o traçado.
+      const strokeW = Math.max(1, fsPx * 0.055);
+      // tarja colorida atrás (CapCut) — espelha o box=1 do drawtext no export
+      if (txt.box) {
+        el.style.background = txt.box;
+        el.style.padding = '0.04em 0.28em';
+        el.style.borderRadius = '0.1em';
+        el.style.textShadow = 'none';
+        el.style.webkitTextStroke = '0';
+      } else {
+        el.style.background = 'transparent';
+        el.style.padding = '0';
+        el.style.borderRadius = '0';
+        el.style.textShadow = 'none';
+        el.style.webkitTextStroke = strokeW + 'px ' + (txt.stroke || '#000000');
+        el.style.paintOrder = 'stroke fill';
+      }
+      // ── ANIMACAO de entrada/saida ──
+      // Calculada do RELOGIO (nao com @keyframes do CSS): assim ela obedece o
+      // scrub, o pause e a velocidade — e usa a mesma conta que vira expressao
+      // de ffmpeg no arquivo final.
+      const est = estadoAnim(txt.anim, t - txt.start_sec, txt.end_sec - txt.start_sec);
+      el.style.opacity = String(est.opacidade);
+      const desloc = est.deslocY ? (est.deslocY * fsPx * 1.12) : 0;
+      el.style.transform = `translate(-50%, -50%) translateY(${desloc.toFixed(2)}px) scale(${est.escala.toFixed(4)})`;
+      // z compartilhado com as camadas de video (pip): lane maior = na frente.
+      // Texto em lane menor que um overlay fica ATRAS do video dele (CapCut).
+      el.style.zIndex = String(10 + (txt.lane || 4));
       el.style.outline = state.selected_text_id === txt.id ? '2px dashed rgba(169,127,238,.9)' : 'none';
       el.style.outlineOffset = '4px';
     }
@@ -96,10 +137,16 @@ export function createOverlay(container, store, player, onEditRequest) {
       const dy = (e.clientY - dragging.startY) / box.height;
       if (!dragging.moved && Math.hypot(e.clientX - dragging.startX, e.clientY - dragging.startY) < 3) return;
       dragging.moved = true;
-      store.dispatch({
-        ...act.moveText(textId, dragging.x0 + dx, dragging.y0 + dy),
-        gestureId: dragging.gestureId,
-      });
+      const nx = dragging.x0 + dx, ny = dragging.y0 + dy;
+      // "Aplicar a todas as legendas": arrastar UMA legenda reposiciona TODAS
+      // (posição uniforme). Só vale pra legendas (caption) com a caixa marcada.
+      const st = store.getState();
+      const dragged = st.texts.find(x => x.id === textId);
+      const applyAll = dragged?.caption && document.getElementById('beCapApplyAll')?.checked;
+      const targets = applyAll ? st.texts.filter(x => x.caption).map(x => x.id) : [textId];
+      for (const id of targets) {
+        store.dispatch({ ...act.moveText(id, nx, ny), gestureId: dragging.gestureId });
+      }
     });
     const finish = (e) => {
       if (!dragging || dragging.pointerId !== e.pointerId) return;

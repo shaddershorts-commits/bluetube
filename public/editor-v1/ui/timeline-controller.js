@@ -3,18 +3,23 @@
 // Converte eventos -> FSM pura -> executa effects. Nenhuma logica de negocio
 // aqui: so traducao evento<->efeito.
 
-import { computeLayout, zoomAt, zoomToFit, METRICS } from '../timeline/layout.js';
+import { xToTime, computeLayout, zoomAt, zoomToFit, laneForY, METRICS } from '../timeline/layout.js';
 import { hitTest } from '../timeline/hittest.js';
 import { transition, idle, LONG_PRESS_MS } from '../timeline/interaction.js';
-import { createRenderer } from '../timeline/render.js';
-import { cutPoints, totalDuration } from '../core/selectors.js';
+import { createRenderer, setImageRedraw } from '../timeline/render.js';
+import { cutPoints, totalDuration, audioLaneMap, cenaTemAudio, propriedadeDaCena } from '../core/selectors.js';
+import { MAX_LANE } from '../core/schema.js';
 import { A } from '../core/actions.js';
 import * as act from '../core/actions.js';
+import * as clip from './clipboard.js';
 
-export function createTimelineController({ canvas, store, player, onEditText, onOpenCompound }) {
+export function createTimelineController({ canvas, store, player, onEditText, onOpenCompound, onSelectTransition, onLanesChanged, onGerarLegenda, onSepararVoz, onFavoritarAudio }) {
   // width 0 = "ainda nao medido" -> zoomFit vira pendingFit ate o RO medir
   let vp = { pxPerSec: 40, scrollX: 0, width: 0, height: 200 };
   let fsm = idle();
+  // emenda selecionada — so afeta o DESENHO do marcador, nao e conteudo do
+  // projeto (por isso nao vai pro store nem pro autosave)
+  let juncaoSel = null;
   let snapIndicator = { active: false, t: null };
   let thumbs = null;
   let wave = null;
@@ -22,27 +27,81 @@ export function createTimelineController({ canvas, store, player, onEditText, on
   let longPressTimer = 0;
   const pointers = new Map(); // pointerId -> {x,y}
   const renderer = createRenderer(canvas);
+  setImageRedraw(() => draw()); // redesenha quando o thumbnail de imagem carrega
+
+  // ── camada FANTASMA (user 2026-07-29: "arrastar take cria camada NA HORA") ──
+  // Enquanto o gesto sobe acima da camada do topo (ou desce abaixo da ultima
+  // faixa de audio), a row nova ja aparece — o usuario ve onde vai soltar em
+  // vez de descobrir depois. Ela some sozinha se o gesto voltar.
+  let laneFantasma = null;        // camada de video/texto nascendo (1..MAX_LANE)
+  let laneAudioFantasma = null;   // camada de audio nascendo (>=0)
 
   // ── render pipeline ──
   function layoutNow() {
-    return computeLayout(store.getState(), vp);
+    return computeLayout(store.getState(), vp,
+      (laneFantasma != null || laneAudioFantasma != null)
+        ? { laneExtra: laneFantasma, laneAudioExtra: laneAudioFantasma }
+        : null);
+  }
+
+  /** Decide a camada fantasma do frame. A decisao usa o layout SEM fantasma:
+   *  se olhasse pro layout com ela, a row nova mudaria a propria condicao que a
+   *  criou e a faixa piscaria a cada frame. */
+  function atualizarFantasma(ev) {
+    const y = ev && ev.y != null ? ev.y : null;
+    const nome = fsm?.name;
+    let nv = null, na = null;
+    if (y != null) {
+      const lay = computeLayout(store.getState(), vp);   // sem fantasma
+      const rows = lay.laneRows || [];
+      const topo = rows.length ? rows[0] : null;
+      const acimaDoTopo = topo ? y < topo.y - 4 : y < lay.yVideo - 8;
+      // cena da faixa principal subindo, ou camada/texto ja em cima subindo mais
+      if ((nome === 'dragging-clip' && fsm.lifting) ||
+          nome === 'dragging-overlay' || nome === 'dragging-text') {
+        if (acimaDoTopo) nv = Math.min(MAX_LANE, (topo ? topo.lane : 0) + 1);
+      } else if (nome === 'dragging-audio') {
+        const fimAudio = lay.yAudio + lay.audioLanes * (lay.audioTrackH + 2);
+        if (y > fimAudio - 6) na = lay.audioLanes;       // row nova embaixo
+      }
+    }
+    const mudou = nv !== laneFantasma || na !== laneAudioFantasma;
+    laneFantasma = nv;
+    laneAudioFantasma = na;
+    // os cabecalhos das faixas so se redesenham quando o STORE muda — e a
+    // camada fantasma de proposito nao mexe no store. Sem este aviso, a row
+    // nova aparecia no canvas mas o cabecalho dela so vinha depois do drop.
+    if (mudou) onLanesChanged?.();
   }
   function ctxNow() {
     const state = store.getState();
+    // teto de trim por clip: take extra e limitado pela PROPRIA midia
+    const clipMaxOut = {};
+    for (const c of state.clips || []) {
+      if (c.media_id != null) {
+        clipMaxOut[c.id] = (state.media || []).find(m => m.id === c.media_id)?.duration || Infinity;
+      }
+    }
     return {
       layout: layoutNow(),
       playhead: player.getTime(),
       cutPoints: cutPoints(state),
       snapEnabled: true,
       videoDuration: state.video?.duration || 0,
+      clipMaxOut,
+      // chaves da multi-selecao (pra detectar group drag)
+      multiIds: new Set((state.multi_selected || []).map(x => x.type + ':' + x.id)),
     };
   }
+  // fantasma da LOCUÇÃO em gravação (desenho puro, fora do store)
+  let recGhost = null;
   function draw() {
     renderer.draw({
       layout: layoutNow(),
       playhead: player.getTime(),
       fsm,
       snapIndicator,
+      recGhost,
       thumbs,
       wave,
       videoWave,
@@ -63,12 +122,60 @@ export function createTimelineController({ canvas, store, player, onEditText, on
         case 'seek': player.seek(e.t); break;
         case 'select-clip': store.dispatch(act.selectClip(e.clipId)); break;
         case 'select-text': store.dispatch(act.selectText(e.textId)); break;
-        case 'clear-selection': store.dispatch(act.selectClip(null)); break;
+        case 'clear-selection': store.dispatch(act.clearSelection()); break;
         case 'select-audio-clip': store.dispatch(act.selectAudioClip(e.audioId)); break;
         case 'select-overlay': store.dispatch(act.selectOverlay(e.overlayId)); break;
-        case 'convert-to-overlay': store.dispatch(act.convertToOverlay(e.clipId, e.atT)); break;
+        case 'convert-to-overlay': {
+          // altura do drop decide a lane (row existente ou nova acima do topo)
+          const lane = e.y != null ? (laneForY(layoutNow(), e.y) ?? 1) : 1;
+          store.dispatch(act.convertToOverlay(e.clipId, e.atT, lane));
+          break;
+        }
+        case 'commit-move': {
+          // fecho do arrasto de camada/texto/audio: UM dispatch com tempo + faixa
+          const lay = layoutNow();
+          const st = store.getState();
+          if (e.itemType === 'audio') {
+            // faixa de audio pelo y do drop; acima da area de audio = mantem
+            let laneA = null;
+            if (e.y != null && e.y >= lay.yAudio - 6) {
+              const rowH = lay.audioTrackH + 2;
+              laneA = Math.max(0, Math.min(lay.audioLanes, Math.floor((e.y - lay.yAudio) / rowH)));
+            }
+            store.dispatch(act.moveItemTo('audio', e.id, e.start, laneA));
+            break;
+          }
+          // camada de VÍDEO solta NA FAIXA PRINCIPAL: volta a ser clip da main
+          // (inverso do drag-up — user 2026-07-22 "não volta mais"). Imagem não.
+          if (e.itemType === 'overlay' && e.y != null &&
+              e.y >= lay.yVideo - 4 && e.y <= lay.yVideo + lay.videoTrackH + 4) {
+            const ov = st.overlays.find(o => o.id === e.id);
+            if (ov && ov.kind !== 'image') {
+              store.dispatch(act.overlayToClip(e.id, e.start ?? ov.start));
+              break;
+            }
+          }
+          // null = soltou fora das rows de camada: mantém a camada atual
+          const lane = e.y != null ? laneForY(lay, e.y) : null;
+          store.dispatch(act.moveItemTo(e.itemType, e.id, e.start, lane));
+          break;
+        }
+        case 'drop-audio-lane': {
+          // arrasto vertical de áudio: row sob o cursor decide a lane; abaixo
+          // da última row = cria lane nova embaixo. Acima da área de áudio =
+          // mantém onde está.
+          const lay = layoutNow();
+          if (e.y < lay.yAudio - 6) break;
+          const rowH = lay.audioTrackH + 2;
+          const lane = Math.max(0, Math.min(lay.audioLanes, Math.floor((e.y - lay.yAudio) / rowH)));
+          const st = store.getState();
+          const cur = audioLaneMap(st).get(e.id);
+          if (cur !== lane) store.dispatch(act.setAudioLane(e.id, lane));
+          break;
+        }
         case 'toggle-multi': store.dispatch(act.toggleMultiSelect(e.itemType, e.id)); break;
         case 'open-compound': onOpenCompound?.(e.compoundId); break;
+        case 'select-transition': onSelectTransition?.(e.between); break;
         case 'zoom': vp = { ...vp, pxPerSec: e.pxPerSec, scrollX: clampScroll(e.scrollX, e.pxPerSec) }; draw(); break;
         case 'scroll': vp = { ...vp, scrollX: clampScroll(e.scrollX, vp.pxPerSec) }; draw(); break;
         case 'end-gesture': store.endGesture(); break;
@@ -78,6 +185,12 @@ export function createTimelineController({ canvas, store, player, onEditText, on
         case 'open-text-editor': onEditText?.(e.textId); break;
         case 'haptic': try { navigator.vibrate?.(30); } catch {} break;
         case 'autoscroll-edge': autoscroll(e.x); break;
+        case 'clear-multi': store.dispatch(act.setMultiSelect([])); break;
+        case 'marquee-live': case 'marquee-apply': {
+          // seleciona tudo que INTERSECTA o retangulo (video/texto/audio/camada)
+          store.dispatch(act.setMultiSelect(itemsInRect(layoutNow(), e.rect)));
+          break;
+        }
       }
     }
   }
@@ -103,10 +216,41 @@ export function createTimelineController({ canvas, store, player, onEditText, on
     return { ...action, toIndex: arrayIndex };
   }
 
+  /** Itens do layout que intersectam o retangulo do marquee. */
+  function itemsInRect(layout, r) {
+    const hits = [];
+    const inter = (b) => b.x < r.x + r.w && b.x + b.w > r.x && b.y < r.y + r.h && b.y + b.h > r.y;
+    for (const c of layout.clips) if (inter(c)) hits.push({ type: 'clip', id: c.clipId });
+    for (const t of layout.texts) if (inter(t)) hits.push({ type: 'text', id: t.textId });
+    for (const a of layout.audioItems || []) if (inter(a)) hits.push({ type: 'audio', id: a.audioId });
+    for (const o of layout.overlayItems || []) if (inter(o)) hits.push({ type: 'overlay', id: o.overlayId });
+    return hits;
+  }
+
   function autoscroll(x) {
     const EDGE = 40, SPEED = 14;
     if (x < EDGE) { vp = { ...vp, scrollX: clampScroll(vp.scrollX - SPEED, vp.pxPerSec) }; draw(); }
     else if (x > vp.width - EDGE) { vp = { ...vp, scrollX: clampScroll(vp.scrollX + SPEED, vp.pxPerSec) }; draw(); }
+  }
+
+  /** Rolagem VERTICAL das faixas. Nao mexe em nada do eixo X nem no zoom. */
+  function rolarY(delta) {
+    const atual = vp.scrollY || 0;
+    const novo = Math.max(0, Math.min(layoutNow().maxScrollY, atual + delta));
+    if (novo === atual) return;
+    vp = { ...vp, scrollY: novo };
+    onLanesChanged?.();   // os cabecalhos das faixas acompanham a rolagem
+    draw();
+  }
+
+  const ARRASTANDO = new Set(['dragging-clip', 'dragging-overlay', 'dragging-text', 'dragging-audio', 'dragging-multi']);
+  /** Arrastar encostando no topo/base rola sozinho — sem isso nao da pra levar
+   *  uma faixa ate uma camada que esta fora da vista. */
+  function autoscrollVertical(ev) {
+    if (!ev || ev.y == null || !ARRASTANDO.has(fsm.name)) return;
+    const BORDA = 28, VEL = 12;
+    if (ev.y < BORDA) rolarY(-VEL);
+    else if (ev.y > (vp.height || 0) - BORDA) rolarY(VEL);
   }
 
   /** Scroll nunca deixa o conteudo 100% fora da tela: clamp entre -PAD_LEFT
@@ -130,13 +274,227 @@ export function createTimelineController({ canvas, store, player, onEditText, on
   function step(ev) {
     const r = transition(fsm, ev, ctxNow());
     fsm = r.next;
+    // ANTES dos effects: o drop (laneForY) tem que enxergar a mesma camada
+    // fantasma que o usuario esta vendo na tela.
+    atualizarFantasma(ev);
+    autoscrollVertical(ev);
     runEffects(r.effects);
     draw();
   }
 
-  // long-press em touch dispara contextmenu nativo -> cancelaria o gesto
-  canvas.addEventListener('contextmenu', (e) => e.preventDefault());
+  // long-press em touch dispara contextmenu nativo -> cancelaria o gesto.
+  // Botao DIREITO em clip de video: menu CapCut (Copiar/Cortar/Excluir/
+  // Compor/Editar>Congelar,Reverso,Espelhar) — user 2026-07-20.
+  canvas.addEventListener('contextmenu', (e) => {
+    e.preventDefault();
+    const p = evFrom(e);
+    const hit = hitTest(layoutNow(), p.x, p.y);
+    if (hit.type === 'clip-body') {
+      store.dispatch(act.selectClip(hit.clipId)); // menu age no clip clicado
+      draw();
+      showClipMenu(e.clientX, e.clientY, hit);
+    } else if (hit.type === 'overlay-body') {
+      store.dispatch(act.selectOverlay(hit.overlayId));
+      draw();
+      showOverlayMenu(e.clientX, e.clientY, hit);
+    } else if (hit.type === 'audio-body') {
+      store.dispatch(act.selectAudioClip(hit.audioId));
+      draw();
+      showAudioMenu(e.clientX, e.clientY, hit);
+    } else if (hit.type === 'track-empty' || hit.type === 'empty') {
+      // VAZIO da timeline: criar camadas extras (rows vazias pra arrastar
+      // faixas pra dentro — fluidez CapCut, user 2026-07-22)
+      buildMenu(e.clientX, e.clientY, [
+        { label: '🎬 Criar camada de vídeo', fn: () => store.dispatch(act.addExtraLane('video')) },
+        { label: '♪ Criar camada de áudio', fn: () => store.dispatch(act.addExtraLane('audio')) },
+      ]);
+    }
+  });
 
+  // menu da CAMADA (overlay) — mesma editabilidade que o clip
+  function showOverlayMenu(x, y, hit) {
+    const st = store.getState();
+    const ov = st.overlays.find(o => o.id === hit.overlayId);
+    buildMenu(x, y, [
+      { label: 'Copiar', hint: 'Ctrl C', fn: () => clip.copySel(store) },
+      { label: 'Cortar', hint: 'Ctrl X', fn: () => clip.cutSel(store) },
+      { label: 'Excluir', hint: '⌫', fn: () => store.dispatch(act.deleteOverlay(hit.overlayId)) },
+      { sep: true },
+      // som embutido da camada (user 14/08): permanece a menos que remova
+      ...(ov && ov.kind !== 'image' ? [
+        { label: ov.muted ? '🔊 Devolver o som' : '🔇 Remover o som', fn: () => store.dispatch(act.toggleOverlayMuted(hit.overlayId)) },
+      ] : []),
+      ...(ov?.kind === 'image' ? [
+        { label: '↺ Resetar giro', fn: () => store.dispatch(act.setOverlayTransform(hit.overlayId, { rotation: 0 })) },
+      ] : []),
+      { label: 'Trazer pra frente', fn: () => bumpLane(hit.overlayId, +1) },
+      { label: 'Mandar pra trás', fn: () => bumpLane(hit.overlayId, -1) },
+    ]);
+  }
+  function bumpLane(id, dir) {
+    const o = store.getState().overlays.find(x => x.id === id);
+    if (o) store.dispatch(act.setItemLane('overlay', id, (o.lane || 1) + dir));
+  }
+
+  /** Submenu "Aprimorar áudio" — UM lugar só, usado pela faixa de áudio E pela
+   *  cena de vídeo (user 2026-08-07: "ao clicar com o botão direito numa faixa
+   *  de vídeo não aparece as opções de ajustar o áudio").
+   *
+   *  ⚠️ Estas chamadas estavam com a assinatura ANTIGA de `setAudioFx` (id,
+   *  patch) depois que ela virou (alvo, id, patch): o menu abria, o usuário
+   *  clicava e NADA acontecia — nem erro. Duplicar a lista foi o que deixou o
+   *  erro sobreviver; agora existe uma cópia só.
+   *  @param {'audio'|'clip'} alvo */
+  function subMenuFx(alvo, id, item) {
+    const it = item || {};
+    const marca = (on) => on ? '✓ ' : '';
+    const todos = it.fx_ruido && it.fx_voz && it.fx_norm;
+    const põe = (patch) => store.dispatch(act.setAudioFx(alvo, id, patch));
+    return [{ label: '🎚 Aprimorar áudio', sub: [
+      { label: marca(todos) + 'Ativar todos', fn: () => põe(todos
+          ? { fx_ruido: false, fx_voz: false, fx_norm: false }
+          : { fx_ruido: true, fx_voz: true, fx_norm: true }) },
+      { label: marca(it.fx_ruido) + 'Reduzir ruído 💎', fn: () => põe({ fx_ruido: !it.fx_ruido }) },
+      { label: marca(it.fx_voz) + 'Aprimorar voz 💎', fn: () => põe({ fx_voz: !it.fx_voz }) },
+      { label: marca(it.fx_norm) + 'Normalizar volume 💎', fn: () => põe({ fx_norm: !it.fx_norm }) },
+    ] }];
+  }
+
+  // menu do ÁUDIO
+  function showAudioMenu(x, y, hit) {
+    const a = store.getState().audio_clips.find(k => k.id === hit.audioId) || {};
+    buildMenu(x, y, [
+      { label: 'Copiar', hint: 'Ctrl C', fn: () => clip.copySel(store) },
+      { label: 'Cortar', hint: 'Ctrl X', fn: () => clip.cutSel(store) },
+      { label: 'Dividir no cursor', hint: 'Ctrl B', fn: () => store.dispatch(act.splitAudioAt(player.getTime())) },
+      { sep: true },
+      // pedido do user (2026-07-29): efeitos e legenda pelo botão direito
+      ...subMenuFx('audio', hit.audioId, a),
+      { label: '💬 Gerar legenda deste áudio', fn: () => onGerarLegenda?.(hit.audioId) },
+      // voz × música com IA (2026-08-14): troca o clipe por 2 stems alinhados
+      { label: '🎙 Separar voz × música (IA)', fn: () => onSepararVoz?.(hit.audioId) },
+      // salvar o áudio da timeline nos favoritos da biblioteca (user 14/08):
+      // escolhe o LADO (música/efeito) e renomeia — aparece na aba Favoritos
+      { label: '⭐ Adicionar', sub: [
+        { label: '🎵 Em minhas músicas', fn: () => onFavoritarAudio?.(hit.audioId, 'music') },
+        { label: '🔊 Meus efeitos', fn: () => onFavoritarAudio?.(hit.audioId, 'sfx') },
+      ] },
+      { sep: true },
+      { label: 'Excluir', hint: '⌫', fn: () => store.dispatch(act.deleteAudioClip(hit.audioId)) },
+    ]);
+  }
+
+  function showClipMenu(x, y, hit) {
+    const atT = player.getTime();
+    const st = store.getState();
+    const cena = st.clips.find(c => c.id === hit.clipId);
+    // "A opção deve aparecer em vídeos que tenham áudio": cena muda, ou vídeo
+    // com o áudio já separado, não ganha o submenu — seria botão que não faz
+    // nada. Os valores atuais vêm do DONO da propriedade (cena ou composto),
+    // o mesmo resolvedor que o preview e o export usam.
+    const temSom = cenaTemAudio(st, cena);
+    const donoFx = {
+      fx_ruido: propriedadeDaCena(st, { clip: cena }, 'fx_ruido'),
+      fx_voz: propriedadeDaCena(st, { clip: cena }, 'fx_voz'),
+      fx_norm: propriedadeDaCena(st, { clip: cena }, 'fx_norm'),
+    };
+    const items = [
+      { label: 'Copiar', hint: 'Ctrl C', fn: () => clip.copySel(store) },
+      { label: 'Cortar', hint: 'Ctrl X', fn: () => clip.cutSel(store) },
+      { label: 'Copiar/colar atributos', sub: [
+        { label: 'Copiar atributos', fn: () => clip.copyAttrs(store) },
+        { label: 'Colar atributos', disabled: !clip.hasAttrs(), fn: () => clip.pasteAttrs(store) },
+      ] },
+      { label: 'Excluir', hint: '⌫', fn: () => store.dispatch(act.deleteClip(hit.clipId)) },
+      { sep: true },
+      { label: '⧉ Criar clipe composto', fn: () => store.dispatch(act.createCompound()) },
+      ...(hit.compoundId ? [{ label: '⧉ Desfazer clipe composto', fn: () => store.dispatch(act.ungroupCompound(hit.compoundId)) }] : []),
+      { label: 'Editar', sub: [
+        { label: '❄ Congelar', fn: () => store.dispatch(act.freezeFrame(hit.clipId, atT)) },
+        { label: '◀ Reverso', fn: () => toggleFx(hit.clipId, 'reversed') },
+        { label: '⇄ Espelhar', fn: () => toggleFx(hit.clipId, 'mirrored') },
+      ] },
+      ...(temSom ? subMenuFx('clip', hit.clipId, donoFx) : []),
+    ];
+    buildMenu(x, y, items);
+  }
+
+  function toggleFx(clipId, key) {
+    const c = store.getState().clips.find(k => k.id === clipId);
+    if (c) store.dispatch(act.setClipFx(clipId, { [key]: !c[key] }));
+  }
+
+  function buildMenu(x, y, items, parent) {
+    if (!parent) document.getElementById('beCtxMenu')?.remove();
+    const m = document.createElement('div');
+    m.className = 'be-ctx-menu';
+    if (!parent) m.id = 'beCtxMenu';
+    m.style.cssText = 'position:fixed;z-index:1000;background:#0b1526;border:1px solid #1e3a5f;' +
+      'border-radius:8px;padding:4px;box-shadow:0 10px 30px rgba(0,0,0,.6);min-width:190px;' +
+      'font:13px Syne,system-ui,sans-serif';
+    for (const it of items) {
+      if (it.sep) {
+        const s = document.createElement('div');
+        s.style.cssText = 'height:1px;background:#1e3a5f;margin:4px 6px;';
+        m.appendChild(s); continue;
+      }
+      const row = document.createElement('div');
+      row.style.cssText = 'display:flex;align-items:center;gap:12px;justify-content:space-between;' +
+        'padding:7px 10px;border-radius:6px;cursor:' + (it.disabled ? 'default' : 'pointer') +
+        ';color:' + (it.disabled ? '#5b6b82' : '#dfe9ff') + ';';
+      const left = document.createElement('span'); left.textContent = it.label; row.appendChild(left);
+      const right = document.createElement('span');
+      right.style.cssText = 'color:#5b7599;font-size:11px;';
+      right.textContent = it.sub ? '›' : (it.hint || '');
+      row.appendChild(right);
+      let subMenu = null;
+      if (!it.disabled) {
+        row.onmouseenter = () => {
+          row.style.background = 'rgba(0,170,255,.15)';
+          m.querySelectorAll(':scope > .be-ctx-menu').forEach(el => el.remove());
+          if (it.sub) {
+            const r = row.getBoundingClientRect();
+            subMenu = buildMenu(r.right - 4, r.top - 4, it.sub, m);
+            m.appendChild(subMenu);
+            // reposiciona o submenu se sair da tela (bug: 'Editar' abria pra
+            // fora do monitor embaixo/à direita e não dava pra clicar)
+            requestAnimationFrame(() => {
+              const sr = subMenu.getBoundingClientRect();
+              if (sr.right > innerWidth) subMenu.style.left = Math.max(4, r.left - sr.width + 4) + 'px';
+              if (sr.bottom > innerHeight) subMenu.style.top = Math.max(4, innerHeight - sr.height - 4) + 'px';
+            });
+          }
+        };
+        row.onmouseleave = () => { row.style.background = ''; };
+        if (it.fn) row.onclick = () => { it.fn(); closeMenu(); };
+      }
+      m.appendChild(row);
+    }
+    m.style.left = x + 'px'; m.style.top = y + 'px';
+    if (!parent) {
+      document.body.appendChild(m);
+      // reposiciona se sair da tela
+      requestAnimationFrame(() => {
+        const r = m.getBoundingClientRect();
+        if (r.right > innerWidth) m.style.left = (x - r.width) + 'px';
+        if (r.bottom > innerHeight) m.style.top = Math.max(4, innerHeight - r.height - 4) + 'px';
+      });
+      setTimeout(() => {
+        const close = (ev) => { if (!m.contains(ev.target)) closeMenu(); };
+        window.addEventListener('pointerdown', close, true);
+        m._close = () => window.removeEventListener('pointerdown', close, true);
+      }, 0);
+    }
+    return m;
+  }
+  function closeMenu() {
+    const m = document.getElementById('beCtxMenu');
+    if (m) { m._close?.(); m.remove(); }
+  }
+
+  // deteccao de DUPLO-clique propria: e.detail no pointerdown e nao-confiavel
+  // (varia entre browsers, as vezes fica 0). Rastreia tempo+posicao do down.
+  let lastDownT = 0, lastDownX = -999, lastDownY = -999;
   canvas.addEventListener('pointerdown', (e) => {
     e.preventDefault();
     canvas.setPointerCapture(e.pointerId);
@@ -149,12 +507,15 @@ export function createTimelineController({ canvas, store, player, onEditText, on
       step({ kind: 'second-down', x: p.x, y: p.y, d: dist(p1, p2), cx: (p1.x + p2.x) / 2 });
       return;
     }
+    const now = performance.now();
+    const isDouble = (now - lastDownT < 350) && Math.hypot(p.x - lastDownX, p.y - lastDownY) < 12;
+    lastDownT = now; lastDownX = p.x; lastDownY = p.y;
     const hit = hitTest(layoutNow(), p.x, p.y, { touch: p.touch });
     clearTimeout(longPressTimer);
     if (p.touch) {
       longPressTimer = setTimeout(() => step({ kind: 'longpress' }), LONG_PRESS_MS);
     }
-    step({ kind: 'down', ...p, hit, button: e.button, shiftKey: e.shiftKey, ctrlKey: e.ctrlKey || e.metaKey });
+    step({ kind: 'down', ...p, hit, button: e.button, detail: e.detail, double: isDouble, shiftKey: e.shiftKey, ctrlKey: e.ctrlKey || e.metaKey });
   });
 
   canvas.addEventListener('pointermove', (e) => {
@@ -164,7 +525,7 @@ export function createTimelineController({ canvas, store, player, onEditText, on
         const p = evFrom(e);
         const hit = hitTest(layoutNow(), p.x, p.y);
         canvas.style.cursor =
-          hit.type === 'trim-in' || hit.type === 'trim-out' ? 'ew-resize' :
+          hit.type === 'trim-in' || hit.type === 'trim-out' || hit.type === 'overlay-kf' ? 'ew-resize' :
           hit.type === 'clip-body' || hit.type === 'text-block' ? 'grab' :
           hit.type === 'ruler' ? 'col-resize' : 'default';
       }
@@ -199,6 +560,9 @@ export function createTimelineController({ canvas, store, player, onEditText, on
   canvas.addEventListener('wheel', (e) => {
     e.preventDefault();
     const p = evFrom(e);
+    // Alt+roda = ROLAR as faixas (a roda sozinha continua sendo zoom, como o
+    // usuario aprovou). Sem isto, camada 9 existiria mas ficaria inalcancavel.
+    if (e.altKey) { rolarY(e.deltaY); return; }
     step({ kind: 'wheel', ...p, deltaY: e.deltaY, deltaX: e.deltaX, ctrlKey: e.ctrlKey || e.metaKey });
   }, { passive: false });
 
@@ -231,6 +595,9 @@ export function createTimelineController({ canvas, store, player, onEditText, on
       return;
     }
     if (widthChanged) vp = { ...vp, scrollX: clampScroll(vp.scrollX, vp.pxPerSec) };
+    // redimensionar a timeline (divisor) pode deixar a rolagem alem do fim
+    const maxY = layoutNow().maxScrollY;
+    if ((vp.scrollY || 0) > maxY) { vp = { ...vp, scrollY: maxY }; onLanesChanged?.(); }
     draw();
   });
   ro.observe(canvas.parentElement || canvas);
@@ -244,6 +611,17 @@ export function createTimelineController({ canvas, store, player, onEditText, on
   return {
     draw,
     getViewport: () => vp,
+    getLayout: () => layoutNow(),  // E2E: coords reais (auto-altura muda posições)
+    // x do canvas -> tempo. Usado pelo drop de transição: sem isto o alvo seria
+    // a posição da agulha, não o lugar onde o usuário soltou o card.
+    tempoDoX: (x) => xToTime(vp, x),
+    setJuncaoSelecionada(i) { juncaoSel = i; draw(); },
+    setRecGhost(g) { recGhost = g; draw(); },
+    // rolagem vertical das faixas (barra e roda ficam na shell)
+    rolarY,
+    getScrollY: () => vp.scrollY || 0,
+    getMaxScrollY: () => layoutNow().maxScrollY,
+    setScrollY(v) { rolarY(Math.max(0, v) - (vp.scrollY || 0)); },
     zoomFit() {
       if (vp.width < 50) { pendingFit = true; return; }
       doFit();

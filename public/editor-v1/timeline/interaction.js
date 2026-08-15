@@ -23,7 +23,7 @@
 //   down / move / up / cancel / longpress / second-down / pinch-move /
 //   esc / dblclick / wheel
 
-import { xToTime, zoomAt, METRICS } from './layout.js';
+import { xToTime, timeToX, zoomAt, METRICS } from './layout.js';
 import { snapTime, defaultSnapPoints } from './snap.js';
 import { MIN_CLIP_DURATION } from '../core/schema.js';
 import * as act from '../core/actions.js';
@@ -51,7 +51,7 @@ export function transition(fsm, ev, ctx) {
     if (fsm.name !== 'idle') fx.push({ do: 'end-gesture' });
     // Gestos que live-dispatcham precisam de undo do coalescido. Trimming NAO
     // dispatcha durante o gesto (preview puro) — descartar o preview basta.
-    if (fsm.name === 'dragging-clip' || fsm.name === 'dragging-text') {
+    if (fsm.name === 'dragging-clip' || fsm.name === 'dragging-text' || fsm.name === 'dragging-kf') {
       fx.push({ do: 'abort-gesture' }); // adapter faz store.undo() do gesto coalescido
     }
     if (fsm.name === 'trimming' || fsm.name === 'trimming-audio' || fsm.name === 'dragging-audio' ||
@@ -66,11 +66,22 @@ export function transition(fsm, ev, ctx) {
 
     case 'idle': {
       if (ev.kind === 'wheel') {
-        if (ev.ctrlKey) {
-          const z = zoomAt(ctx.layout.vp, ev.deltaY < 0 ? 1.2 : 1 / 1.2, ev.x);
-          fx.push({ do: 'zoom', ...z });
+        // Rolar = ZOOM ancorado na AGULHA (pedido do user 2026-07-29). Antes
+        // ancorava no cursor, e o ponto de edição fugia da tela justamente
+        // quando você aproximava pra trabalhar nele. Ancorando no playhead,
+        // o que está sob a agulha fica parado e a timeline abre em volta.
+        // Shift ou scroll horizontal de trackpad = rolagem.
+        const horizontal = Math.abs(ev.deltaX) > Math.abs(ev.deltaY);
+        if (ev.shiftKey || horizontal) {
+          fx.push({ do: 'scroll', scrollX: ctx.layout.vp.scrollX + (horizontal ? ev.deltaX : ev.deltaY) });
         } else {
-          fx.push({ do: 'scroll', scrollX: ctx.layout.vp.scrollX + (ev.deltaY + ev.deltaX) });
+          // x da agulha na tela; se ela estiver fora da área visível, ancora no
+          // cursor (senão o zoom "puxaria" a vista pra um ponto que não se vê)
+          const xAgulha = timeToX(ctx.layout.vp, ctx.playhead || 0);
+          const visivel = xAgulha >= METRICS.PAD_LEFT && xAgulha <= ctx.layout.vp.width;
+          const ancora = visivel ? xAgulha : ev.x;
+          const z = zoomAt(ctx.layout.vp, ev.deltaY < 0 ? 1.18 : 1 / 1.18, ancora);
+          fx.push({ do: 'zoom', ...z });
         }
         return { next: fsm, effects: fx };
       }
@@ -84,20 +95,36 @@ export function transition(fsm, ev, ctx) {
       if (ev.kind !== 'down') return { next: fsm, effects: fx };
 
       const hit = ev.hit;
+      // marcador de transição: seleciona a emenda e abre os parâmetros
+      if (hit.type === 'transition') {
+        fx.push({ do: 'select-transition', between: hit.between });
+        return { next: fsm, effects: fx };
+      }
+      // qualquer outro clique FECHA os parâmetros (pedido do user: "se eu
+      // clico fora, ela fica menos visível e fecha a janela de configuração")
+      fx.push({ do: 'select-transition', between: null });
       if (hit.type === 'ruler') {
         // Regua: scrub imediato (mouse E touch — CapCut)
         fx.push({ do: 'seek', t: clampT(xToTime(ctx.layout.vp, ev.x), ctx) });
         return { next: { name: 'scrubbing' }, effects: fx };
       }
       if (hit.type === 'track-empty' || hit.type === 'empty') {
-        fx.push({ do: 'clear-selection' });
         if (ev.touch) {
           // Touch em area vazia: PAN (CapCut mobile — navega a timeline)
+          fx.push({ do: 'clear-selection' });
           return { next: { name: 'panning', x0: ev.x, scrollX0: ctx.layout.vp.scrollX }, effects: fx };
         }
-        // Mouse: scrub (CapCut desktop)
+        if (ev.double || (ev.detail || 1) >= 2) {
+          // DUPLO clique no vazio segurando: a agulha vai pro mouse e SEGUE
+          // enquanto o botao estiver pressionado (user 2026-07-20)
+          fx.push({ do: 'seek', t: clampT(xToTime(ctx.layout.vp, ev.x), ctx) });
+          return { next: { name: 'scrubbing' }, effects: fx };
+        }
+        // Mouse no vazio: CLIQUE (1x) = a agulha vai pro mouse na hora
+        // (decidido no up); ARRASTO = seletor retangular (marquee).
+        // Seek IMEDIATO no down tambem, pra resposta instantanea.
         fx.push({ do: 'seek', t: clampT(xToTime(ctx.layout.vp, ev.x), ctx) });
-        return { next: { name: 'scrubbing' }, effects: fx };
+        return { next: { name: 'armed-empty', x0: ev.x, y0: ev.y }, effects: fx };
       }
       if (hit.type === 'ghost') {
         // Click em ghost reativa o clip (decidido no up — armed)
@@ -107,6 +134,18 @@ export function transition(fsm, ev, ctx) {
         const c = ctx.layout.clips.find(k => k.clipId === hit.clipId);
         if (!c) return { next: fsm, effects: fx };
         fx.push({ do: 'set-cursor', cursor: 'ew-resize' });
+        // cena CONGELADA: arrastar a borda estica/encolhe a duração (freeze_dur),
+        // não corta o arquivo (é 1 frame). Estado dedicado.
+        if (c.frozen) {
+          return {
+            next: {
+              name: 'resizing-frozen', clipId: hit.clipId,
+              edge: hit.type === 'trim-in' ? 'in' : 'out',
+              tStart: c.tStart, tEnd: c.tEnd, previewDur: c.tEnd - c.tStart,
+            },
+            effects: fx,
+          };
+        }
         const edge = hit.type === 'trim-in' ? 'in' : 'out';
         return {
           next: {
@@ -126,10 +165,35 @@ export function transition(fsm, ev, ctx) {
           fx.push({ do: 'toggle-multi', itemType: 'clip', id: hit.clipId });
           return { next: fsm, effects: fx };
         }
+        // se o item JA esta na multi-selecao, mantem (drag = mover o grupo)
+        if (inMulti(ctx, hitMultiKey(hit))) {
+          return { next: { name: 'armed', hit, x0: ev.x, y0: ev.y, touch: !!ev.touch, gestureId: null, group: true }, effects: fx };
+        }
         return { next: { name: 'armed', hit, x0: ev.x, y0: ev.y, touch: !!ev.touch, gestureId: null }, effects: fx };
       }
       if (hit.type === 'text-block') {
+        if (ev.ctrlKey) {
+          fx.push({ do: 'toggle-multi', itemType: 'text', id: hit.textId });
+          return { next: fsm, effects: fx };
+        }
+        if (inMulti(ctx, hitMultiKey(hit))) {
+          return { next: { name: 'armed', hit, x0: ev.x, y0: ev.y, touch: !!ev.touch, gestureId: null, group: true }, effects: fx };
+        }
         return { next: { name: 'armed', hit, x0: ev.x, y0: ev.y, touch: !!ev.touch, gestureId: null }, effects: fx };
+      }
+      if (hit.type === 'overlay-kf') {
+        // DIAMANTE de quadro-chave (user 14/08): arrasto direto (como os trim
+        // handles). O kf é identificado pelo TEMPO de origem — o índice muda
+        // quando a lista reordena no meio do arrasto.
+        fx.push({ do: 'set-cursor', cursor: 'ew-resize' });
+        return {
+          next: {
+            name: 'dragging-kf', overlayId: hit.overlayId,
+            curT: hit.kfT, itemStart: hit.itemStart,
+            moved: false, gestureId: newGestureId(),
+          },
+          effects: fx,
+        };
       }
       if (hit.type === 'overlay-trim-in' || hit.type === 'overlay-trim-out') {
         const o = ctx.layout.overlayItems.find(k => k.overlayId === hit.overlayId);
@@ -146,6 +210,13 @@ export function transition(fsm, ev, ctx) {
         };
       }
       if (hit.type === 'overlay-body') {
+        if (ev.ctrlKey) {
+          fx.push({ do: 'toggle-multi', itemType: 'overlay', id: hit.overlayId });
+          return { next: fsm, effects: fx };
+        }
+        if (inMulti(ctx, hitMultiKey(hit))) {
+          return { next: { name: 'armed', hit, x0: ev.x, y0: ev.y, touch: !!ev.touch, gestureId: null, group: true }, effects: fx };
+        }
         fx.push({ do: 'select-overlay', overlayId: hit.overlayId });
         return { next: { name: 'armed', hit, x0: ev.x, y0: ev.y, touch: !!ev.touch, gestureId: null }, effects: fx };
       }
@@ -165,8 +236,45 @@ export function transition(fsm, ev, ctx) {
         };
       }
       if (hit.type === 'audio-body') {
+        if (ev.ctrlKey) {
+          fx.push({ do: 'toggle-multi', itemType: 'audio', id: hit.audioId });
+          return { next: fsm, effects: fx };
+        }
+        if (inMulti(ctx, hitMultiKey(hit))) {
+          return { next: { name: 'armed', hit, x0: ev.x, y0: ev.y, touch: !!ev.touch, gestureId: null, group: true }, effects: fx };
+        }
         fx.push({ do: 'select-audio-clip', audioId: hit.audioId });
         return { next: { name: 'armed', hit, x0: ev.x, y0: ev.y, touch: !!ev.touch, gestureId: null }, effects: fx };
+      }
+      return { next: fsm, effects: fx };
+    }
+
+    case 'armed-empty': {
+      // mouse desceu no vazio: clique = seek+limpa; arrasto = marquee
+      if (ev.kind === 'move') {
+        const dist = Math.hypot(ev.x - fsm.x0, ev.y - fsm.y0);
+        if (dist < DRAG_THRESHOLD_MOUSE) return { next: fsm, effects: fx };
+        return { next: { name: 'marquee', x0: fsm.x0, y0: fsm.y0, x1: ev.x, y1: ev.y }, effects: fx };
+      }
+      if (ev.kind === 'up') {
+        fx.push({ do: 'clear-selection' });
+        fx.push({ do: 'clear-multi' });
+        fx.push({ do: 'seek', t: clampT(xToTime(ctx.layout.vp, fsm.x0), ctx) });
+        return { next: idle(), effects: fx };
+      }
+      return { next: fsm, effects: fx };
+    }
+
+    case 'marquee': {
+      // seletor retangular (área de trabalho do Windows): seleciona ao vivo
+      if (ev.kind === 'move') {
+        const next = { ...fsm, x1: ev.x, y1: ev.y };
+        fx.push({ do: 'marquee-live', rect: rectOf(next) });
+        return { next, effects: fx };
+      }
+      if (ev.kind === 'up') {
+        fx.push({ do: 'marquee-apply', rect: rectOf(fsm) });
+        return { next: idle(), effects: fx };
       }
       return { next: fsm, effects: fx };
     }
@@ -188,6 +296,11 @@ export function transition(fsm, ev, ctx) {
         const dist = Math.hypot(ev.x - fsm.x0, ev.y - fsm.y0);
         const threshold = fsm.touch ? DRAG_THRESHOLD_TOUCH : DRAG_THRESHOLD_MOUSE;
         if (dist < threshold) return { next: fsm, effects: fx };
+        // GROUP DRAG: item ja na multi-selecao -> arrasta o grupo inteiro junto
+        if (fsm.group) {
+          const t0 = xToTime(ctx.layout.vp, fsm.x0);
+          return { next: { name: 'dragging-multi', lastT: t0, gestureId: newGestureId() }, effects: fx };
+        }
         // passou o threshold:
         if (fsm.touch) {
           // touch antes do long-press = pan da timeline (scroll)
@@ -258,24 +371,30 @@ export function transition(fsm, ev, ctx) {
 
     case 'dragging-clip': {
       if (ev.kind === 'move') {
-        // arrastar pra CIMA da track principal = criar camada overlay (CapCut)
-        if (ev.y != null && ctx.layout.yVideo - ev.y > 30) {
-          const atT = Math.max(0, xToTime(ctx.layout.vp, ev.x));
-          fx.push({ do: 'end-gesture' });
-          fx.push({ do: 'convert-to-overlay', clipId: fsm.clipId, atT });
-          fx.push({ do: 'set-cursor', cursor: 'default' });
-          return { next: idle(), effects: fx };
+        // arrastar pra CIMA da track principal = criar camada (CapCut).
+        // FLUIDO: NÃO converte no meio do arrasto — mostra um FANTASMA da nova
+        // camada seguindo o cursor; a conversão acontece só ao SOLTAR (user
+        // 2026-07-20: "quero ver a faixa sendo criada na hora que arrasto").
+        const lifting = ev.y != null && ctx.layout.yVideo - ev.y > 24;
+        if (lifting) {
+          fx.push({ do: 'set-cursor', cursor: 'grabbing' });
+          return { next: { ...fsm, lifting: true, liftX: ev.x, liftY: ev.y }, effects: fx };
         }
-        // live reorder: calcula indice alvo e dispatcha MOVE_CLIP coalescido
+        // de volta na track principal: reordena (MOVE_CLIP coalescido) + ghost
         const target = dropIndexAt(ctx.layout, ev.x, fsm.clipId);
         if (target != null) {
           fx.push({ do: 'dispatch', action: { ...act.moveClip(fsm.clipId, target.arrayIndex), gestureId: fsm.gestureId } });
         }
         fx.push({ do: 'autoscroll-edge', x: ev.x });
-        return { next: fsm, effects: fx };
+        return { next: { ...fsm, lifting: false, liftX: ev.x, liftY: ev.y }, effects: fx };
       }
       if (ev.kind === 'up') {
         fx.push({ do: 'end-gesture' });
+        if (fsm.lifting) {
+          // solta em cima = cria a camada na posição/altura do drop
+          const atT = Math.max(0, xToTime(ctx.layout.vp, fsm.liftX ?? ev.x));
+          fx.push({ do: 'convert-to-overlay', clipId: fsm.clipId, atT, y: fsm.liftY ?? ev.y });
+        }
         fx.push({ do: 'set-cursor', cursor: 'default' });
         return { next: idle(), effects: fx };
       }
@@ -299,7 +418,8 @@ export function transition(fsm, ev, ctx) {
         if (fsm.edge === 'in') {
           sourceTime = Math.min(Math.max(0, sourceTime), fsm.sourceOut0 - MIN_CLIP_DURATION);
         } else {
-          const maxOut = ctx.videoDuration || Infinity;
+          // takes extras tem duracao propria (clipMaxOut); principal usa a do video
+          const maxOut = ctx.clipMaxOut?.[fsm.clipId] ?? (ctx.videoDuration || Infinity);
           sourceTime = Math.max(fsm.sourceIn0 + MIN_CLIP_DURATION, Math.min(sourceTime, maxOut));
         }
         fx.push({ do: 'show-snap', active: snapped.snapped, t: snapped.point });
@@ -312,6 +432,38 @@ export function transition(fsm, ev, ctx) {
           fx.push({ do: 'dispatch', action: act.trimClip(fsm.clipId, fsm.edge, fsm.previewSource) });
         }
         fx.push({ do: 'show-snap', active: false });
+        fx.push({ do: 'set-cursor', cursor: 'default' });
+        return { next: idle(), effects: fx };
+      }
+      return { next: fsm, effects: fx };
+    }
+
+    case 'dragging-multi': {
+      // move TODA a multi-selecao junto (delta incremental coalescido = 1 undo)
+      if (ev.kind === 'move') {
+        const t = xToTime(ctx.layout.vp, ev.x);
+        fx.push({ do: 'dispatch', action: { ...act.moveMulti(t - fsm.lastT), gestureId: fsm.gestureId } });
+        fx.push({ do: 'autoscroll-edge', x: ev.x });
+        return { next: { ...fsm, lastT: t }, effects: fx };
+      }
+      if (ev.kind === 'up') {
+        fx.push({ do: 'end-gesture' });
+        return { next: idle(), effects: fx };
+      }
+      return { next: fsm, effects: fx };
+    }
+
+    case 'resizing-frozen': {
+      if (ev.kind === 'move') {
+        const vpT = xToTime(ctx.layout.vp, ev.x);
+        let dur;
+        if (fsm.edge === 'out') dur = vpT - fsm.tStart;          // borda direita
+        else dur = fsm.tEnd - vpT;                                // borda esquerda
+        dur = Math.max(MIN_CLIP_DURATION, Math.min(60, dur));
+        return { next: { ...fsm, previewDur: dur }, effects: fx };
+      }
+      if (ev.kind === 'up') {
+        fx.push({ do: 'dispatch', action: act.setFreezeDur(fsm.clipId, fsm.previewDur) });
         fx.push({ do: 'set-cursor', cursor: 'default' });
         return { next: idle(), effects: fx };
       }
@@ -365,10 +517,13 @@ export function transition(fsm, ev, ctx) {
           : { t, snapped: false };
         const previewStart = Math.max(0, snapped.t);
         fx.push({ do: 'show-snap', active: snapped.snapped, t: snapped.point });
-        return { next: { ...fsm, previewStart }, effects: fx };
+        return { next: { ...fsm, previewStart, lastY: ev.y ?? fsm.lastY }, effects: fx };
       }
       if (ev.kind === 'up') {
-        fx.push({ do: 'dispatch', action: act.moveAudio(fsm.audioId, fsm.previewStart) });
+        // igual ao video/texto: tempo e faixa num dispatch so, senao o repelir
+        // olha a faixa que o audio esta DEIXANDO
+        fx.push({ do: 'commit-move', itemType: 'audio', id: fsm.audioId,
+                  start: fsm.previewStart, y: ev.y ?? fsm.lastY });
         fx.push({ do: 'show-snap', active: false });
         return { next: idle(), effects: fx };
       }
@@ -409,6 +564,32 @@ export function transition(fsm, ev, ctx) {
       return { next: fsm, effects: fx };
     }
 
+    case 'dragging-kf': {
+      // arrasta o diamante DENTRO da faixa; live-dispatch com gestureId = 1
+      // undo por gesto. curT acompanha o kf (é a chave de identificação).
+      if (ev.kind === 'move') {
+        const item = ctx.layout.overlayItems.find(k => k.overlayId === fsm.overlayId);
+        const base = item ? item.tStart : fsm.itemStart;
+        const alvo = Math.max(0, xToTime(ctx.layout.vp, ev.x) - base);
+        if (Math.abs(alvo - fsm.curT) > 1e-4) {
+          fx.push({ do: 'dispatch', action: { ...act.moveOverlayKf(fsm.overlayId, fsm.curT, alvo), gestureId: fsm.gestureId } });
+          return { next: { ...fsm, curT: alvo, moved: true }, effects: fx };
+        }
+        return { next: fsm, effects: fx };
+      }
+      if (ev.kind === 'up') {
+        fx.push({ do: 'end-gesture' });
+        // clique seco no diamante (sem mover) = leva a agulha pra marca
+        if (!fsm.moved) {
+          const item = ctx.layout.overlayItems.find(k => k.overlayId === fsm.overlayId);
+          fx.push({ do: 'seek', t: (item ? item.tStart : fsm.itemStart) + fsm.curT });
+        }
+        fx.push({ do: 'set-cursor', cursor: 'default' });
+        return { next: idle(), effects: fx };
+      }
+      return { next: fsm, effects: fx };
+    }
+
     case 'dragging-overlay': {
       if (ev.kind === 'move') {
         const t = xToTime(ctx.layout.vp, ev.x) - fsm.grabOffset;
@@ -417,10 +598,13 @@ export function transition(fsm, ev, ctx) {
           : { t, snapped: false };
         const previewStart = Math.max(0, snapped.t);
         fx.push({ do: 'show-snap', active: snapped.snapped, t: snapped.point });
-        return { next: { ...fsm, previewStart }, effects: fx };
+        return { next: { ...fsm, previewStart, lastY: ev.y ?? fsm.lastY }, effects: fx };
       }
       if (ev.kind === 'up') {
-        fx.push({ do: 'dispatch', action: act.moveOverlay(fsm.overlayId, fsm.previewStart) });
+        // UM efeito so: tempo e camada tem que ser decididos juntos. Separados,
+        // o repelir olhava a camada de ORIGEM e o item pousava no tempo errado.
+        fx.push({ do: 'commit-move', itemType: 'overlay', id: fsm.overlayId,
+                  start: fsm.previewStart, y: ev.y ?? fsm.lastY });
         fx.push({ do: 'show-snap', active: false });
         return { next: idle(), effects: fx };
       }
@@ -438,10 +622,15 @@ export function transition(fsm, ev, ctx) {
           do: 'dispatch',
           action: { ...act.updateText(fsm.textId, { start_sec: start, end_sec: start + fsm.duration }), gestureId: fsm.gestureId },
         });
-        return { next: fsm, effects: fx };
+        return { next: { ...fsm, lastY: ev.y ?? fsm.lastY, lastStart: start }, effects: fx };
       }
       if (ev.kind === 'up') {
         fx.push({ do: 'end-gesture' });
+        // mesmo fecho do overlay: tempo + camada num dispatch so
+        if (fsm.lastStart != null) {
+          fx.push({ do: 'commit-move', itemType: 'text', id: fsm.textId,
+                    start: fsm.lastStart, y: ev.y ?? fsm.lastY });
+        }
         return { next: idle(), effects: fx };
       }
       return { next: fsm, effects: fx };
@@ -491,8 +680,29 @@ function pinchStart(ev, ctx) {
   return { name: 'pinching', d0: ev.d || 1, pxPerSec0: ctx.layout.vp.pxPerSec, cx: ev.cx ?? ev.x };
 }
 
+// chave multi-selecao de um hit (bate com ctx.multiIds do controller)
+function hitMultiKey(hit) {
+  if (hit.type === 'clip-body') return 'clip:' + hit.clipId;
+  if (hit.type === 'audio-body') return 'audio:' + hit.audioId;
+  if (hit.type === 'text-block') return 'text:' + hit.textId;
+  if (hit.type === 'overlay-body') return 'overlay:' + hit.overlayId;
+  return null;
+}
+function inMulti(ctx, key) {
+  return !!(key && ctx.multiIds && ctx.multiIds.size > 1 && ctx.multiIds.has(key));
+}
+
+function rectOf(m) {
+  return {
+    x: Math.min(m.x0, m.x1), y: Math.min(m.y0, m.y1),
+    w: Math.abs(m.x1 - m.x0), h: Math.abs(m.y1 - m.y0),
+  };
+}
+
 function clampT(t, ctx) {
-  const total = ctx.layout.total;
+  // agulha LIVRE por toda a timeline: o limite é a extensão REAL (main +
+  // áudios + camadas), não só a faixa principal (user 2026-07-22).
+  const total = Math.max(ctx.layout.total, ctx.layout.extent || 0);
   return Math.min(Math.max(0, t), Math.max(0, total));
 }
 

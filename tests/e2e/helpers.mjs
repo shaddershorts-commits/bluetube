@@ -110,6 +110,10 @@ export async function uploadVideoViaDrop(page, videoB64) {
 export async function bootWithVideo(page, opts = {}) {
   const saved = await mockBackend(page, opts);
   await page.goto('/blueEditor-app');
+  // v1.9: o editor abre na TELA INICIAL (grid de projetos) — entra em
+  // "Criar projeto" antes de esperar o dropzone
+  const home = page.locator('#beHomeCreate');
+  try { await home.waitFor({ state: 'visible', timeout: 8000 }); await home.click(); } catch {}
   await expect(page.locator('#beDrop')).toBeVisible({ timeout: 15000 });
   const vid = await makeSyntheticVideo(page, opts.seconds || 2);
   await routeUploadedVideo(page, vid);
@@ -122,33 +126,23 @@ export function getState(page) {
   return page.evaluate(() => window.__BE__.getState());
 }
 
-/** Geometria de um clip no canvas (coords da PAGINA, prontas pro mouse). */
+/** Geometria de um clip no canvas (coords da PAGINA, prontas pro mouse).
+ *  Lê o layout REAL do app (imune a auto-altura / lanes / escala). */
 export async function clipRect(page, index = 0) {
   return await page.evaluate((idx) => {
     const canvas = document.getElementById('beTimeline');
     const box = canvas.getBoundingClientRect();
-    const state = window.__BE__.getState();
-    const vp = window.__BE__.timeline.getViewport();
-    // reproduz computeLayout basico: PAD_LEFT=16, RULER_H=26, GAP=8
-    const segs = [];
-    let t = 0;
-    for (const c of state.clips.filter(c => c.active !== false)) {
-      const dur = c.source_out - c.source_in;
-      segs.push({ id: c.id, tStart: t, tEnd: t + dur });
-      t += dur;
-    }
-    const seg = segs[idx];
-    if (!seg) return null;
-    const x = 16 + seg.tStart * vp.pxPerSec - vp.scrollX;
-    const w = (seg.tEnd - seg.tStart) * vp.pxPerSec;
+    const layout = window.__BE__.timeline.getLayout();
+    const c = layout.clips[idx];
+    if (!c) return null;
     return {
-      clipId: seg.id,
-      x: box.left + x,
-      y: box.top + 26 + 8,
-      w,
-      h: 56,
-      cx: box.left + x + w / 2,
-      cy: box.top + 26 + 8 + 28,
+      clipId: c.clipId,
+      x: box.left + c.x,
+      y: box.top + c.y,
+      w: c.w,
+      h: c.h,
+      cx: box.left + c.x + c.w / 2,
+      cy: box.top + c.y + c.h / 2,
     };
   }, index);
 }

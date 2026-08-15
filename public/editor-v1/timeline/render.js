@@ -3,7 +3,7 @@
 // transport, fsm). Nunca mutacao incremental. Camadas pesadas (thumbnails,
 // waveform) vem cacheadas dos modulos proprios como bitmaps.
 
-import { METRICS, rulerTicks, timeToX } from './layout.js';
+import { METRICS, rulerTicks, timeToX, laneForY } from './layout.js';
 
 const COLORS = {
   bg: '#04101f',
@@ -26,6 +26,25 @@ const COLORS = {
   audioBorder: 'rgba(34,197,94,.5)',
 };
 
+// cache de <img> das camadas de imagem (thumbnail na timeline). Só pra
+// DISPLAY (canvas pode ficar "tainted" — nunca lemos os pixels de volta).
+const _imgCache = new Map(); // url -> { img, loaded }
+let _imgRedraw = null;
+export function setImageRedraw(fn) { _imgRedraw = fn; }
+function imageThumb(url) {
+  if (!url) return null;
+  let e = _imgCache.get(url);
+  if (!e) {
+    const img = new Image();
+    e = { img, loaded: false };
+    img.onload = () => { e.loaded = true; _imgRedraw?.(); };
+    img.onerror = () => {};
+    img.src = url;
+    _imgCache.set(url, e);
+  }
+  return e.loaded ? e.img : null;
+}
+
 export function createRenderer(canvas) {
   const ctx = canvas.getContext('2d');
   let raf = 0;
@@ -46,20 +65,12 @@ export function createRenderer(canvas) {
   return { draw, destroy };
 }
 
-function paint(ctx, canvas, { layout, playhead, fsm, snapIndicator, thumbs, wave, videoWave, dpr }) {
-  const W = layout.vp.width, H = Math.max(layout.contentH, layout.vp.height);
-  // resolucao fisica (retina)
-  const scale = dpr || 1;
-  if (canvas.width !== Math.round(W * scale) || canvas.height !== Math.round(H * scale)) {
-    canvas.width = Math.round(W * scale);
-    canvas.height = Math.round(H * scale);
-  }
-  ctx.setTransform(scale, 0, 0, scale, 0, 0);
-  ctx.clearRect(0, 0, W, H);
+/** Regua fixa no topo: fundo opaco + ticks. Fica por cima porque as faixas
+ *  rolam por baixo dela (antes da rolagem ela podia ser desenhada primeiro). */
+function desenharRegua(ctx, layout, W) {
+  ctx.save();
   ctx.fillStyle = COLORS.bg;
-  ctx.fillRect(0, 0, W, H);
-
-  // ── regua ──
+  ctx.fillRect(0, 0, W, METRICS.RULER_H);
   ctx.font = '10px "JetBrains Mono", monospace';
   ctx.textBaseline = 'top';
   for (const tick of rulerTicks(layout)) {
@@ -74,6 +85,42 @@ function paint(ctx, canvas, { layout, playhead, fsm, snapIndicator, thumbs, wave
       line(ctx, tick.x, METRICS.RULER_H - 5, tick.x, METRICS.RULER_H);
     }
   }
+  ctx.restore();
+}
+
+function paint(ctx, canvas, { layout, playhead, fsm, snapIndicator, recGhost, thumbs, wave, videoWave, dpr }) {
+  // A altura do BITMAP tem que ser a altura do ELEMENTO. Quando o conteudo
+  // passava disso, o canvas era desenhado mais alto e o navegador ESPREMIA a
+  // imagem pra caber — tudo aparecia achatado e o clique caia deslocado do que
+  // se via (era por isso que a faixa de audio nao respondia com a timeline
+  // baixa). O que nao cabe agora sai pela rolagem (vp.scrollY), nao pelo esticao.
+  const W = layout.vp.width, H = Math.max(1, layout.vp.height || 0);
+  // resolucao fisica (retina)
+  const scale = dpr || 1;
+  if (canvas.width !== Math.round(W * scale) || canvas.height !== Math.round(H * scale)) {
+    canvas.width = Math.round(W * scale);
+    canvas.height = Math.round(H * scale);
+  }
+  ctx.setTransform(scale, 0, 0, scale, 0, 0);
+  ctx.clearRect(0, 0, W, H);
+  ctx.fillStyle = COLORS.bg;
+  ctx.fillRect(0, 0, W, H);
+
+  ctx.font = '10px "JetBrains Mono", monospace';
+  ctx.textBaseline = 'top';
+  // a regua e desenhada DEPOIS das faixas (ver desenharRegua mais abaixo): com
+  // rolagem vertical as faixas passam por baixo dela e a cobririam.
+
+  // ── rows de camada (fundos sutis; topo = frente no video) ──
+  for (const r of layout.laneRows || []) {
+    ctx.fillStyle = 'rgba(120,150,220,.05)';
+    ctx.fillRect(0, r.y, W, r.h);
+  }
+  // rows de ÁUDIO (inclui lanes extras vazias criadas pelo menu — alvo de drop)
+  for (const r of layout.audioLaneRows || []) {
+    ctx.fillStyle = 'rgba(34,197,94,.04)';
+    ctx.fillRect(0, r.y, W, r.h);
+  }
 
   // ── clips ativos ──
   for (const c of layout.clips) {
@@ -82,6 +129,7 @@ function paint(ctx, canvas, { layout, playhead, fsm, snapIndicator, thumbs, wave
 
     // Preview de trim (estilo CapCut): a borda arrastada segue o cursor.
     // Nada foi comitado no store ainda — só geometria visual deste frame.
+    const isFrozenResize = fsm?.name === 'resizing-frozen' && fsm.clipId === c.clipId;
     let cx0 = c.x, cw = c.w, srcIn = c.sourceIn, srcOut = c.sourceOut;
     if (isTrimming) {
       const pps = layout.vp.pxPerSec;
@@ -96,6 +144,11 @@ function paint(ctx, canvas, { layout, playhead, fsm, snapIndicator, thumbs, wave
         srcOut = fsm.previewSource;
       }
     }
+    if (isFrozenResize) {
+      const pps = layout.vp.pxPerSec;
+      if (fsm.edge === 'out') cw = fsm.previewDur * pps;
+      else { cx0 = c.x + (c.w - fsm.previewDur * pps); cw = fsm.previewDur * pps; }
+    }
     if (cx0 + cw < 0 || cx0 > W) continue;
 
     roundRect(ctx, cx0, c.y, cw, c.h, 6);
@@ -103,13 +156,15 @@ function paint(ctx, canvas, { layout, playhead, fsm, snapIndicator, thumbs, wave
     ctx.fill();
 
     // CapCut-style: thumbnails em cima + strip de waveform do audio DO VIDEO
-    // embaixo (some quando o audio foi destacado com Ctrl+Shift+S)
-    const waveH = (layout.clipWaveform && videoWave?.ready()) ? 14 : 0;
+    // embaixo. Cada clip usa a miniatura/waveform DA SUA fonte (principal OU
+    // take importado) — lookup por c.mediaId (null = 'main').
+    const th = thumbs?.get ? thumbs.get(c.mediaId) : thumbs;
+    const vw = videoWave?.get ? videoWave.get(c.mediaId) : videoWave;
+    const waveH = (layout.clipWaveform && vw?.ready?.()) ? 14 : 0;
     const thumbH = c.h - waveH;
 
-    // thumbnails (bitmap cacheado por clip)
-    if (thumbs) {
-      const strip = thumbs.getStrip(srcIn, srcOut, cw, thumbH);
+    if (th) {
+      const strip = th.getStrip(srcIn, srcOut, cw, thumbH);
       if (strip) {
         ctx.save();
         roundRect(ctx, cx0, c.y, cw, c.h, 6);
@@ -121,7 +176,7 @@ function paint(ctx, canvas, { layout, playhead, fsm, snapIndicator, thumbs, wave
       }
     }
     if (waveH > 0) {
-      const wbmp = videoWave.getSlice(srcIn, srcOut, cw, waveH);
+      const wbmp = vw.getSlice(srcIn, srcOut, cw, waveH);
       if (wbmp) {
         ctx.save();
         roundRect(ctx, cx0, c.y, cw, c.h, 6);
@@ -133,6 +188,34 @@ function paint(ctx, canvas, { layout, playhead, fsm, snapIndicator, thumbs, wave
       }
     }
 
+    if (c.mediaId != null) {
+      // take importado: tag do nome no topo (a miniatura já mostra os frames)
+      ctx.save();
+      roundRect(ctx, cx0, c.y, cw, c.h, 6);
+      ctx.clip();
+      ctx.fillStyle = 'rgba(10, 40, 30, .7)';
+      ctx.fillRect(cx0, c.y, cw, 13);
+      ctx.fillStyle = '#dff5ec';
+      ctx.font = '9px "JetBrains Mono", monospace';
+      ctx.fillText('🎞 ' + (c.mediaName || 'take'), cx0 + 5, c.y + 3);
+      ctx.restore();
+    }
+    if (c.frozen || c.reversed || c.mirrored) {
+      // badges dos efeitos do menu Editar
+      const badges = [];
+      if (c.frozen) badges.push('❄ congelado');
+      if (c.reversed) badges.push('◀ reverso');
+      if (c.mirrored) badges.push('⇄ espelho');
+      ctx.save();
+      roundRect(ctx, cx0, c.y, cw, c.h, 6);
+      ctx.clip();
+      ctx.fillStyle = 'rgba(0,0,0,.45)';
+      ctx.fillRect(cx0, c.y + c.h - 13, cw, 13);
+      ctx.fillStyle = '#cfe8ff';
+      ctx.font = '9px "JetBrains Mono", monospace';
+      ctx.fillText(badges.join('  '), cx0 + 5, c.y + c.h - 11);
+      ctx.restore();
+    }
     if (c.isCompound) {
       // faixa de titulo do composto (CapCut)
       ctx.save();
@@ -143,6 +226,26 @@ function paint(ctx, canvas, { layout, playhead, fsm, snapIndicator, thumbs, wave
       ctx.fillStyle = '#fff';
       ctx.font = '9px "JetBrains Mono", monospace';
       ctx.fillText('⧉ ' + (c.compoundName || 'Clipe composto') + ' (2x clique abre)', cx0 + 6, c.y + 3);
+      // faixa de ÁUDIO do composto: sem isto o bloco parecia mudo e o usuário
+      // (e a UI) achavam que não havia som pra tratar
+      if (c.compoundAudio) {
+        const fh = 11;
+        ctx.fillStyle = 'rgba(6, 40, 24, .9)';
+        ctx.fillRect(cx0, c.y + c.h - fh, cw, fh);
+        ctx.fillStyle = 'rgba(34,197,94,.95)';
+        ctx.font = '8px "JetBrains Mono", monospace';
+        ctx.fillText('♪ áudio', cx0 + 5, c.y + c.h - fh + 2);
+        // ondinha simbólica: o conteúdo real está dentro do composto
+        ctx.strokeStyle = 'rgba(34,197,94,.55)';
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        for (let x = cx0 + 48; x < cx0 + cw - 4; x += 3) {
+          const amp = (fh / 2 - 2) * (0.35 + 0.65 * Math.abs(Math.sin(x * 0.35)));
+          ctx.moveTo(x, c.y + c.h - fh / 2 - amp);
+          ctx.lineTo(x, c.y + c.h - fh / 2 + amp);
+        }
+        ctx.stroke();
+      }
       ctx.restore();
     }
     roundRect(ctx, cx0, c.y, cw, c.h, 6);
@@ -162,6 +265,42 @@ function paint(ctx, canvas, { layout, playhead, fsm, snapIndicator, thumbs, wave
       ctx.font = '9px "JetBrains Mono", monospace';
       ctx.fillText(`${dur.toFixed(1)}s`, cx0 + 6, c.y + c.h - 12);
     }
+    // ✦ animação ativa (user 14/08: "não tem nada sinalizando")
+    drawAnimMarks(ctx, c, cx0, cw, c.y, c.h);
+  }
+
+  // ── FANTASMA da nova camada (arrastando clip pra cima pra criar overlay) ──
+  if (fsm?.name === 'dragging-clip' && fsm.lifting && fsm.liftX != null) {
+    const c = layout.clips.find(k => k.clipId === fsm.clipId);
+    const gw = c ? c.w : 80;
+    const gx = fsm.liftX - gw / 2;
+    // encaixa na row sob o cursor. A camada vem de laneForY — a MESMA funcao
+    // que o drop usa. Antes o desenho tinha tolerancia propria (+-6 contra +-4)
+    // e existia uma faixa de 2px em que a camada destacada nao era a que
+    // recebia o clipe.
+    const rows = layout.laneRows || [];
+    let gy = fsm.liftY - (c ? c.h : 40) / 2;
+    let laneLabel = 'nova camada';
+    const laneSob = laneForY(layout, fsm.liftY);
+    if (laneSob != null) {
+      const r = rows.find(k => k.lane === laneSob);
+      if (r) { gy = r.y; laneLabel = 'camada ' + r.lane; }
+      else laneLabel = 'camada ' + laneSob;
+    }
+    ctx.save();
+    ctx.globalAlpha = 0.8;
+    roundRect(ctx, gx, gy, gw, (c ? c.h : 40), 6);
+    ctx.fillStyle = 'rgba(120, 90, 200, .5)';
+    ctx.fill();
+    ctx.setLineDash([5, 3]);
+    ctx.strokeStyle = '#a97fee';
+    ctx.lineWidth = 2;
+    ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.fillStyle = '#fff';
+    ctx.font = '10px "JetBrains Mono", monospace';
+    ctx.fillText('⬆ ' + laneLabel, gx + 6, gy + 5);
+    ctx.restore();
   }
 
   // ── ghosts (desativados) ──
@@ -188,8 +327,8 @@ function paint(ctx, canvas, { layout, playhead, fsm, snapIndicator, thumbs, wave
     roundRect(ctx, t.x, t.y, t.w, t.h, 4);
     ctx.fillStyle = COLORS.textBlock;
     ctx.fill();
-    if (t.selected) {
-      ctx.strokeStyle = COLORS.textBlockBorder;
+    if (t.selected || t.multi) {
+      ctx.strokeStyle = t.multi ? COLORS.snap : COLORS.textBlockBorder;
       ctx.lineWidth = 2;
       ctx.stroke();
     }
@@ -203,6 +342,7 @@ function paint(ctx, canvas, { layout, playhead, fsm, snapIndicator, thumbs, wave
 
   // ── camadas overlay (acima da principal — CapCut) ──
   for (const o of layout.overlayItems || []) {
+    ctx.globalAlpha = o.hidden ? 0.35 : 1; // camada com olhinho fechado
     let ox = o.x, ow = o.w, sI = o.srcIn, sO = o.srcOut;
     if (fsm?.name === 'trimming-overlay' && fsm.overlayId === o.overlayId) {
       const pps = layout.vp.pxPerSec;
@@ -219,19 +359,32 @@ function paint(ctx, canvas, { layout, playhead, fsm, snapIndicator, thumbs, wave
     }
     if (ox + ow < 0 || ox > W) continue;
     roundRect(ctx, ox, o.y, ow, o.h, 5);
-    ctx.fillStyle = '#3b2a63';
+    ctx.fillStyle = o.isImage ? '#2a3b63' : '#3b2a63';
     ctx.fill();
-    if (thumbs) {
-      const strip = thumbs.getStrip(sI, sO, ow, o.h);
-      if (strip) {
+    if (o.isImage) {
+      // camada de IMAGEM: thumbnail do PNG (cacheado por url)
+      const bmp = imageThumb(o.imageUrl);
+      if (bmp) {
         ctx.save(); roundRect(ctx, ox, o.y, ow, o.h, 5); ctx.clip();
-        ctx.globalAlpha = 0.8; ctx.drawImage(strip, ox, o.y, ow, o.h);
+        // desenha a imagem repetida/contida (mostra que é sticker)
+        const iw = Math.min(ow, o.h * (bmp.width / bmp.height || 1));
+        ctx.globalAlpha = 0.9; ctx.drawImage(bmp, ox + 2, o.y + 2, Math.max(8, iw - 4), o.h - 4);
         ctx.globalAlpha = 1; ctx.restore();
+      }
+    } else {
+      const ovTh = thumbs?.get ? thumbs.get(o.mediaId) : thumbs;
+      if (ovTh) {
+        const strip = ovTh.getStrip(sI, sO, ow, o.h);
+        if (strip) {
+          ctx.save(); roundRect(ctx, ox, o.y, ow, o.h, 5); ctx.clip();
+          ctx.globalAlpha = 0.8; ctx.drawImage(strip, ox, o.y, ow, o.h);
+          ctx.globalAlpha = 1; ctx.restore();
+        }
       }
     }
     roundRect(ctx, ox, o.y, ow, o.h, 5);
-    ctx.strokeStyle = o.selected ? '#a97fee' : 'rgba(169,127,238,.45)';
-    ctx.lineWidth = o.selected ? 2 : 1;
+    ctx.strokeStyle = o.multi ? COLORS.snap : (o.selected ? '#a97fee' : 'rgba(169,127,238,.45)');
+    ctx.lineWidth = (o.selected || o.multi) ? 2 : 1;
     ctx.stroke();
     if (o.selected) {
       drawHandle(ctx, ox, o.y, o.h, 'left');
@@ -240,12 +393,26 @@ function paint(ctx, canvas, { layout, playhead, fsm, snapIndicator, thumbs, wave
     if (ow > 50) {
       ctx.fillStyle = 'rgba(232,244,255,.8)';
       ctx.font = '9px "JetBrains Mono", monospace';
-      ctx.fillText('⧉ camada', ox + 6, o.y + 3);
+      ctx.fillText((o.isImage ? '🖼 imagem ' : '⧉ camada ') + (o.lane || 1), ox + 6, o.y + 3);
+    }
+    // ✦ animação ativa na camada (mesma sinalização da cena)
+    drawAnimMarks(ctx, o, ox, ow, o.y, o.h);
+    // ◆ QUADROS-CHAVE de movimento (user 14/08): diamantes na posição de cada
+    // marca; arrastáveis quando a camada está selecionada (hittest overlay-kf)
+    if ((o.kfTs || []).length) {
+      const pps = layout.vp.pxPerSec;
+      for (const kt of o.kfTs) {
+        const kx = ox + kt * pps;
+        if (kx < ox - 2 || kx > ox + ow + 2) continue;
+        drawDiamond(ctx, kx, o.y + o.h / 2, o.selected ? 5 : 3.5, o.selected);
+      }
     }
   }
+  ctx.globalAlpha = 1;
 
   // ── clips de audio (cada um editavel; preview de gesto igual video) ──
   for (const a of layout.audioItems || []) {
+    ctx.globalAlpha = a.hidden ? 0.35 : 1; // lane de áudio com olhinho fechado
     let ax = a.x, aw = a.w, srcI = a.srcIn, srcO = a.srcOut;
     if (fsm?.name === 'trimming-audio' && fsm.audioId === a.audioId) {
       const pps = layout.vp.pxPerSec;
@@ -265,17 +432,35 @@ function paint(ctx, canvas, { layout, playhead, fsm, snapIndicator, thumbs, wave
     roundRect(ctx, ax, a.y, aw, a.h, 4);
     ctx.fillStyle = COLORS.audio;
     ctx.fill();
-    ctx.strokeStyle = a.selected ? '#22c55e' : COLORS.audioBorder;
-    ctx.lineWidth = a.selected ? 2 : 1;
+    ctx.strokeStyle = a.multi ? COLORS.snap : (a.selected ? '#22c55e' : COLORS.audioBorder);
+    ctx.lineWidth = (a.selected || a.multi) ? 2 : 1;
     ctx.stroke();
 
     ctx.save();
     roundRect(ctx, ax, a.y, aw, a.h, 4);
     ctx.clip();
-    const wf = a.kind === 'video' ? videoWave : wave?.get?.(a.url);
+    // ⚠️ desde v1.7 videoWave é um LOOKUP {get} por fonte — usar direto dava
+    // wf.ready === undefined e a onda do áudio DESTACADO sumia em silêncio
+    // (null = fonte 'main', que é de onde o detach tira o áudio)
+    const wf = a.kind === 'video'
+      ? (videoWave?.get ? videoWave.get(null) : videoWave)
+      : wave?.get?.(a.url);
     if (wf?.ready?.()) {
       const bmp = wf.getSlice(srcI, srcO, aw, a.h);
-      if (bmp) { ctx.globalAlpha = 0.85; ctx.drawImage(bmp, ax, a.y, aw, a.h); }
+      if (bmp) {
+        ctx.globalAlpha = 0.85;
+        // amplitude adaptativa ao volume (CapCut): baixar o volume encolhe as
+        // ondas visualmente. O waveform é desenhado centralizado (mid = h/2),
+        // então escalar a altura mantém a onda centrada. vol>1 = ondas maiores
+        // (o clip() já corta o excesso). vol=0 (mudo) = nada.
+        const vol = a.volume == null ? 1 : Math.max(0, Math.min(2, a.volume));
+        if (vol === 1) {
+          ctx.drawImage(bmp, ax, a.y, aw, a.h);
+        } else if (vol > 0) {
+          const dh = a.h * vol;
+          ctx.drawImage(bmp, ax, a.y + (a.h - dh) / 2, aw, dh);
+        }
+      }
     }
     ctx.globalAlpha = 1;
     ctx.restore();
@@ -285,11 +470,59 @@ function paint(ctx, canvas, { layout, playhead, fsm, snapIndicator, thumbs, wave
       drawHandle(ctx, ax + aw, a.y, a.h, 'right');
     }
     if (aw > 60) {
+      // rótulo CONFINADO à própria faixa: nome longo (ex. ElevenLabs_...) não
+      // pinta por cima dos clips vizinhos ao cortar (user 2026-07-23)
+      ctx.save();
+      ctx.beginPath();
+      ctx.rect(ax + 2, a.y, Math.max(0, aw - 10), a.h);
+      ctx.clip();
       ctx.fillStyle = 'rgba(232,244,255,.75)';
       ctx.font = '9px "JetBrains Mono", monospace';
       ctx.fillText(a.label, ax + 6, a.y + 3);
+      ctx.restore();
     }
   }
+  ctx.globalAlpha = 1;
+
+  // ── marquee (seletor retangular no vazio) ──
+  if (fsm?.name === 'marquee') {
+    const mx = Math.min(fsm.x0, fsm.x1), my = Math.min(fsm.y0, fsm.y1);
+    const mw = Math.abs(fsm.x1 - fsm.x0), mh = Math.abs(fsm.y1 - fsm.y0);
+    ctx.fillStyle = 'rgba(0,170,255,.12)';
+    ctx.fillRect(mx, my, mw, mh);
+    ctx.strokeStyle = 'rgba(0,170,255,.7)';
+    ctx.lineWidth = 1;
+    ctx.setLineDash([4, 3]);
+    ctx.strokeRect(mx, my, mw, mh);
+    ctx.setLineDash([]);
+  }
+
+  // ── LOCUÇÃO gravando: a faixa nasce em TEMPO REAL (fantasma pulsante) ──
+  // Desenho puro (nada no store): o clipe de verdade só entra ao parar.
+  if (recGhost && recGhost.dur > 0) {
+    const AH = layout.audioTrackH || METRICS.AUDIO_TRACK_H;
+    const gx = timeToX(layout.vp, recGhost.t0);
+    const gw = Math.max(5, recGhost.dur * layout.vp.pxPerSec);
+    const gy = layout.yAudio + (recGhost.lane || 0) * (AH + 2);
+    const pulso = 0.55 + 0.25 * Math.sin(Date.now() / 260);
+    ctx.save();
+    roundRect(ctx, gx, gy, gw, AH, 4);
+    ctx.fillStyle = `rgba(255,71,87,${(pulso * 0.5).toFixed(3)})`;
+    ctx.fill();
+    ctx.setLineDash([5, 3]);
+    ctx.strokeStyle = `rgba(255,71,87,${pulso.toFixed(3)})`;
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.fillStyle = '#fff';
+    ctx.font = '10px "JetBrains Mono", monospace';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('● Gravando…', gx + 6, gy + AH / 2);
+    ctx.restore();
+  }
+
+  // ── regua POR CIMA das faixas (a rolagem passa conteudo por baixo dela) ──
+  desenharRegua(ctx, layout, W);
 
   // ── linha de snap ──
   if (snapIndicator?.active && snapIndicator.t != null) {
@@ -299,6 +532,32 @@ function paint(ctx, canvas, { layout, playhead, fsm, snapIndicator, thumbs, wave
     ctx.setLineDash([3, 3]);
     line(ctx, x, 0, x, H);
     ctx.setLineDash([]);
+  }
+
+  // ── MARCADOR DE TRANSIÇÃO (2026-07-29) ──────────────────────────────────
+  // Losango sobre a emenda das duas cenas, como no CapCut. Selecionado fica
+  // aceso; fora de foco fica discreto — foi o pedido do user ("se eu clico
+  // fora, ela fica menos visível").
+  for (const m of layout.transMarks || []) {
+    const r = m.r;
+    ctx.save();
+    ctx.translate(m.x, m.y);
+    ctx.rotate(Math.PI / 4);
+    ctx.fillStyle = m.selected ? 'rgba(0,170,255,.95)' : 'rgba(10,22,40,.85)';
+    ctx.strokeStyle = m.selected ? '#eaf3ff' : 'rgba(0,170,255,.55)';
+    ctx.lineWidth = m.selected ? 2 : 1.5;
+    const s = r * 0.72;
+    ctx.beginPath();
+    ctx.rect(-s, -s, s * 2, s * 2);
+    ctx.fill();
+    ctx.stroke();
+    ctx.restore();
+    // duas setas encontrando: lê como "transição" sem precisar de legenda
+    ctx.fillStyle = m.selected ? '#04121f' : 'rgba(0,170,255,.9)';
+    ctx.beginPath();
+    ctx.moveTo(m.x - 4.5, m.y - 4); ctx.lineTo(m.x - 0.8, m.y); ctx.lineTo(m.x - 4.5, m.y + 4);
+    ctx.moveTo(m.x + 4.5, m.y - 4); ctx.lineTo(m.x + 0.8, m.y); ctx.lineTo(m.x + 4.5, m.y + 4);
+    ctx.fill();
   }
 
   // ── playhead ──
@@ -330,6 +589,47 @@ function drawHandle(ctx, x, y, h, side) {
   const cx = rx + w / 2;
   line(ctx, cx - 2, y + h * 0.35, cx - 2, y + h * 0.65);
   line(ctx, cx + 2, y + h * 0.35, cx + 2, y + h * 0.65);
+}
+
+// ✦ marquinhas de ANIMAÇÃO ATIVA (user 14/08): entrada encostada na esquerda,
+// saída na direita, combinação no centro — topo do item, com pastilha escura
+// atrás pra não sumir na miniatura.
+function drawAnimMarks(ctx, item, x, w, y, h) {
+  if (!item.animIn && !item.animOut && !item.animLoop) return;
+  const marks = [];
+  if (item.animIn) marks.push(x + 8);
+  if (item.animLoop) marks.push(x + w / 2);
+  if (item.animOut) marks.push(x + w - 8);
+  ctx.save();
+  roundRect(ctx, x, y, w, h, 5);
+  ctx.clip();
+  for (const mx of marks) {
+    ctx.beginPath();
+    ctx.arc(mx, y + h - 8, 6, 0, Math.PI * 2);
+    ctx.fillStyle = 'rgba(0,0,0,.55)';
+    ctx.fill();
+    ctx.fillStyle = '#c9a6ff';
+    ctx.font = '9px "Syne", sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText('✦', mx, y + h - 12);
+    ctx.textAlign = 'left';
+  }
+  ctx.restore();
+}
+
+// ◆ diamante de quadro-chave (movimento da camada)
+function drawDiamond(ctx, cx, cy, r, bright) {
+  ctx.save();
+  ctx.translate(cx, cy);
+  ctx.rotate(Math.PI / 4);
+  ctx.beginPath();
+  ctx.rect(-r, -r, r * 2, r * 2);
+  ctx.fillStyle = bright ? '#ffffff' : 'rgba(255,255,255,.7)';
+  ctx.fill();
+  ctx.strokeStyle = '#a97fee';
+  ctx.lineWidth = 1.5;
+  ctx.stroke();
+  ctx.restore();
 }
 
 function roundRect(ctx, x, y, w, h, r) {

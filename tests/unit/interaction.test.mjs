@@ -5,7 +5,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { createStore } from '../../public/editor-v1/core/store.js';
 import * as act from '../../public/editor-v1/core/actions.js';
-import { computeLayout, METRICS, timeToX } from '../../public/editor-v1/timeline/layout.js';
+import { computeLayout, METRICS, timeToX, xToTime } from '../../public/editor-v1/timeline/layout.js';
 import { hitTest } from '../../public/editor-v1/timeline/hittest.js';
 import { transition, idle, DRAG_THRESHOLD_MOUSE } from '../../public/editor-v1/timeline/interaction.js';
 import { cutPoints } from '../../public/editor-v1/core/selectors.js';
@@ -50,7 +50,7 @@ test('click em clip = seleciona e termina idle', () => {
   assert.ok(r.effects.some(e => e.do === 'select-clip' && e.clipId === c.clipId));
 });
 
-test('touch em track vazia = panning (CapCut mobile), mouse = scrubbing', () => {
+test('touch em vazio = panning; mouse: clique = seek, arrasto = MARQUEE', () => {
   const store = setup();
   const ctx = ctxFor(store);
   // ponto na track de video mas depois do fim do clip (track-empty)
@@ -61,9 +61,51 @@ test('touch em track vazia = panning (CapCut mobile), mouse = scrubbing', () => 
   assert.equal(hit.type, 'track-empty');
   let r = transition(idle(), { kind: 'down', x: emptyX, y: c.y + 10, touch: true, hit }, ctx);
   assert.equal(r.next.name, 'panning');
-  // mouse -> scrubbing
+  // mouse: down arma; up sem mover = clique (seek + limpa selecao)
   r = transition(idle(), { kind: 'down', x: emptyX, y: c.y + 10, touch: false, hit }, ctx);
-  assert.equal(r.next.name, 'scrubbing');
+  assert.equal(r.next.name, 'armed-empty');
+  let r2 = transition(r.next, { kind: 'up', x: emptyX, y: c.y + 10 }, ctx);
+  assert.equal(r2.next.name, 'idle');
+  assert.ok(r2.effects.some(e => e.do === 'seek'));
+  assert.ok(r2.effects.some(e => e.do === 'clear-selection'));
+  // mouse: arrasto alem do threshold = marquee com retangulo vivo
+  r2 = transition(r.next, { kind: 'move', x: emptyX + 40, y: c.y + 60 }, ctx);
+  assert.equal(r2.next.name, 'marquee');
+  r2 = transition(r2.next, { kind: 'move', x: emptyX + 80, y: c.y + 80 }, ctx);
+  assert.ok(r2.effects.some(e => e.do === 'marquee-live' && e.rect.w > 0));
+  r2 = transition(r2.next, { kind: 'up', x: emptyX + 80, y: c.y + 80 }, ctx);
+  assert.equal(r2.next.name, 'idle');
+  assert.ok(r2.effects.some(e => e.do === 'marquee-apply'));
+});
+
+test('marquee sobre o clip seleciona ele (rect intersecta layout)', () => {
+  const store = setup();
+  store.dispatch(act.splitClipAt(30));
+  const ctx = ctxFor(store);
+  const c0 = ctx.layout.clips[0];
+  // retangulo cobrindo os dois clips
+  const rect = { x: c0.x - 2, y: c0.y - 2, w: 9999, h: c0.h + 4 };
+  const inter = (b) => b.x < rect.x + rect.w && b.x + b.w > rect.x && b.y < rect.y + rect.h && b.y + b.h > rect.y;
+  const hits = ctx.layout.clips.filter(inter);
+  assert.equal(hits.length, 2);
+});
+
+test('DELETE_MULTI apaga tudo selecionado num undo step', () => {
+  const store = setup();
+  store.dispatch(act.splitClipAt(30));
+  store.dispatch(act.addText({ content: 'oi', start_sec: 0, end_sec: 3 }));
+  store.dispatch(act.addAudioClip({ url: 'a.mp3', duration: 5, filename: 'a' }));
+  store.dispatch(act.selectAll());
+  const antes = store.getState();
+  assert.ok(antes.multi_selected.length >= 4);
+  store.dispatch(act.deleteMulti());
+  const s = store.getState();
+  assert.equal(s.clips.length, 0);
+  assert.equal(s.texts.length, 0);
+  assert.equal(s.audio_clips.length, 0);
+  assert.equal(s.multi_selected.length, 0);
+  store.undo();
+  assert.equal(store.getState().clips.length, 2); // 1 undo restaura tudo
 });
 
 test('down na regua = scrub imediato + seek no move + idle no up', () => {
@@ -222,14 +264,21 @@ test('click em ghost reativa clip', () => {
   assert.equal(store.getState().clips.find(c => c.id === id).active, true);
 });
 
-test('wheel: ctrl = zoom ancorado, sem ctrl = scroll', () => {
+test('wheel: rolar = ZOOM ancorado; shift/horizontal = scroll', () => {
   const store = setup();
   const ctx = ctxFor(store);
-  let r = transition(idle(), { kind: 'wheel', x: 300, deltaY: -100, deltaX: 0, ctrlKey: true }, ctx);
+  // rolar pra cima (sem modificador) = zoom in — pedido do user 2026-07-20
+  let r = transition(idle(), { kind: 'wheel', x: 300, deltaY: -100, deltaX: 0 }, ctx);
   assert.ok(r.effects.some(e => e.do === 'zoom' && e.pxPerSec > VP.pxPerSec));
-  r = transition(idle(), { kind: 'wheel', x: 300, deltaY: 50, deltaX: 0, ctrlKey: false }, ctx);
-  const sc = r.effects.find(e => e.do === 'scroll');
-  assert.equal(sc.scrollX, 50);
+  // rolar pra baixo = zoom out
+  r = transition(idle(), { kind: 'wheel', x: 300, deltaY: 100, deltaX: 0 }, ctx);
+  assert.ok(r.effects.some(e => e.do === 'zoom' && e.pxPerSec < VP.pxPerSec));
+  // shift+rolar = scroll horizontal
+  r = transition(idle(), { kind: 'wheel', x: 300, deltaY: 50, deltaX: 0, shiftKey: true }, ctx);
+  assert.equal(r.effects.find(e => e.do === 'scroll').scrollX, 50);
+  // trackpad horizontal = scroll
+  r = transition(idle(), { kind: 'wheel', x: 300, deltaY: 2, deltaX: 60 }, ctx);
+  assert.equal(r.effects.find(e => e.do === 'scroll').scrollX, 60);
 });
 
 test('fuzz: 200 eventos aleatorios nunca quebram e Esc sempre reseta', () => {
@@ -253,4 +302,35 @@ test('fuzz: 200 eventos aleatorios nunca quebram e Esc sempre reseta', () => {
   }
   const final = transition(fsm, { kind: 'esc' }, ctxFor(store));
   assert.equal(final.next.name, 'idle');
+});
+
+// ── ZOOM ANCORADO NA AGULHA (2026-07-29) ───────────────────────────────────
+// Antes o zoom ancorava no CURSOR: o ponto de edição fugia da tela justamente
+// quando se aproximava pra trabalhar nele. O que está sob a agulha tem que
+// ficar parado.
+test('wheel: o zoom mantem a AGULHA no mesmo x da tela', () => {
+  const vp = { width: 800, height: 300, scrollX: 0, pxPerSec: 40 };
+  const ctx = { layout: { vp, clips: [], texts: [] }, playhead: 5, cutPoints: [], snapEnabled: true };
+  const xAgulhaAntes = timeToX(vp, ctx.playhead);
+
+  // cursor BEM longe da agulha: se ancorasse nele, a agulha se deslocaria
+  const r = transition(idle(), { kind: 'wheel', x: 760, deltaY: -100, deltaX: 0 }, ctx);
+  const z = r.effects.find(e => e.do === 'zoom');
+  assert.ok(z, 'zoomou');
+  assert.ok(z.pxPerSec > vp.pxPerSec, 'aproximou');
+
+  const xAgulhaDepois = timeToX({ ...vp, ...z }, ctx.playhead);
+  assert.ok(Math.abs(xAgulhaDepois - xAgulhaAntes) < 1,
+    `agulha saiu do lugar: ${xAgulhaAntes.toFixed(1)} -> ${xAgulhaDepois.toFixed(1)}`);
+});
+
+test('wheel: agulha fora da vista volta a ancorar no cursor', () => {
+  // agulha em t=200s com a vista no comeco: nao da pra ancorar no que nao se ve
+  const vp = { width: 800, height: 300, scrollX: 0, pxPerSec: 40 };
+  const ctx = { layout: { vp, clips: [], texts: [] }, playhead: 200, cutPoints: [], snapEnabled: true };
+  const r = transition(idle(), { kind: 'wheel', x: 300, deltaY: -100, deltaX: 0 }, ctx);
+  const z = r.effects.find(e => e.do === 'zoom');
+  const tSobCursorAntes = xToTime(vp, 300);
+  const tSobCursorDepois = xToTime({ ...vp, ...z }, 300);
+  assert.ok(Math.abs(tSobCursorDepois - tSobCursorAntes) < 0.05, 'ancorou no cursor');
 });

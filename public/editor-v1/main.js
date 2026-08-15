@@ -4,8 +4,10 @@
 import { createStore } from './core/store.js';
 import { normalizeLoadedState } from './core/schema.js';
 import { bootstrapGate, api, getToken } from './services/api.js';
-import { readSessionFallback } from './services/autosave.js';
 import { mountEditor } from './ui/shell.js';
+import { FLAG_RECUPERAR } from './core/guardiao.js';
+import { readSessionFallback } from './services/autosave.js';
+import { mountHome } from './ui/home.js';
 
 const root = document.getElementById('beRoot');
 
@@ -41,24 +43,107 @@ async function boot() {
     return;
   }
 
-  // estado inicial: backend > sessionStorage > vazio
-  const store = createStore();
-  let restored = false;
-  try {
-    const { project } = await api.loadProject(null);
-    if (project?.project_state) {
-      store.replaceState(normalizeLoadedState({ ...project.project_state, project_id: project.id }));
-      restored = true;
+  // RECUPERAÇÃO DE SESSÃO (guardião, 15/08): se a página recarregou pelo
+  // botão "Recuperar sessão", volta EXATAMENTE onde o usuário estava — o
+  // snapshot é gravado a cada edição pelo autosave (readSessionFallback
+  // existia sem ninguém ler; o guardião fecha o circuito).
+  let flagRec = null;
+  try { flagRec = sessionStorage.getItem(FLAG_RECUPERAR); sessionStorage.removeItem(FLAG_RECUPERAR); } catch {}
+  if (flagRec) {
+    const snap = readSessionFallback();
+    if (snap && (snap.video || snap.clips?.length || snap.audio_clips?.length)) {
+      const store = createStore();
+      store.replaceState(normalizeLoadedState(snap));
+      try { editorAtivo?.destroy(); } catch (e) {}
+      root.innerHTML = '';
+      editorAtivo = mountEditor(root, store, { onExit: showHome });
+      const t = document.getElementById('beToast');
+      if (t) { t.textContent = '🩹 Sessão recuperada — você está exatamente onde parou.'; t.classList.add('show'); setTimeout(() => t.classList.remove('show'), 5000); }
+      return;
     }
-  } catch { /* segue */ }
-  if (!restored) {
-    const ss = readSessionFallback();
-    if (ss?.video) store.replaceState(normalizeLoadedState(ss));
   }
 
-  root.innerHTML = '';
-  mountEditor(root, store);
+  // CapCut-like: abre na TELA INICIAL (grid de projetos salvos + "Criar
+  // projeto"). Só entra no editor ao escolher um projeto ou criar do zero.
+  showHome();
 }
+
+// tela inicial ↔ editor
+// Guarda o editor montado: trocar de tela sem desmontar deixava o autosave
+// assinado escrevendo num DOM que já foi apagado.
+let editorAtivo = null;
+
+function showHome() {
+  try { editorAtivo?.destroy(); } catch (e) {}
+  editorAtivo = null;
+  root.innerHTML = '';
+  mountHome(root, { onOpen: enterEditor });
+}
+
+async function enterEditor(projectId) {
+  const store = createStore();
+  if (projectId) {
+    try {
+      const { project } = await api.loadProject(projectId);
+      if (project?.project_state) {
+        store.replaceState(normalizeLoadedState({ ...project.project_state, project_id: project.id }));
+      }
+    } catch (e) {
+      // NÃO ABRIR VAZIO EM SILÊNCIO (fix 2026-07-29): a falha era só um
+      // console.warn e o editor abria em branco — indistinguível de "perdi meu
+      // projeto". Com a sessão vencida isso acontecia toda vez que o usuário
+      // saía e voltava. Melhor parar e dizer o que houve do que fingir que o
+      // projeto está vazio.
+      console.warn('[main] load-project falhou:', e.message);
+      if (e.sessaoExpirada) {
+        gateScreen('🔒', 'Sua sessão expirou',
+          'Entre de novo pra continuar de onde parou. Seu projeto está salvo.',
+          '<a class="be-export-btn" href="/?login=1&next=/blueEditor-app">Fazer login</a>');
+      } else {
+        gateScreen('⚠️', 'Não consegui abrir o projeto', e.message || 'Tenta de novo em instantes.',
+          '<button class="be-export-btn" onclick="location.reload()">Tentar de novo</button>');
+      }
+      return;
+    }
+  }
+  try { editorAtivo?.destroy(); } catch (e) {}
+  root.innerHTML = '';
+  // onExit volta pra tela inicial (autosave já persistiu o projeto)
+  try {
+    editorAtivo = mountEditor(root, store, { onExit: showHome });
+  } catch (e) {
+    // ⚠️ REDE DE SEGURANÇA (user 2026-07-29: "qualquer função quebrada
+    // compromete MUITO o produto"). Um erro no meio do mount já deixou o
+    // editor meio-montado e morto uma vez (o TDZ do attachResizers) — sem
+    // isto o usuário via a carcaça sem saber o que houve. O projeto dele
+    // está no autosave/servidor; a saída honesta é dizer e oferecer volta.
+    console.error('[main] mountEditor falhou:', e);
+    gateScreen('⚠️', 'O editor não conseguiu abrir',
+      'Deu um erro ao montar a tela. Seu projeto está salvo — nada foi perdido.',
+      '<button class="be-export-btn" onclick="location.reload()">Recarregar</button>' +
+      '<a class="be-export-btn" style="margin-left:8px" href="/blueEditor-app">Meus projetos</a>');
+  }
+}
+
+// ── VIGIA GLOBAL ────────────────────────────────────────────────────────────
+// Erro engolido é o pior modo de falha: a função morre e o usuário acha que o
+// produto "não faz nada". Qualquer exceção não tratada ou promise rejeitada
+// vira um aviso visível UMA vez (sem spam), com o erro inteiro no console.
+let avisoMostrado = false;
+function avisarErroGlobal(e) {
+  console.error('[vigia]', e);
+  if (avisoMostrado) return;
+  avisoMostrado = true;
+  setTimeout(() => { avisoMostrado = false; }, 30000);  // no máx 1 aviso / 30s
+  const t = document.getElementById('beToast');
+  if (t) {
+    t.textContent = '⚠️ Algo deu errado nesta ação. Se notar algo estranho, recarregue a página — seu projeto está salvo.';
+    t.classList.add('show', 'err');
+    setTimeout(() => t.classList.remove('show', 'err'), 6000);
+  }
+}
+window.addEventListener('error', (ev) => avisarErroGlobal(ev.error || ev.message));
+window.addEventListener('unhandledrejection', (ev) => avisarErroGlobal(ev.reason));
 
 boot().catch(e => {
   console.error('[main] boot falhou:', e);

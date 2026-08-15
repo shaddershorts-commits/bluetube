@@ -2106,11 +2106,15 @@ app.post('/edit-v0', (req, res) => {
 });
 
 function escapeDrawText(s) {
-  // FFmpeg drawtext exige escape de :' \ %
+  // FFmpeg drawtext exige escape de : \ % — e o APÓSTROFO é caso especial
+  // (14/08, reproduzido): dentro de text='...' o \' NÃO escapa — a aspa
+  // FECHA a string, a vírgula seguinte corta a cadeia -vf e o resto vira
+  // "filtro" (era o "No such filter: '0.000'" no export). O apóstrofo
+  // tipográfico (’) é visualmente idêntico e não é delimitador.
   return String(s || '')
     .replace(/\\/g, '\\\\')
     .replace(/:/g, '\\:')
-    .replace(/'/g, "\\'")
+    .replace(/'/g, '’')
     .replace(/%/g, '\\%');
 }
 function fontFile(fontName) {
@@ -2124,6 +2128,382 @@ function fontFile(fontName) {
 function sizePct(size) {
   return ({ small: 0.04, medium: 0.06, large: 0.09, xlarge: 0.13 })[size] || 0.06;
 }
+// ── ANIMACAO DO TEXTO ────────────────────────────────────────────────────────
+// Porte fiel de public/editor-v1/core/text-anim.js (exprFfmpeg) — LA e a fonte
+// da verdade; este arquivo roda em outro processo (CommonJS no Railway) e nao
+// consegue importar o modulo ES. Mudou la, muda aqui: os numeros (0.35 de teto,
+// 25% do bloco, overshoot 1.08, 0.7 de deslocamento) tem que bater, senao o
+// arquivo exportado anima diferente do que o usuario viu na tela.
+function animExpr(anim, startSec, endSec) {
+  const vazio = { alpha: null, escala: null, deslocY: null };
+  const ids = ['fade', 'pop', 'subir'];
+  if (!ids.includes(anim)) return vazio;
+  const dur = Math.max(0, (endSec || 0) - (startSec || 0));
+  const d = Math.min(0.35, Math.max(0.06, dur * 0.25));
+  const S = Number(startSec || 0).toFixed(3), E = Number(endSec || 0).toFixed(3), D = d.toFixed(3);
+  const ent = `min(1\\,max(0\\,(t-${S})/${D}))`;
+  const sai = `min(1\\,max(0\\,(${E}-t)/${D}))`;
+  const alpha = `min(${ent}\\,${sai})`;
+  if (anim === 'fade') return { alpha, escala: null, deslocY: null };
+  if (anim === 'subir') return { alpha, escala: null, deslocY: `(1-${ent})*0.7` };
+  const escala =
+    `if(gte(${ent}\\,1)\\,1\\,` +
+    `if(lt(${ent}\\,0.6)\\,0.6+(${ent}/0.6)*0.480\\,` +
+    `1.08-((${ent}-0.6)/0.4)*0.080))`;
+  return { alpha, escala, deslocY: null };
+}
+// ── APRIMORAR ÁUDIO + velocidade (2026-07-29) ───────────────────────────────
+// O editor manda flags por clipe de áudio: fx_ruido (afftdn), fx_voz (eq de
+// presença + compressor, intensidade 0..100) e fx_norm (dynaudnorm). E o
+// `speed` do payload NUNCA era aplicado aqui — áudio acelerado no editor saía
+// no ritmo errado no arquivo. Devolve a lista de filtros pra cadeia do clipe.
+function atempoChain(s) {
+  // atempo aceita 0.5..100 por instância; velocidades menores viram cadeia
+  const out = [];
+  let r = Number(s);
+  if (!Number.isFinite(r) || r <= 0) return out;
+  while (r < 0.5) { out.push('atempo=0.5'); r *= 2; }
+  while (r > 100) { out.push('atempo=100'); r /= 100; }
+  if (Math.abs(r - 1) > 0.001) out.push(`atempo=${r.toFixed(4)}`);
+  return out;
+}
+function filtrosDeAudioFx(a) {
+  const out = [];
+  if (!a || typeof a !== 'object') return out;
+  out.push(...atempoChain(a.speed));
+  if (a.fx_ruido === true) out.push('afftdn=nr=12:nf=-30');
+  if (a.fx_voz === true) {
+    const k = Math.min(1, Math.max(0, (Number(a.fx_voz_int) || 75) / 100));
+    out.push('highpass=f=75');
+    out.push(`equalizer=f=3000:t=q:w=1:g=${(k * 5).toFixed(1)}`);
+    out.push(`acompressor=threshold=-18dB:ratio=${(2 + k * 2).toFixed(1)}:attack=20:release=250:makeup=${(1 + k * 1.2).toFixed(2)}`);
+  }
+  // loudnorm (EBU R128) e nao dynaudnorm: a sonda mediu que o dynaudnorm mal
+  // levantava locucao gravada baixa (+4.5dB em -48dB); o loudnorm leva pro
+  // NIVEL-ALVO de verdade (-16 LUFS, padrao de fala em redes sociais)
+  if (a.fx_norm === true) out.push('loudnorm=I=-16:TP=-1.5:LRA=11');
+  return out;
+}
+
+// ── ANIMAÇÕES DA CENA (aba Animação, user 14/08) ────────────────────────────
+// ESPELHO do catálogo public/editor-v1/core/animacoes-cena.js — id a id.
+// Entrada anima [st, st+d]; saída [fim-d, fim]; combinação a cena inteira.
+// Zoom/deslizes precisam de quadro FIXO (o chamador garante normPara antes);
+// fades funcionam em qualquer tamanho. Tudo expressão em t: nada é aproximado.
+const ANIMS_GEOMETRICAS = new Set(['zoom_in', 'zoom_out', 'subir', 'vindo_direita', 'descer', 'pulsar', 'balanco']);
+function clipeTemAnimGeo(c) {
+  return ANIMS_GEOMETRICAS.has(c?.anim_in) || ANIMS_GEOMETRICAS.has(c?.anim_out) || ANIMS_GEOMETRICAS.has(c?.anim_loop);
+}
+function filtrosDaAnimacao(c, W, H, stIn, durVis) {
+  const out = [];
+  if (!c || durVis <= 0.2) return out;
+  // Duração vinda do slider (user 14/08) — o MESMO número do preview.
+  // Ausente = 0.5s de sempre; presa em 0.1..5s e nunca mais que meia cena.
+  const durSlot = (v) => Math.max(0.1, Math.min(Number(v) > 0 ? Number(v) : 0.5, 5, durVis / 2)).toFixed(3);
+  const dIn = durSlot(c.anim_in_dur);
+  const dOut = durSlot(c.anim_out_dur);
+  const stOut = (stIn + durVis) - Number(dOut);
+  // progresso 0..1 preso: entrada sobe a partir de stIn; saída sobe no fim.
+  // Duas réguas de tempo: `t` (crop/fade reavaliam por frame) e `on/30`
+  // (zoompan conta FRAMES de saída — o scale com eval=frame NÃO reavalia t
+  // de verdade nesta build, medido na sonda; zoompan é o filtro certo).
+  const pIn = `min(max((t-${stIn.toFixed(3)})/${dIn},0),1)`;
+  const pOut = `min(max((t-${stOut.toFixed(3)})/${dOut},0),1)`;
+  const pInF = `min(max(((on/30)-${stIn.toFixed(3)})/${dIn},0),1)`;
+  const pOutF = `min(max(((on/30)-${stOut.toFixed(3)})/${dOut},0),1)`;
+  // combinação: o slider vira o PERÍODO do ciclo (pulsar 1.6s, balanço 2.2s)
+  const perLoop = (pad) => (Number(c.anim_loop_dur) > 0
+    ? Math.max(0.1, Math.min(Number(c.anim_loop_dur), 5)) : pad).toFixed(3);
+  const zoomPan = (zexpr) => out.push(
+    `zoompan=z='${zexpr}':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=1:s=${W}x${H}:fps=30`);
+  if (c.anim_in === 'fade_in') out.push(`fade=t=in:st=${stIn.toFixed(3)}:d=${dIn}`);
+  if (c.anim_in === 'zoom_in') zoomPan(`(1+0.2*(1-${pInF}))`);
+  if (c.anim_in === 'subir') out.push(
+    `pad=w=iw:h=3*ih:x=0:y=ih:color=black`,
+    `crop=${W}:${H}:0:'${H}*(2-${pIn})'`);
+  if (c.anim_in === 'vindo_direita') out.push(
+    `pad=w=3*iw:h=ih:x=iw:y=0:color=black`,
+    `crop=${W}:${H}:'${W}*(2-${pIn})':0`);
+  if (c.anim_out === 'fade_out') out.push(`fade=t=out:st=${stOut.toFixed(3)}:d=${dOut}`);
+  if (c.anim_out === 'zoom_out') zoomPan(`(1+0.2*${pOutF})`);
+  if (c.anim_out === 'descer') out.push(
+    `pad=w=iw:h=3*ih:x=0:y=ih:color=black`,
+    `crop=${W}:${H}:0:'${H}*(1-${pOut})'`);
+  if (c.anim_loop === 'pulsar') zoomPan(`(1.05+0.04*sin(2*PI*(on/30)/${perLoop(1.6)}))`);
+  if (c.anim_loop === 'balanco') out.push(
+    `scale=w='trunc(iw*1.06/2)*2':h='trunc(ih*1.06/2)*2'`,
+    `crop=${W}:${H}:'(iw-${W})/2+(iw-${W})/2*sin(2*PI*t/${perLoop(2.2)})':'(ih-${H})/2'`);
+  return out;
+}
+// ── QUADROS-CHAVE de movimento (user 14/08): reta por partes em t ───────────
+// pts = [{T, V}] em tempo ABSOLUTO da régua final e pixels; a expressão fica
+// presa no primeiro/último valor fora do intervalo (mesma regra do preview —
+// core/keyframes.js posNoTempo). Usada nos x/y do overlay (reavalia por frame).
+function exprPiecewise(pts) {
+  if (!pts.length) return '0';
+  if (pts.length === 1) return String(Math.round(pts[0].V));
+  let expr = String(Math.round(pts[pts.length - 1].V));
+  for (let i = pts.length - 1; i >= 1; i--) {
+    const a = pts[i - 1], b = pts[i];
+    const dt = Math.max(0.001, b.T - a.T);
+    const seg = `(${Math.round(a.V)}+(${Math.round(b.V) - Math.round(a.V)})*(t-${a.T.toFixed(3)})/${dt.toFixed(3)})`;
+    expr = `if(lt(t,${b.T.toFixed(3)}),${seg},${expr})`;
+  }
+  return `if(lt(t,${pts[0].T.toFixed(3)}),${Math.round(pts[0].V)},${expr})`;
+}
+// lista de kf validada (payload é externo: só números finitos entram)
+function kfValidos(o) {
+  if (!Array.isArray(o.kf)) return [];
+  return o.kf
+    .filter((k) => k && Number.isFinite(k.t) && k.t >= 0 && Number.isFinite(k.x) && Number.isFinite(k.y))
+    .slice(0, 100)
+    .sort((a, b) => a.t - b.t);
+}
+// ── FIM filtrosDaAnimacao (marcador pra sonda extrair o fonte) ──
+
+// ── TRANSFORMAÇÕES DA CENA: velocidade, espelho, escala, posição, opacidade ──
+// (2026-08-05) O payload manda essas cinco desde sempre — e o motor ignorava
+// TODAS. O preview mostrava o vídeo acelerado, espelhado, com zoom e meio
+// transparente; o arquivo exportado saía cru. Pior no `speed`: sem ele a cena
+// exportada tinha OUTRA DURAÇÃO, e todo o áudio depois dela desalinhava.
+//
+// Regra do projeto: efeito no preview exige o equivalente no render. Aqui o
+// equivalente é medido pelo que o preview faz em CSS no elemento de vídeo
+// (ui/shell.js: transform translate+scale, opacity), pra dar o mesmo resultado.
+//
+// SÓ NÚMEROS atravessam: nada que venha do cliente entra como string de filtro.
+const num = (v, def, min, max) => {
+  const n = Number(v);
+  return Number.isFinite(n) ? Math.min(max, Math.max(min, n)) : def;
+};
+
+/** Velocidade efetiva da cena (1 = normal). */
+function velocidadeDaCena(c) {
+  return num(c?.speed, 1, 0.1, 100);
+}
+
+/** Duração que a cena OCUPA na timeline (é o que o arquivo tem que mostrar). */
+function duracaoDaCena(c) {
+  if (c?.frozen === true) return num(c.freeze_dur, 3, 0.05, 3600);
+  const bruta = Math.max(0, (c.source_out - c.source_in));
+  return bruta / velocidadeDaCena(c);
+}
+
+/**
+ * Filtros de vídeo da cena, na ordem em que o CSS do preview os aplica.
+ * @param {object} c clipe do payload
+ * @param {number} W largura final    @param {number} H altura final
+ */
+function filtrosDaCena(c, W, H) {
+  const out = [];
+  if (!c || typeof c !== 'object') return out;
+
+  // 1. ESPELHAR — no preview é scale(-1,1); o deslocamento NÃO espelha junto
+  //    (no CSS o translate é aplicado depois), então hflip vem antes.
+  if (c.mirrored === true) out.push('hflip');
+
+  // 2. ESCALA + POSIÇÃO — zoom a partir do CENTRO do quadro, como no preview.
+  //    Maior que 1 recorta de volta pro quadro; menor que 1 sobra preto em
+  //    volta (o mesmo que o CSS mostra sobre o fundo do palco).
+  const s = num(c.scale, 1, 0.05, 10);
+  const dx = Math.round(num(c.pos_x, 0, -1.5, 1.5) * W);
+  const dy = Math.round(num(c.pos_y, 0, -1.5, 1.5) * H);
+  //    Um caminho só pros três casos (maior, menor e deslocado): a cena é
+  //    posta numa TELA PRETA grande o bastante pro deslocamento caber, e o
+  //    quadro final é a JANELA que se olha dessa tela. Ramificar em "cresce =
+  //    recorta / diminui = preenche" deixava o movimento sem pra onde ir
+  //    quando a escala era 1 — mover não movia nada no arquivo.
+  if (Math.abs(s - 1) > 0.001 || dx || dy) {
+    const par = (n) => Math.max(2, Math.round(n / 2) * 2);
+    const sw = par(W * s);
+    const sh = par(H * s);
+    const cw = par(Math.max(W, sw) + 2 * Math.abs(dx));
+    const ch = par(Math.max(H, sh) + 2 * Math.abs(dy));
+    out.push(`scale=${sw}:${sh}`);
+    out.push(`pad=${cw}:${ch}:${Math.round((cw - sw) / 2)}:${Math.round((ch - sh) / 2)}:black`);
+    out.push(`crop=${W}:${H}:${Math.round((cw - W) / 2 - dx)}:${Math.round((ch - H) / 2 - dy)}`);
+    out.push('setsar=1');
+  }
+
+  // 3. OPACIDADE — a faixa principal compõe sobre PRETO, e "50% sobre preto"
+  //    é exatamente multiplicar os canais por 0,5.
+  const op = num(c.opacity, 1, 0, 1);
+  if (op < 0.999) {
+    const k = op.toFixed(3);
+    out.push(`colorchannelmixer=rr=${k}:gg=${k}:bb=${k}`);
+  }
+
+  // 4. VELOCIDADE — por último: mexe no TEMPO, não na imagem.
+  const v = velocidadeDaCena(c);
+  if (Math.abs(v - 1) > 0.001) out.push(`setpts=PTS/${v.toFixed(4)}`);
+
+  return out;
+}
+
+/**
+ * Plano da cadeia de transições (PURO — o unit test e a sonda importam DESTE
+ * fonte, não de uma réplica).
+ *
+ * REGRA DE OURO: a régua NÃO encolhe. O xfade "puro" sobrepõe os vizinhos e
+ * ENCURTA o vídeo em `dur` por junção — mas o áudio (passo 5), as máscaras e
+ * os textos continuam na régua cheia: todo arquivo com transição saía
+ * dessincronizado depois da primeira emenda (achado 2026-08-07).
+ *
+ * O modelo agora é o de EMPRÉSTIMO, o mesmo do preview: cada vizinho estende
+ * a própria borda em dur/2 (material além do corte; sem material, clona o
+ * frame da ponta) e o xfade consome EXATAMENTE o que foi emprestado. A cena
+ * que sai desaparece na emenda, a que entra pousa no tempo certo da régua, e
+ * o total do arquivo = soma das cenas, com áudio alinhado.
+ *
+ * clips: [{ idx, dur }] — idx = posição ORIGINAL em p.clips (clip de <0,05s
+ * é pulado no trim; junção com buraco no meio vira emenda seca), dur =
+ * duracaoDaCena (régua). trans: p.transitions ({ between, duration, xfade }).
+ *
+ * Devolve:
+ *   borrows: Map(idx -> { antes, depois })   segundos emprestados por borda
+ *   passos:  [{ tipo:'xfade', nome, dur, offset } | { tipo:'concat' }]
+ *   total:   duração final do vídeo (== soma das cenas, régua intacta)
+ *   temXfade: a cadeia tem pelo menos uma transição de verdade
+ */
+function planejarCadeia(clips, trans) {
+  const porJuncao = new Map();
+  for (const t of (trans || [])) {
+    if (!t || t.between == null) continue;
+    const dur = Math.max(0.1, Math.min(3, Number(t.duration) || 0.5));
+    const nome = typeof t.xfade === 'string' && /^[a-z]+$/.test(t.xfade) ? t.xfade : 'fade';
+    porJuncao.set(t.between | 0, { dur, nome });
+  }
+  const borrows = new Map(clips.map(c => [c.idx, { antes: 0, depois: 0 }]));
+  const juncoes = [];   // junção k fica entre clips[k] e clips[k+1]
+  for (let k = 0; k < clips.length - 1; k++) {
+    const a = clips[k], b = clips[k + 1];
+    // clip pulado no meio (dur < 0,05s no trim) desloca a emenda: sem par
+    // exato, a junção é seca — nunca aplica a transição no lugar errado
+    const tr = (b.idx === a.idx + 1) ? porJuncao.get(a.idx) : null;
+    if (!tr) { juncoes.push(null); continue; }
+    // a transição nunca engole a cena vizinha
+    const dur = Math.min(tr.dur, Math.max(0, a.dur - 0.05), Math.max(0, b.dur - 0.05));
+    if (dur <= 0.05) { juncoes.push(null); continue; }
+    borrows.get(a.idx).depois = dur / 2;
+    borrows.get(b.idx).antes = dur / 2;
+    juncoes.push({ dur, nome: tr.nome });
+  }
+  // comprimento REAL de cada arquivo cortado = cena + bordas emprestadas
+  const len = (c) => c.dur + borrows.get(c.idx).antes + borrows.get(c.idx).depois;
+  const passos = [];
+  let acumulado = clips.length ? len(clips[0]) : 0;
+  for (let k = 1; k < clips.length; k++) {
+    const j = juncoes[k - 1];
+    if (j) {
+      // o xfade come exatamente os dois empréstimos: a janela fica CENTRADA
+      // na emenda ([jun-dur/2, jun+dur/2]) e o acumulado volta pra régua
+      passos.push({ tipo: 'xfade', nome: j.nome, dur: j.dur, offset: Math.max(0, acumulado - j.dur) });
+      acumulado = acumulado + len(clips[k]) - j.dur;
+    } else {
+      passos.push({ tipo: 'concat' });
+      acumulado = acumulado + len(clips[k]);
+    }
+  }
+  return { borrows, passos, total: acumulado, temXfade: passos.some(x => x.tipo === 'xfade') };
+}
+// ── FIM planejarCadeia (marcador pro unit test extrair o fonte) ─────────────
+
+/** Inverte um clipe JÁ CORTADO, em pedaços, e devolve no MESMO caminho.
+ *  Pedaço de 3s a 1080×1920/30fps ≈ 90 quadros crus — cabe folgado; o clipe
+ *  inteiro na memória, não. */
+const REV_PEDACO = 3;
+async function inverterClipe(arquivo, dir, tag, dur) {
+  const partes = Math.max(1, Math.ceil(dur / REV_PEDACO));
+  if (partes === 1) {
+    const tmp = path.join(dir, `${tag}_r.mp4`);
+    await run('ffmpeg', ['-y', '-i', arquivo, '-vf', 'reverse', '-an',
+      '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '23', tmp]);
+    fs.renameSync(tmp, arquivo);
+    return;
+  }
+  const pedacos = [];
+  for (let k = 0; k < partes; k++) {
+    const p = path.join(dir, `${tag}_${k}.mp4`);
+    await run('ffmpeg', ['-y', '-ss', String(k * REV_PEDACO), '-t', String(REV_PEDACO),
+      '-i', arquivo, '-vf', 'reverse', '-an',
+      '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '23',
+      '-force_key_frames', 'expr:gte(t,0)', p]);
+    if (fs.existsSync(p)) pedacos.push(p);
+  }
+  if (!pedacos.length) return;             // falhou: fica o clipe original
+  const lista = path.join(dir, `${tag}_lista.txt`);
+  // ordem CONTRÁRIA: o último pedaço do clipe é o primeiro do resultado
+  fs.writeFileSync(lista, pedacos.reverse().map(p => `file '${path.basename(p)}'`).join('\n'));
+  const saida = path.join(dir, `${tag}_final.mp4`);
+  await run('ffmpeg', ['-y', '-f', 'concat', '-safe', '0', '-i', lista,
+    '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '23', '-an', saida]);
+  if (fs.existsSync(saida)) fs.renameSync(saida, arquivo);
+}
+
+// ── CORREÇÃO DE COR (Retoque) ────────────────────────────────────────────────
+// Ate 29/07 o grade existia SO no preview: o payload nem carregava os valores e
+// o arquivo exportado saia sem nenhum ajuste. Agora o editor manda `grade_render`
+// (SO NUMEROS — string de filtro vinda do cliente seria injecao de comando) e
+// aqui viram filtros de verdade.
+//   curvas  -> curves        (os pontos vem calculados pela MESMA conta do preview)
+//   hsl     -> huesaturation (ajuste por faixa de cor: r/y/g/c/b/m)
+//   temp    -> colortemperature · matiz/saturacao -> hue
+//   nitidez -> unsharp · vinheta -> vignette · grao -> noise
+function filtrosDoGrade(gr) {
+  if (!gr || typeof gr !== 'object') return [];
+  const num = (v, min, max, def = 0) => {
+    const x = Number(v);
+    return Number.isFinite(x) ? Math.min(max, Math.max(min, x)) : def;
+  };
+  const out = [];
+
+  if (gr.curvas && typeof gr.curvas === 'object') {
+    const partes = [];
+    for (const canal of ['r', 'g', 'b']) {
+      const pts = gr.curvas[canal];
+      if (!Array.isArray(pts) || pts.length < 2 || pts.length > 12) continue;
+      const s = pts
+        .map((p) => Array.isArray(p) ? `${num(p[0], 0, 1).toFixed(4)}/${num(p[1], 0, 1).toFixed(4)}` : null)
+        .filter(Boolean).join(' ');
+      if (s) partes.push(`${canal}='${s}'`);
+    }
+    if (partes.length) out.push('curves=' + partes.join(':'));
+  }
+
+  if (Array.isArray(gr.hsl)) {
+    const validas = new Set(['r', 'y', 'g', 'c', 'b', 'm']);
+    for (const f of gr.hsl.slice(0, 6)) {
+      if (!f || !validas.has(f.faixa)) continue;
+      out.push(`huesaturation=hue=${num(f.h, -180, 180).toFixed(2)}` +
+               `:saturation=${num(f.s, -1, 1).toFixed(4)}` +
+               `:intensity=${num(f.l, -1, 1).toFixed(4)}` +
+               `:colors=${f.faixa}`);
+    }
+  }
+
+  // temp>0 esquenta: temperatura MENOR em kelvin = imagem mais quente
+  if (gr.temp) out.push(`colortemperature=temperature=${Math.round(6500 - num(gr.temp, -1, 1) * 2500)}`);
+  const hueParts = [];
+  if (gr.matiz) hueParts.push(`h=${num(gr.matiz, -180, 180).toFixed(2)}`);
+  // != null e nao truthy: saturacao ZERO e preto-e-branco, um ajuste legitimo
+  // e comum — testar por verdadeiro/falso fazia o filtro nunca ser aplicado
+  if (gr.saturacao != null) hueParts.push(`s=${num(gr.saturacao, 0, 3, 1).toFixed(4)}`);
+  if (hueParts.length) out.push('hue=' + hueParts.join(':'));
+
+  if (gr.nitidez) out.push(`unsharp=5:5:${(num(gr.nitidez, 0, 1) * 1.5).toFixed(3)}`);
+  if (gr.glow) {
+    // brilho/glow: borra uma copia e soma por cima (mesma ideia do preview)
+    const k = num(gr.glow, 0, 1);
+    out.push(`split[gA][gB];[gB]gblur=sigma=${(k * 12).toFixed(1)}[gBlur];[gA][gBlur]blend=all_mode=screen:all_opacity=${(k * 0.7).toFixed(3)}`);
+  }
+  if (gr.grao) out.push(`noise=alls=${Math.round(num(gr.grao, 0, 1) * 26)}:allf=t+u`);
+  if (gr.vinheta) {
+    // vinheta mais forte = angulo maior (o preview escurece as bordas igual)
+    out.push(`vignette=angle=${(Math.PI / 5 + num(gr.vinheta, 0, 1) * (Math.PI / 4)).toFixed(4)}`);
+  }
+  return out;
+}
+
 function hexToFfmpeg(hex) {
   // FFmpeg cor: 0xRRGGBB
   const m = /^#?([0-9a-f]{6})$/i.exec(hex || '#ffffff');
@@ -2143,6 +2523,19 @@ async function processEditV0(jobId, p) {
     update('downloading', 5);
     const sourcePath = path.join(dir, 'source.mp4');
     await downloadFile(p.video_url, sourcePath);
+    // 1b. Multi-take (2026-07-20): clips/overlays podem apontar pra OUTRAS
+    // midias via media_url — baixa cada fonte distinta uma unica vez
+    const mediaPaths = new Map(); // media_url -> path local
+    const distinctMedia = [...new Set(
+      [...(p.clips || []), ...(p.overlays || [])].map(x => x.media_url).filter(Boolean)
+    )];
+    for (let i = 0; i < distinctMedia.length; i++) {
+      const mp = path.join(dir, `media_${i}.mp4`);
+      await downloadFile(distinctMedia[i], mp);
+      mediaPaths.set(distinctMedia[i], mp);
+    }
+    const srcFor = (x) => x.media_url ? (mediaPaths.get(x.media_url) || sourcePath) : sourcePath;
+    const multiSource = distinctMedia.length > 0;
     // 2. Audio extra (opcional)
     let audioExtraPath = null;
     if (p.audio_extra_url) {
@@ -2153,24 +2546,132 @@ async function processEditV0(jobId, p) {
 
     // 3. Trim cada clip
     update('trimming', 15);
+    // multi-take: fontes com resolucao/fps diferentes NAO concatenam com
+    // -c copy — normaliza cada trim pro formato de saida ANTES do concat
+    const NORM_W = p.output_width || 1080;
+    const NORM_H = p.output_height || 1920;
+    // fit POR CENA (2026-08-07): mídia com proporção diferente do quadro entra
+    // INTEIRA (letterbox daquela cena), espelhando o `fitDaCena` do preview —
+    // era o "vídeo horizontal entra deformado". Sem fit → estratégia global.
+    const normPara = (c) => {
+      const modo = c?.fit === 'contain' ? 'letterbox'
+        : c?.fit === 'cover' ? 'crop_center'
+        : (p.aspect_strategy || 'crop_center');
+      return modo === 'letterbox'
+        ? `scale=${NORM_W}:${NORM_H}:force_original_aspect_ratio=decrease,pad=${NORM_W}:${NORM_H}:(ow-iw)/2:(oh-ih)/2,setsar=1`
+        : `scale=${NORM_W}:${NORM_H}:force_original_aspect_ratio=increase,crop=${NORM_W}:${NORM_H},setsar=1`;
+    };
+    // ── FIM normPara (marcador pra sonda extrair o fonte) ──
+    // um clip com fit próprio força a normalização de TODOS (senão o concat
+    // mistura resoluções — mesmo motivo do multiSource)
+    const temFitProprio = (p.clips || []).some(c => c && c.fit);
+    // TRANSIÇÕES entram JÁ NO TRIM: os vizinhos de cada emenda ganham dur/2 de
+    // material EMPRESTADO na borda (além do corte; sem material, clona o frame
+    // da ponta) — é o que o xfade consome sem encurtar a régua. Ver
+    // planejarCadeia pro porquê (áudio dessincronizado era o sintoma).
+    const clipsPlano = [];
+    for (let i = 0; i < p.clips.length; i++) {
+      const c = p.clips[i];
+      if ((c.source_out - c.source_in) < 0.05) continue;
+      clipsPlano.push({ idx: i, dur: duracaoDaCena(c) });
+    }
+    const plano = planejarCadeia(clipsPlano, p.transitions);
     const clipFiles = [];
     for (let i = 0; i < p.clips.length; i++) {
       const c = p.clips[i];
       const out = path.join(dir, `clip_${i}.mp4`);
       const dur = (c.source_out - c.source_in);
       if (dur < 0.05) continue;
+      const bw = plano.borrows.get(i) || { antes: 0, depois: 0 };
+      const comBorrow = bw.antes > 0 || bw.depois > 0;
+      const alvo = duracaoDaCena(c) + bw.antes + bw.depois;   // comprimento EXATO do arquivo
+      // CORREÇÃO DE COR da cena: entra AQUI, no trim, porque o grade é POR
+      // CLIPE — depois do concat não dá mais pra saber de quem era o ajuste.
+      // Antes o Retoque não chegava no arquivo de jeito nenhum.
+      const fGrade = filtrosDoGrade(c.grade_render);
+      // CONGELAR QUADRO: a cena é UM frame parado por freeze_dur segundos.
+      // Não é trim — é uma imagem em loop; por isso sai do caminho normal.
+      // (borda emprestada = mais tempo do MESMO frame: só estica o -t)
+      if (c.frozen === true) {
+        const still = path.join(dir, `freeze_${i}.png`);
+        await run('ffmpeg', ['-y', '-ss', String(num(c.freeze_src, 0, 0, 86400)),
+          '-i', srcFor(c), '-frames:v', '1', still]);
+        const vfF = [...((multiSource || temFitProprio) ? [normPara(c)] : []), ...fGrade,
+          ...filtrosDaCena({ ...c, speed: 1 }, NORM_W, NORM_H)].filter(Boolean);
+        await run('ffmpeg', [
+          '-y', '-loop', '1', '-t', String(alvo), '-i', still,
+          '-vf', [...vfF, `fps=30`].join(','), '-r', '30', '-pix_fmt', 'yuv420p',
+          '-c:v', 'libx264', '-preset', 'ultrafast', '-crf', '18', // intermediário: o final re-encoda; ultrafast corta CPU, crf baixo preserva
+          '-force_key_frames', 'expr:gte(t,0)', '-an', out,
+        ]);
+        clipFiles.push({ path: out, duration: alvo });
+        continue;
+      }
+      const v = velocidadeDaCena(c);
+      // REVERSO toca o arquivo de trás pra frente: a borda ANTES da cena (na
+      // régua) é material DEPOIS do source_out no arquivo, e vice-versa
+      const headSrc = (c.reversed === true ? bw.depois : bw.antes) * v;
+      const tailSrc = (c.reversed === true ? bw.antes : bw.depois) * v;
+      const ssSrc = Math.max(0, c.source_in - headSrc);
+      // arquivo sem cabeça pra emprestar (source_in ~ 0): completa clonando o
+      // primeiro frame — o comprimento do arquivo cortado é SAGRADO (a conta
+      // da cadeia inteira depende dele)
+      const faltaHeadOut = (headSrc - (c.source_in - ssSrc)) / v;
+      const lerSrc = (c.source_out + tailSrc) - ssSrc;
+      const vfPartes = [
+        // animação geométrica (zoom/deslize/pulso) exige quadro fixo — normaliza JÁ AQUI
+        ...((multiSource || temFitProprio || clipeTemAnimGeo(c)) ? [normPara(c)] : []),
+        ...fGrade,
+        // velocidade/espelho/escala/posição/opacidade da cena
+        ...filtrosDaCena(c, NORM_W, NORM_H),
+      ].filter(Boolean);
+      // GARANTIA DE COMPRIMENTO (só quando há empréstimo): clona o frame da
+      // ponta pra cobrir cabeça sem material e EOF antes da hora, e corta no
+      // alvo exato. Pro reverso a garantia roda DEPOIS da inversão.
+      if (comBorrow && c.reversed !== true) {
+        if (faltaHeadOut > 0.001) vfPartes.push(`tpad=start_mode=clone:start_duration=${faltaHeadOut.toFixed(3)}`);
+        vfPartes.push(`tpad=stop_mode=clone:stop_duration=${(Math.max(bw.antes, bw.depois) + 0.3).toFixed(3)}`);
+        vfPartes.push(`trim=duration=${alvo.toFixed(3)}`, 'setpts=PTS-STARTPTS');
+      }
+      // ANIMAÇÃO DA CENA (aba Animação): aplicada por último — aqui t é o
+      // tempo FINAL do arquivo do clipe; a cena visível começa em bw.antes
+      // (0 sem transição) e dura alvo - antes - depois.
+      if (c.anim_in || c.anim_out || c.anim_loop) {
+        vfPartes.push(...filtrosDaAnimacao(c, NORM_W, NORM_H, bw.antes, alvo - bw.antes - bw.depois));
+      }
       // -ss antes do -i = fast seek (keyframe). Pra accuracy: -ss depois do -i (frame accurate, lento)
       // V0 usa fast seek + re-encode pra balance
+      // com transição na cadeia TODO clip sai 30fps/yuv420p: xfade e concat de
+      // filter_complex exigem fps/formato iguais entre as entradas
       await run('ffmpeg', [
-        '-y', '-ss', String(c.source_in), '-t', String(dur),
-        '-i', sourcePath,
-        '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '23',
+        '-y', '-ss', String(ssSrc), '-t', String(lerSrc),
+        '-i', srcFor(c),
+        ...(vfPartes.length ? ['-vf', vfPartes.join(','), '-r', '30', '-pix_fmt', 'yuv420p']
+          : (plano.temXfade ? ['-r', '30', '-pix_fmt', 'yuv420p'] : [])),
+        '-c:v', 'libx264', '-preset', 'ultrafast', '-crf', '18', // intermediário (re-encodado no concat/final)
         '-c:a', 'aac', '-b:a', '128k',
         '-force_key_frames', 'expr:gte(t,0)',
         '-an', // pass1 sem audio (audio mux na fase final)
         out,
       ]);
-      clipFiles.push({ path: out, duration: dur });
+      // REVERSO: o filtro `reverse` guarda o clipe INTEIRO na memória. Rodar
+      // direto num clipe longo derruba o container por OOM — então o clipe já
+      // cortado é fatiado, cada pedaço é invertido e eles voltam na ordem
+      // contrária. Memória fica presa ao tamanho do PEDAÇO, não do clipe.
+      if (c.reversed === true) {
+        await inverterClipe(out, dir, `rev_${i}`, alvo);
+        if (comBorrow) {
+          // garantia de comprimento pós-inversão (falta de material vira clone
+          // na ponta; a conta da cadeia exige o alvo exato)
+          const fix = path.join(dir, `revfix_${i}.mp4`);
+          await run('ffmpeg', ['-y', '-i', out,
+            '-vf', `tpad=stop_mode=clone:stop_duration=2,trim=duration=${alvo.toFixed(3)},setpts=PTS-STARTPTS`,
+            '-r', '30', '-pix_fmt', 'yuv420p',
+            '-c:v', 'libx264', '-preset', 'ultrafast', '-crf', '18', '-an', fix]);
+          if (fs.existsSync(fix)) fs.renameSync(fix, out);
+        }
+      }
+      clipFiles.push({ path: out, duration: alvo });
     }
     if (clipFiles.length === 0) throw new Error('Nenhum clip valido apos trim');
 
@@ -2184,31 +2685,102 @@ async function processEditV0(jobId, p) {
       // Concat via demuxer. Paths RELATIVOS ao .txt (demuxer resolve assim) —
       // absolutos quebram no Windows (dev local) e relativos funcionam igual
       // no Linux porque clips e concat.txt vivem no mesmo dir.
-      const listFile = path.join(dir, 'concat.txt');
-      fs.writeFileSync(listFile, clipFiles.map(c => `file '${path.basename(c.path)}'`).join('\n'));
-      await run('ffmpeg', [
-        '-y', '-f', 'concat', '-safe', '0', '-i', listFile,
-        '-c:v', 'copy', concatPath,
-      ]);
+      // ── TRANSIÇÕES (2026-07-29 · modelo de EMPRÉSTIMO 2026-08-07) ────────
+      // O plano foi montado ANTES do trim (planejarCadeia): cada vizinho de
+      // emenda já saiu do trim com dur/2 de material emprestado na borda, e o
+      // xfade consome exatamente isso — a janela fica CENTRADA na emenda e o
+      // total do arquivo é a soma das cenas (régua intacta = áudio, máscaras
+      // e textos alinhados). Junção SEM transição vira concat de verdade
+      // (o xfade fake de 0,04s encurtava a régua a cada emenda seca).
+      if (!plano.temXfade) {
+        const listFile = path.join(dir, 'concat.txt');
+        fs.writeFileSync(listFile, clipFiles.map(c => `file '${path.basename(c.path)}'`).join('\n'));
+        await run('ffmpeg', [
+          '-y', '-f', 'concat', '-safe', '0', '-i', listFile,
+          '-c:v', 'copy', concatPath,
+        ]);
+      } else {
+        const args = ['-y'];
+        for (const c of clipFiles) args.push('-i', c.path);
+        const fc = [];
+        // mp4 cru entra com timebase próprio (ex.: 1/15360) e concat/xfade
+        // EXIGEM timebases iguais nas duas pontas — normaliza tudo pra AVTB
+        // antes da cadeia (medido: sem isto o elo concat→xfade aborta -22)
+        for (let i = 0; i < clipFiles.length; i++) fc.push(`[${i}:v]settb=AVTB[e${i}]`);
+        let rotulo = 'e0';
+        for (let i = 1; i < clipFiles.length; i++) {
+          const passo = plano.passos[i - 1];
+          const saida = (i === clipFiles.length - 1) ? 'vout' : `vx${i}`;
+          if (passo && passo.tipo === 'xfade') {
+            fc.push(`[${rotulo}][e${i}]xfade=transition=${passo.nome}:duration=${passo.dur.toFixed(3)}:offset=${passo.offset.toFixed(3)}[${saida}]`);
+          } else {
+            fc.push(`[${rotulo}][e${i}]concat=n=2:v=1:a=0[${saida}]`);
+          }
+          rotulo = saida;
+        }
+        await run('ffmpeg', [
+          ...args, '-filter_complex', fc.join(';'),
+          '-map', `[${rotulo}]`, '-an',
+          '-c:v', 'libx264', '-preset', 'ultrafast', '-crf', '18', '-pix_fmt', 'yuv420p', // intermediário (o final re-encoda)
+          concatPath,
+        ]);
+      }
     }
 
-    // 5. Trilha de áudio v0 (fallback): so quando NAO ha audio_clips v2
+    // 5. Trilha de áudio ORIGINAL (principal + takes): extrai o audio de CADA
+    // clip da SUA PROPRIA fonte (srcFor respeita o media_url dos takes) na ordem
+    // da timeline. Clip sem trilha de audio vira silêncio do mesmo tamanho pra
+    // NÃO desalinhar os seguintes.
+    // Fix 2026-07-21: antes esse loop só rodava quando NÃO havia audio_clips v2
+    // — por isso o áudio do vídeo (e o áudio original dos takes importados)
+    // sumia assim que o usuário adicionava música. Agora SEMPRE monta o
+    // sourceAudioPath; o mixer decide o volume (0 = mudo, ex.: audio destacado).
     update('audio', 55);
     const hasAudioClipsV2 = Array.isArray(p.audio_clips) && p.audio_clips.length > 0;
     const audioClipFiles = [];
-    if (!hasAudioClipsV2)
     for (let i = 0; i < p.clips.length; i++) {
       const c = p.clips[i];
       const out = path.join(dir, `audio_${i}.aac`);
       const dur = (c.source_out - c.source_in);
       if (dur < 0.05) continue;
-      try {
+      // duração na TIMELINE: com velocidade (ou quadro congelado) ela é
+      // diferente da duração do trecho no arquivo. O silêncio de reserva e o
+      // alinhamento de tudo que vem depois dependem DESTA, não da bruta.
+      const durLinha = duracaoDaCena(c);
+      let ok = false;
+      // cena com áudio REMOVIDO (c.muted, "Remover áudio desta cena") ou quadro
+      // CONGELADO (não há som num frame parado): cai direto no silêncio do
+      // mesmo tamanho (mantém alinhamento)
+      if (!c.muted && c.frozen !== true) try {
+        // "Aprimorar áudio" da CENA (áudio embutido no vídeo) entra aqui, na
+        // extração do áudio DAQUELE clipe — é o único ponto onde ainda dá pra
+        // saber de quem era o som (depois vira um concat só).
+        // `speed` entra junto (atempo): sem isso a imagem acelerava e o som
+        // não, e a cena seguinte começava fora do lugar.
+        const fxCena = filtrosDeAudioFx({ fx_ruido: c.fx_ruido, fx_voz: c.fx_voz,
+                                          fx_voz_int: c.fx_voz_int, fx_norm: c.fx_norm,
+                                          speed: velocidadeDaCena(c) });
+        if (c.reversed === true) fxCena.unshift('areverse');
         await run('ffmpeg', [
           '-y', '-ss', String(c.source_in), '-t', String(dur),
-          '-i', sourcePath, '-vn', '-c:a', 'aac', '-b:a', '128k', out,
+          '-i', srcFor(c), '-vn',
+          ...(fxCena.length ? ['-af', fxCena.join(',')] : []),
+          '-c:a', 'aac', '-b:a', '128k', out,
         ]);
-        audioClipFiles.push(out);
-      } catch(e) { /* video pode nao ter audio */ }
+        ok = fs.existsSync(out);
+      } catch(e) { ok = false; /* fonte pode nao ter trilha de audio */ }
+      if (!ok) {
+        // silêncio do mesmo tamanho: mantém o áudio dos próximos clips no lugar
+        try {
+          await run('ffmpeg', [
+            '-y', '-f', 'lavfi', '-t', String(durLinha),
+            '-i', 'anullsrc=channel_layout=stereo:sample_rate=44100',
+            '-c:a', 'aac', '-b:a', '128k', out,
+          ]);
+          ok = fs.existsSync(out);
+        } catch(e) { ok = false; }
+      }
+      if (ok) audioClipFiles.push(out);
     }
     let sourceAudioPath = null;
     if (audioClipFiles.length === 1) {
@@ -2234,58 +2806,245 @@ async function processEditV0(jobId, p) {
     } else {
       vf = `scale=${OUT_W}:${OUT_H}:force_original_aspect_ratio=increase,crop=${OUT_W}:${OUT_H},setsar=1`;
     }
-    // drawtext pra cada texto ativo. Source_w/source_h em pct -> px do output
     const texts = p.texts || [];
-    let textFilters = '';
-    for (const t of texts) {
-      const fs_px = Math.round(sizePct(t.size) * OUT_W);
-      const x_px = `(w*${t.x_pct.toFixed(4)}-text_w/2)`;
-      const y_px = `(h*${t.y_pct.toFixed(4)}-text_h/2)`;
-      const txt = escapeDrawText(t.content || '');
-      const enable = `between(t,${t.start_sec.toFixed(3)},${t.end_sec.toFixed(3)})`;
-      textFilters += `,drawtext=fontfile=${fontFile(t.font)}:text='${txt}':fontsize=${fs_px}:fontcolor=${hexToFfmpeg(t.color)}:borderw=${Math.max(2, Math.round(fs_px*0.06))}:bordercolor=0x000000:x=${x_px}:y=${y_px}:enable='${enable}'`;
-    }
-    vf += textFilters;
 
     // Volumes
     const volV = p.volumes?.video ?? 1;
     const volA = p.volumes?.audio_extra ?? 1;
-    const finalPath = path.join(dir, 'output.mp4');
+    // exportar SÓ ÁUDIO entrega .m4a (contêiner de áudio) em vez de mp4
+    const finalPath = path.join(dir, p.audio_only === true ? 'output.m4a' : 'output.mp4');
     const args = ['-y', '-threads', '1'];
     args.push('-i', concatPath);                     // input 0: video base
     const fc = [];                                   // filter_complex parts
     let inputIdx = 1;
 
-    // ── OVERLAYS v2 (camadas PiP): trim de cada camada + overlay chain ──
+    // ── OVERLAYS v2: cada camada vira input pro chain ──
+    // vídeo: trima o trecho. IMAGEM (PNG/sticker com transparência): baixa o
+    // arquivo e entra como input estático (alpha preservado no overlay).
     const overlays = Array.isArray(p.overlays) ? p.overlays : [];
     const ovInputs = [];
     for (let i = 0; i < overlays.length; i++) {
       const o = overlays[i];
       const dur = o.source_out - o.source_in;
       if (dur < 0.05) continue;
+      if (o.kind === 'image' && o.image_url) {
+        const imgPath = path.join(dir, `ovimg_${i}` + (o.image_url.match(/\.(png|jpg|jpeg|webp|gif)/i)?.[0] || '.png'));
+        try { await downloadFile(o.image_url, imgPath); }
+        catch (e) { console.log('[edit-v0] imagem overlay falhou, pulando:', e.message); continue; }
+        // FADE em imagem (user 14/08): o fade precisa de FRAMES ao longo do
+        // tempo — imagem estática tem 1 só. Com fade, a imagem entra em loop
+        // pela janela dela na timeline; sem fade, segue estática (barato).
+        const temFadeImg = o.anim_in === 'fade_in' || o.anim_out === 'fade_out';
+        if (temFadeImg) {
+          const tlDurImg = dur / (Number(o.speed) > 0 ? Number(o.speed) : 1);
+          args.push('-loop', '1', '-framerate', '25', '-t', tlDurImg.toFixed(3));
+        }
+        ovInputs.push({ idx: inputIdx, o, file: imgPath, isImage: true, looped: temFadeImg });
+        args.push('-i', imgPath);
+        inputIdx++;
+        continue;
+      }
       const out = path.join(dir, `ov_${i}.mp4`);
       await run('ffmpeg', [
         '-y', '-ss', String(o.source_in), '-t', String(dur),
-        '-i', sourcePath,
-        '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '23', '-an', out,
+        '-i', srcFor(o),
+        '-c:v', 'libx264', '-preset', 'ultrafast', '-crf', '20', '-an', out,
       ]);
-      ovInputs.push({ idx: inputIdx, o, file: out });
+      const entry = { idx: inputIdx, o, file: out };
+      // SOM EMBUTIDO DA CAMADA (user 14/08): o ov_{i}.mp4 nasce -an, então o
+      // áudio sai num arquivo PRÓPRIO, mixado depois junto dos audio_clips.
+      // Fonte sem trilha de áudio → a extração falha/não gera arquivo → o
+      // catch engole e a camada segue muda (mesma blindagem do passo 5).
+      if (o.muted !== true) {
+        const ovaud = path.join(dir, `ovaud_${i}.aac`);
+        try {
+          await run('ffmpeg', ['-y', '-ss', String(o.source_in), '-t', String(dur),
+            '-i', srcFor(o), '-vn', '-c:a', 'aac', '-b:a', '128k', ovaud]);
+          if (fs.existsSync(ovaud) && fs.statSync(ovaud).size > 200) entry.audioFile = ovaud;
+        } catch (e) { console.log(`[edit-v0] overlay ${i} sem trilha de audio, segue mudo:`, e.message); }
+      }
+      ovInputs.push(entry);
       args.push('-i', out);
       inputIdx++;
     }
-    // video chain: [0:v] vf base -> overlays em cadeia (ordem = z-order)
+
+    // ── COMPOSIÇÃO POR LANE (v3, CapCut): overlays E textos entram na MESMA
+    // ordem de camadas — lane MAIOR aplica por ÚLTIMO = fica NA FRENTE.
+    // Texto em lane menor que um overlay fica ATRÁS do vídeo dele (regra do
+    // user). Retrocompat: payload sem lane → overlays lane 1, textos lane 4
+    // (texto na frente, default CapCut).
+    const ops = [
+      ...ovInputs.map((ov) => ({ kind: 'ov', lane: Number(ov.o.lane) || 1, ov })),
+      ...texts.map((t) => ({ kind: 'text', lane: Number(t.lane) || 4, t })),
+    ].sort((a, b) => a.lane - b.lane);
+
     let vLabel = 'base0';
     fc.push(`[0:v]${vf}[${vLabel}]`);
-    ovInputs.forEach((ov, k) => {
-      const { idx, o } = ov;
-      const scaled = `ovs${k}`;
+
+    // ── MÁSCARAS por cena (CapCut: círculo/retângulo + suavizar + cantos) ──
+    // Técnica: pra cada clip com mask, gera um PNG "invertido" (preto opaco
+    // FORA da forma, transparente dentro; borda com blur = suavizar) e faz
+    // overlay dele na janela de tempo do clip — recorta a cena sobre preto.
+    // Coordenadas em % do quadro FINAL (igual ao preview = WYSIWYG).
+    {
+      let mAcc = 0;
+      let mIdx = 0;
+      for (const c of (p.clips || [])) {
+        const cdur = c.source_out - c.source_in;
+        if (cdur < 0.05) continue;
+        const t0 = mAcc; mAcc += cdur;
+        const m = c.mask;
+        if (!m || !['circle', 'rect'].includes(m.shape)) continue;
+        const cx = Math.round(OUT_W * (m.x_pct ?? 0.5));
+        const cy = Math.round(OUT_H * (m.y_pct ?? 0.5));
+        const hw = Math.max(8, Math.round(OUT_W * (m.w_pct ?? 0.6) / 2));
+        const hh = Math.max(8, Math.round(OUT_H * (m.h_pct ?? 0.6) / 2));
+        const blur = Math.min(200, Math.round(((m.feather || 0) / 100) * Math.min(OUT_W, OUT_H) / 8));
+        let formula;
+        if (m.shape === 'circle') {
+          formula = `if(lte(pow((X-${cx})/${hw},2)+pow((Y-${cy})/${hh},2),1),0,255)`;
+        } else {
+          // SDF de retângulo arredondado: dx/dy = distância além do miolo reto
+          const r = Math.round(((m.radius || 0) / 100) * Math.min(hw, hh));
+          formula = `st(0,max(abs(X-${cx})-${hw - r},0));st(1,max(abs(Y-${cy})-${hh - r},0));if(lte(sqrt(ld(0)*ld(0)+ld(1)*ld(1)),${r}),0,255)`;
+        }
+        const maskPng = path.join(dir, `mask_${mIdx}.png`);
+        try {
+          await run('ffmpeg', [
+            '-y', '-f', 'lavfi', '-i', `color=c=black:s=${OUT_W}x${OUT_H}`,
+            '-frames:v', '1',
+            '-vf', `format=rgba,geq=r=0:g=0:b=0:a='${formula}'${blur > 0 ? `,boxblur=0:0:0:0:${blur}:2` : ''}`,
+            maskPng,
+          ]);
+        } catch (e) { console.log('[edit-v0] mask falhou, cena sem máscara:', e.message); continue; }
+        args.push('-i', maskPng);
+        const nextL = `mk${mIdx}`;
+        fc.push(`[${vLabel}][${inputIdx}:v]overlay=0:0:enable='between(t,${t0.toFixed(3)},${mAcc.toFixed(3)})'[${nextL}]`);
+        vLabel = nextL;
+        inputIdx++;
+        mIdx++;
+      }
+    }
+
+    ops.forEach((op, k) => {
       const nextL = `base${k + 1}`;
-      // escala relativa a LARGURA do output + posicao central em pct
-      fc.push(`[${idx}:v]scale=${Math.round((p.output_width || 1080) * (o.scale ?? 0.5))}:-2,setpts=PTS-STARTPTS+${(o.start ?? 0).toFixed(3)}/TB[${scaled}]`);
-      fc.push(`[${vLabel}][${scaled}]overlay=x=${Math.round((p.output_width || 1080) * (o.x_pct ?? 0.5))}-w/2:y=${Math.round((p.output_height || 1920) * (o.y_pct ?? 0.5))}-h/2:enable='between(t,${(o.start ?? 0).toFixed(3)},${((o.start ?? 0) + dur0(o)).toFixed(3)})'[${nextL}]`);
+      if (op.kind === 'ov') {
+        const { idx, o, isImage, looped } = op.ov;
+        const sp = Number(o.speed) > 0 ? Number(o.speed) : 1;
+        const dur = o.source_out - o.source_in;
+        const tlDur = dur / sp;                       // duração NA timeline (com velocidade)
+        const scaled = `ovs${k}`;
+        const OW = p.output_width || 1080, OH = p.output_height || 1920;
+        // CAIXA na proporção da MÍDIA (user 14/08: "todas tem o mesmo
+        // formato"): o editor manda box_w_pct/box_h_pct já com a proporção da
+        // fonte (contain no quadro × escala) — a MESMA caixa do preview.
+        // Payload antigo (sem box): caixa na proporção do quadro, como era.
+        const boxW = Number(o.box_w_pct) > 0 ? Number(o.box_w_pct) : (o.scale ?? 0.5);
+        const scaleW = Math.max(2, Math.round(OW * boxW));
+        // ── QUADROS-CHAVE de movimento (user 14/08): x/y viram reta por
+        // partes em t (overlay reavalia por frame) — mesma curva do preview
+        const kfs = kfValidos(o);
+        const iniAn = (o.start ?? 0), fimAn = iniAn + tlDur;
+        const xExpr = kfs.length
+          ? `(${exprPiecewise(kfs.map(kk => ({ T: iniAn + kk.t, V: OW * kk.x })))})-w/2`
+          : `${Math.round(OW * (o.x_pct ?? 0.5))}-w/2`;
+        const yExpr = kfs.length
+          ? `(${exprPiecewise(kfs.map(kk => ({ T: iniAn + kk.t, V: OH * kk.y })))})-h/2`
+          : `${Math.round(OH * (o.y_pct ?? 0.5))}-h/2`;
+        const enable = `between(t,${iniAn.toFixed(3)},${fimAn.toFixed(3)})`;
+        // ── ANIMAÇÃO DA CAMADA (user 14/08; agora também em IMAGEM) ───────
+        // Fades = alpha no ramo (t da composição = régua final, igual ao
+        // preview); deslizes/balanço = x/y do overlay com expressão em t.
+        // Duração do slider viaja no payload (anim_*_dur) — presa em meia
+        // janela pra entrada e saída não se atropelarem.
+        const durSlotOv = (v) => Math.max(0.1, Math.min(Number(v) > 0 ? Number(v) : 0.5, 5, tlDur / 2));
+        const dIn = durSlotOv(o.anim_in_dur), dOut = durSlotOv(o.anim_out_dur);
+        const perBal = (Number(o.anim_loop_dur) > 0
+          ? Math.max(0.1, Math.min(Number(o.anim_loop_dur), 5)) : 2.2).toFixed(3);
+        const fades = [];
+        if (o.anim_in === 'fade_in') fades.push(`fade=t=in:st=${iniAn.toFixed(3)}:d=${dIn.toFixed(3)}:alpha=1`);
+        if (o.anim_out === 'fade_out') fades.push(`fade=t=out:st=${(fimAn - dOut).toFixed(3)}:d=${dOut.toFixed(3)}:alpha=1`);
+        const PIn = `min(max((t-${iniAn.toFixed(3)})/${dIn.toFixed(3)},0),1)`;
+        const POut = `min(max((t-${(fimAn - dOut).toFixed(3)})/${dOut.toFixed(3)},0),1)`;
+        let xE = xExpr, yE = yExpr;
+        if (o.anim_in === 'vindo_direita') xE = `(${xE})+(${OW}-(${xE}))*(1-${PIn})`;
+        if (o.anim_in === 'subir') yE = `(${yE})+(${OH}-(${yE}))*(1-${PIn})`;
+        if (o.anim_out === 'descer') yE = `(${yE})+(${OH}-(${yE}))*${POut}`;
+        if (o.anim_loop === 'balanco') xE = `(${xE})+${Math.round(OW * 0.02)}*sin(2*PI*t/${perBal})`;
+        if (isImage) {
+          // IMAGEM: escala preservando alpha (+ rotação opcional). Com fade, o
+          // input entrou em -loop (frames reais) → setpts posiciona a janela e
+          // o fade anima o alpha; sem fade, frame estático de sempre.
+          const deg = Number(o.rotation) || 0;
+          const rotF = deg ? `,rotate=${deg}*PI/180:c=none:ow=rotw(${deg}*PI/180):oh=roth(${deg}*PI/180)` : '';
+          if (looped && fades.length) {
+            fc.push(`[${idx}:v]scale=${scaleW}:-1${rotF},format=yuva420p,` +
+                    `setpts=PTS-STARTPTS+${iniAn.toFixed(3)}/TB,${fades.join(',')}[${scaled}]`);
+          } else {
+            fc.push(`[${idx}:v]scale=${scaleW}:-1${rotF}[${scaled}]`);
+          }
+          fc.push(`[${vLabel}][${scaled}]overlay=x='${xE}':y='${yE}':enable='${enable}'[${nextL}]`);
+        } else {
+          // CAMADA DE VÍDEO: a caixa tem a proporção da mídia (box_h_pct) —
+          // cover na caixa (no-op com proporção casada; payload antigo cai na
+          // proporção do quadro e corta, como era em 2026-07-29).
+          const scaleH = Number(o.box_h_pct) > 0
+            ? Math.max(2, Math.round(OH * Number(o.box_h_pct)))
+            : Math.max(2, Math.round(scaleW * (OH / OW)));
+          const spF = sp !== 1 ? `/${sp}` : '';
+          const alphaFx = fades.length ? ',format=yuva420p,' + fades.join(',') : '';
+          fc.push(`[${idx}:v]scale=${scaleW}:${scaleH}:force_original_aspect_ratio=increase,` +
+                  `crop=${scaleW}:${scaleH},setsar=1,` +
+                  `setpts=(PTS-STARTPTS)${spF}+${(o.start ?? 0).toFixed(3)}/TB${alphaFx}[${scaled}]`);
+          fc.push(`[${vLabel}][${scaled}]overlay=x='${xE}':y='${yE}':enable='${enable}'[${nextL}]`);
+        }
+      } else {
+        const t = op.t;
+        // ── QUEBRA DE LINHA (2026-07-29) ──────────────────────────────────
+        // O drawtext NAO quebra linha sozinho: um texto comprido virava UMA
+        // linha atravessando o quadro inteiro (o "texto sai do video"). O
+        // editor manda as linhas JA quebradas (t.lines) e a fonte final
+        // (t.font_pct), calculadas com a mesma funcao que desenha o preview —
+        // assim nao existem dois algoritmos pra discordar.
+        // Retrocompat: payload antigo (sem lines) cai no texto de uma linha so.
+        const fs_px = Math.round((t.font_pct > 0 ? t.font_pct : sizePct(t.size)) * OUT_W);
+        const linhas = Array.isArray(t.lines) && t.lines.length
+          ? t.lines : [t.content || ''];
+        const alturaLinha = fs_px * 1.12;
+        const alturaBloco = linhas.length * alturaLinha;
+        const x_px = `(w*${t.x_pct.toFixed(4)}-text_w/2)`;
+        const enable = `between(t,${t.start_sec.toFixed(3)},${t.end_sec.toFixed(3)})`;
+        // tarja/caixa colorida atrás (estilo CapCut): box=1 + boxcolor + padding.
+        // com tarja NÃO usa contorno no texto (fica limpo, igual ao preview).
+        const hasBox = /^#[0-9a-fA-F]{6}$/.test(t.box || '');
+        const boxPart = hasBox
+          ? `:box=1:boxcolor=${hexToFfmpeg(t.box)}@0.92:boxborderw=${Math.max(10, Math.round(fs_px * 0.22))}`
+          : '';
+        const bw = hasBox ? 0 : Math.max(2, Math.round(fs_px * 0.06));
+        // traçado/borda da letra: cor escolhível (padrão preto). box tira o traçado.
+        const strokeCol = /^#[0-9a-fA-F]{6}$/.test(t.stroke || '') ? hexToFfmpeg(t.stroke) : '0x000000';
+        // ── ANIMACAO de entrada/saida (2026-07-29) ────────────────────────
+        // Ate agora capfade/cappop so existiam como CSS das miniaturas do
+        // painel: no arquivo a legenda aparecia de estalo. O drawtext aceita
+        // EXPRESSAO com `t` em alpha e fontsize (verificado no proprio ffmpeg),
+        // entao a mesma conta do preview vira filtro aqui.
+        const anim = animExpr(t.anim, t.start_sec, t.end_sec);
+        const alphaPart = anim.alpha ? `:alpha='${anim.alpha}'` : '';
+        const fsExpr = anim.escala ? `'(${fs_px})*(${anim.escala})'` : String(fs_px);
+        // uma passada de drawtext POR LINHA, empilhadas em volta do centro
+        // (mesma entrelinha 1.12 do preview)
+        linhas.forEach((linha, iL) => {
+          const desloc = -alturaBloco / 2 + iL * alturaLinha + alturaLinha / 2;
+          const sinal = desloc >= 0 ? '+' : '-';
+          const subir = anim.deslocY ? `+(${anim.deslocY})*${alturaLinha.toFixed(2)}` : '';
+          const y_px = `(h*${t.y_pct.toFixed(4)}${sinal}${Math.abs(desloc).toFixed(2)}${subir}-text_h/2)`;
+          const alvo = iL === linhas.length - 1 ? nextL : `${nextL}l${iL}`;
+          const origem = iL === 0 ? vLabel : `${nextL}l${iL - 1}`;
+          fc.push(`[${origem}]drawtext=fontfile=${fontFile(t.font)}:text='${escapeDrawText(linha)}':fontsize=${fsExpr}:fontcolor=${hexToFfmpeg(t.color)}:borderw=${bw}:bordercolor=${strokeCol}${boxPart}:x=${x_px}:y=${y_px}${alphaPart}:enable='${enable}'[${alvo}]`);
+        });
+      }
       vLabel = nextL;
     });
-    function dur0(o) { return o.source_out - o.source_in; }
 
     // ── AUDIO v2: mixer de audio_clips (posicao/trim/volume por clip) ──
     const audioClips = Array.isArray(p.audio_clips) ? p.audio_clips : [];
@@ -2304,14 +3063,24 @@ async function processEditV0(jobId, p) {
         args.push('-i', mediaPath);
         const delayMs = Math.round((a.start ?? 0) * 1000);
         const lbl = `ac${i}`;
-        fc.push(`[${inputIdx}:a]atrim=${(a.source_in ?? 0).toFixed(3)}:${a.source_out.toFixed(3)},asetpts=PTS-STARTPTS,volume=${(a.volume ?? 1).toFixed(2)},adelay=${delayMs}|${delayMs}[${lbl}]`);
+        // velocidade + Aprimorar áudio entram ANTES do volume/adelay: o
+        // atempo muda a duração (o delay é sobre o tempo da timeline) e o
+        // normalizador deve trabalhar no som já limpo
+        const fxA = filtrosDeAudioFx(a);
+        const fxStr = fxA.length ? ',' + fxA.join(',') : '';
+        fc.push(`[${inputIdx}:a]atrim=${(a.source_in ?? 0).toFixed(3)}:${a.source_out.toFixed(3)},asetpts=PTS-STARTPTS${fxStr},volume=${(a.volume ?? 1).toFixed(2)},adelay=${delayMs}|${delayMs}[${lbl}]`);
         aLabels.push(lbl);
         inputIdx++;
       }
-      // trilha do proprio video (se nao mudo) entra no mix tambem
-      if (volV > 0.001) {
-        fc.push(`[0:a]volume=${volV}[acv]`);
+      // trilha original do video (principal + takes) entra no mix — vem do
+      // sourceAudioPath como INPUT próprio, pois o concat é -an e [0:a] não
+      // existe. Fix 2026-07-21: era `[0:a]` (stream inexistente) → o áudio
+      // original do vídeo sumia sempre que havia música (audio_clips v2).
+      if (sourceAudioPath && volV > 0.001) {
+        args.push('-i', sourceAudioPath);
+        fc.push(`[${inputIdx}:a]volume=${volV.toFixed(2)}[acv]`);
         aLabels.push('acv');
+        inputIdx++;
       }
     } else {
       // fallback v0: trilha source + audio extra fixo
@@ -2319,28 +3088,59 @@ async function processEditV0(jobId, p) {
       if (audioExtraPath) { args.push('-i', audioExtraPath); fc.push(`[${inputIdx}:a]volume=${volA}[a2]`); aLabels.push('a2'); inputIdx++; }
     }
 
+    // SOM DAS CAMADAS (user 14/08): cada overlay de vídeo não-mudo cuja
+    // extração deu certo entra no mix como faixa própria — posicionado com
+    // adelay no start da timeline e com atempo casando o speed do vídeo da
+    // camada (o mesmo tlDur = dur/sp do enable/setpts). Inputs empurrados SÓ
+    // AQUI, pra não deslocar os índices de overlays/máscaras lá de cima.
+    for (let i = 0; i < ovInputs.length; i++) {
+      const ent = ovInputs[i];
+      if (!ent.audioFile) continue;
+      const sp = Number(ent.o.speed) > 0 ? Number(ent.o.speed) : 1;
+      const delayMs = Math.max(0, Math.round((ent.o.start || 0) * 1000));
+      const tempo = atempoChain(sp);
+      args.push('-i', ent.audioFile);
+      fc.push(`[${inputIdx}:a]asetpts=PTS-STARTPTS${tempo.length ? ',' + tempo.join(',') : ''},adelay=${delayMs}|${delayMs}[oa${i}]`);
+      aLabels.push(`oa${i}`);
+      inputIdx++;
+    }
+
     if (aLabels.length > 1) {
-      fc.push(`[${aLabels.map(l => l).join('][')}]amix=inputs=${aLabels.length}:duration=longest:dropout_transition=0[aout]`);
+      // ⚠️ normalize=0 é OBRIGATÓRIO: sem ele o amix DIVIDE cada entrada pelo
+      // número de entradas. Com música + narração + áudio do vídeo o som já
+      // saía a 1/3; com o "cortar respiros" (que produz muitos pedaços) o
+      // arquivo sairia praticamente mudo. Os volumes por faixa já foram
+      // aplicados acima — o mixer não pode reequilibrar por conta própria.
+      fc.push(`[${aLabels.map(l => l).join('][')}]amix=inputs=${aLabels.length}:duration=longest:dropout_transition=0:normalize=0[amixed]`);
+      // teto de segurança contra clipping (a soma pode passar de 0 dBFS)
+      fc.push(`[amixed]alimiter=limit=0.97[aout]`);
     } else if (aLabels.length === 1) {
       fc.push(`[${aLabels[0]}]anull[aout]`);
     }
 
     args.push('-filter_complex', fc.join(';'));
-    args.push('-map', `[${vLabel}]`);
+    // SÓ ÁUDIO (opção do modal de export): não mapeia vídeo e entrega .m4a —
+    // serve pra quem quer o podcast/narração já editada e com os efeitos
+    const soAudio = p.audio_only === true && aLabels.length > 0;
+    if (!soAudio) args.push('-map', `[${vLabel}]`);
     if (aLabels.length) args.push('-map', '[aout]');
-    args.push(
-      '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '23',
-      '-c:a', 'aac', '-b:a', '128k',
-      '-pix_fmt', 'yuv420p',
-      '-movflags', '+faststart',
-      '-shortest',
-      finalPath,
-    );
+    if (soAudio) {
+      args.push('-vn', '-c:a', 'aac', '-b:a', '192k', '-movflags', '+faststart', finalPath);
+    } else {
+      args.push(
+        '-c:v', 'libx264', '-preset', 'superfast', '-crf', '23', // superfast: ~30% mais rápido que veryfast, mesmo crf (user 14/08: tempo de export)
+        '-c:a', 'aac', '-b:a', '128k',
+        '-pix_fmt', 'yuv420p',
+        '-movflags', '+faststart',
+        '-shortest',
+        finalPath,
+      );
+    }
     await run('ffmpeg', args);
 
     // 7. Upload
     update('uploading', 92);
-    const outputPath = `editor/v0/${jobId}/output.mp4`;
+    const outputPath = `editor/v0/${jobId}/output.${soAudio ? 'm4a' : 'mp4'}`;
     const outputUrl = await uploadToSupabase(finalPath, outputPath, p.supabase_url, p.supabase_key);
 
     update('done', 100, { output_url: outputUrl });

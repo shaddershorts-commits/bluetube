@@ -5,23 +5,30 @@ import { api } from './api.js';
 
 export const MAX_VIDEO_MB = 500;
 export const MAX_AUDIO_MB = 50;
+export const MAX_IMAGE_MB = 20;
 const VIDEO_TYPES = ['video/mp4', 'video/quicktime', 'video/webm'];
-const AUDIO_TYPES = ['audio/mpeg', 'audio/mp3', 'audio/wav', 'audio/x-wav', 'audio/mp4', 'audio/aac'];
+// audio/webm e ogg: é o que o MediaRecorder produz — a LOCUÇÃO gravada no
+// próprio editor chegava aqui e era rejeitada como "formato inválido"
+const AUDIO_TYPES = ['audio/mpeg', 'audio/mp3', 'audio/wav', 'audio/x-wav', 'audio/mp4', 'audio/aac', 'audio/webm', 'audio/ogg'];
+const IMAGE_TYPES = ['image/png', 'image/jpeg', 'image/webp', 'image/gif'];
 
 /**
  * @param {File} file
- * @param {'video'|'audio'} kind
+ * @param {'video'|'audio'|'image'} kind
  * @param {(pct:number)=>void} onProgress
  * @returns {Promise<{url,path,filename,duration,width,height,size_bytes}>}
  */
 export async function uploadMedia(file, kind, onProgress) {
   validate(file, kind);
-  const ext = (file.name.split('.').pop() || (kind === 'video' ? 'mp4' : 'mp3')).toLowerCase();
+  const defExt = kind === 'video' ? 'mp4' : kind === 'audio' ? 'mp3' : 'png';
+  const ext = (file.name.split('.').pop() || defExt).toLowerCase();
   const { upload_url, public_url, path } = await api.getUploadUrl(ext);
 
   await putWithProgress(upload_url, file, onProgress);
 
-  const meta = kind === 'video' ? await probeVideo(file) : await probeAudio(file);
+  const meta = kind === 'video' ? await probeVideo(file)
+    : kind === 'image' ? await probeImage(file)
+    : await probeAudio(file);
   return {
     url: public_url,
     path,
@@ -32,17 +39,34 @@ export async function uploadMedia(file, kind, onProgress) {
 }
 
 function validate(file, kind) {
-  const maxMB = kind === 'video' ? MAX_VIDEO_MB : MAX_AUDIO_MB;
+  const maxMB = kind === 'video' ? MAX_VIDEO_MB : kind === 'image' ? MAX_IMAGE_MB : MAX_AUDIO_MB;
   if (file.size > maxMB * 1024 * 1024) {
     throw new Error(`Arquivo muito grande (máx ${maxMB}MB)`);
   }
-  const types = kind === 'video' ? VIDEO_TYPES : AUDIO_TYPES;
+  const types = kind === 'video' ? VIDEO_TYPES : kind === 'image' ? IMAGE_TYPES : AUDIO_TYPES;
   const extOk = kind === 'video'
     ? /\.(mp4|mov|webm)$/i.test(file.name)
-    : /\.(mp3|wav|m4a|aac)$/i.test(file.name);
+    : kind === 'image'
+      ? /\.(png|jpg|jpeg|webp|gif)$/i.test(file.name)
+      : /\.(mp3|wav|m4a|aac|webm|ogg)$/i.test(file.name);
   if (!types.includes(file.type) && !extOk) {
-    throw new Error(kind === 'video' ? 'Formato inválido. Use MP4, MOV ou WebM.' : 'Formato inválido. Use MP3, WAV ou M4A.');
+    const msg = kind === 'video' ? 'Formato inválido. Use MP4, MOV ou WebM.'
+      : kind === 'image' ? 'Formato inválido. Use PNG, JPG, WebP ou GIF.'
+      : 'Formato inválido. Use MP3, WAV ou M4A.';
+    throw new Error(msg);
   }
+}
+
+/** dimensões da imagem (pra escala inicial da camada) */
+export function probeImage(file) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    const url = URL.createObjectURL(file);
+    const to = setTimeout(() => { URL.revokeObjectURL(url); reject(new Error('Não consegui ler a imagem')); }, 15000);
+    img.onload = () => { clearTimeout(to); URL.revokeObjectURL(url); resolve({ width: img.naturalWidth, height: img.naturalHeight }); };
+    img.onerror = () => { clearTimeout(to); URL.revokeObjectURL(url); reject(new Error('Formato de imagem não suportado')); };
+    img.src = url;
+  });
 }
 
 function putWithProgress(url, file, onProgress) {
@@ -101,11 +125,22 @@ export function probeAudio(file) {
     const url = URL.createObjectURL(file);
     const to = setTimeout(() => { cleanup(); reject(new Error('Não consegui ler o áudio')); }, 15000);
     function cleanup() { clearTimeout(to); URL.revokeObjectURL(url); }
-    a.onloadedmetadata = () => {
+    function finish() {
       const meta = { duration: a.duration };
       cleanup();
       if (!meta.duration || !isFinite(meta.duration)) reject(new Error('Duração inválida'));
       else resolve(meta);
+    }
+    a.onloadedmetadata = () => {
+      if (!isFinite(a.duration) || a.duration === 0) {
+        // webm do MediaRecorder (a LOCUÇÃO gravada no editor) reporta Infinity
+        // até um seek além do fim forçar o cálculo — mesmo hack do probeVideo
+        a.ondurationchange = () => { if (isFinite(a.duration) && a.duration > 0) finish(); };
+        a.currentTime = 1e7;
+        setTimeout(() => { if (isFinite(a.duration) && a.duration > 0) finish(); }, 3000);
+      } else {
+        finish();
+      }
     };
     a.onerror = () => { cleanup(); reject(new Error('Formato de áudio não suportado')); };
     a.src = url;

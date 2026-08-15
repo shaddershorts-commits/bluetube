@@ -19,6 +19,66 @@ module.exports = async function handler(req, res) {
 
   const { action, token, videoUrl, videoId, voiceId, roteiro, lang, musicId } = req.body || {};
 
+  // ══ BIBLIOTECA DE ÁUDIO — tratada ANTES do gate de login ══════════════════
+  // audio-search: leitura pública da biblioteca curada.
+  // audio-lib-*: admin (usa ADMIN_SECRET, não login).
+  if (action === 'audio-search') {
+    const q = String(req.body?.query || '').trim();
+    const kind = req.body?.kind === 'sfx' ? 'sfx' : 'music';
+    if (!SU) return res.status(200).json({ results: [], message: 'Biblioteca indisponível' });
+    try {
+      let url = `${SU}/rest/v1/editor_audio_library?kind=eq.${kind}&order=category.asc,name.asc&limit=200`;
+      if (q) url += `&or=(name.ilike.*${encodeURIComponent(q)}*,category.ilike.*${encodeURIComponent(q)}*)`;
+      const r = await fetch(url, { headers: { apikey: AK, Authorization: 'Bearer ' + AK } });
+      const rows = r.ok ? await r.json() : [];
+      const results = (rows || []).map(x => ({ name: x.name, category: x.category, duration: x.duration || null, url: x.url, preview: x.url }));
+      return res.status(200).json({ results, message: results.length ? undefined : 'Nada aqui ainda — adicione em /blueeditor-audio' });
+    } catch (e) {
+      return res.status(200).json({ results: [], message: 'Falha na busca: ' + e.message });
+    }
+  }
+  if (action === 'audio-lib-list' || action === 'audio-lib-add' || action === 'audio-lib-delete' || action === 'audio-lib-sign') {
+    if ((req.body?.admin_secret || '') !== process.env.ADMIN_SECRET || !process.env.ADMIN_SECRET) {
+      return res.status(403).json({ error: 'Acesso negado' });
+    }
+    if (!SU || !SK) return res.status(503).json({ error: 'Supabase não configurado' });
+    const H = { apikey: SK, Authorization: 'Bearer ' + SK, 'Content-Type': 'application/json' };
+    try {
+      if (action === 'audio-lib-sign') {
+        const ext = (req.body?.ext || 'mp3').replace(/[^a-z0-9]/gi, '').slice(0, 5).toLowerCase() || 'mp3';
+        const filePath = `editor/audio-lib/${Date.now()}_${Math.random().toString(36).slice(2, 8)}.${ext}`;
+        const bucket = 'blue-videos';
+        const signR = await fetch(`${SU}/storage/v1/object/upload/sign/${bucket}/${filePath}`, {
+          method: 'POST', headers: H, body: JSON.stringify({ expiresIn: 900 }),
+        });
+        if (!signR.ok) return res.status(502).json({ error: 'Falha ao assinar upload: ' + (await signR.text()).slice(0, 150) });
+        const signD = await signR.json();
+        const relUrl = signD.url || '';
+        const upload_url = relUrl.startsWith('http') ? relUrl : `${SU}/storage/v1${relUrl.startsWith('/') ? relUrl : '/' + relUrl}`;
+        const public_url = `${SU}/storage/v1/object/public/${bucket}/${filePath}`;
+        return res.status(200).json({ upload_url, public_url });
+      }
+      if (action === 'audio-lib-list') {
+        const r = await fetch(`${SU}/rest/v1/editor_audio_library?order=kind.asc,category.asc,name.asc&limit=500`, { headers: H });
+        return res.status(200).json({ items: r.ok ? await r.json() : [] });
+      }
+      if (action === 'audio-lib-add') {
+        const b = req.body || {};
+        if (!b.url || !b.name) return res.status(400).json({ error: 'name e url obrigatórios' });
+        const row = { kind: b.kind === 'sfx' ? 'sfx' : 'music', category: String(b.category || 'Geral').slice(0, 60), name: String(b.name).slice(0, 120), url: b.url, duration: b.duration || null };
+        const r = await fetch(`${SU}/rest/v1/editor_audio_library`, { method: 'POST', headers: { ...H, Prefer: 'return=representation' }, body: JSON.stringify(row) });
+        if (!r.ok) return res.status(502).json({ error: 'Falha ao salvar: ' + (await r.text()).slice(0, 150) });
+        return res.status(200).json({ ok: true, item: (await r.json())[0] });
+      }
+      const id = req.body?.id;
+      if (!id) return res.status(400).json({ error: 'id obrigatório' });
+      await fetch(`${SU}/rest/v1/editor_audio_library?id=eq.${id}`, { method: 'DELETE', headers: H });
+      return res.status(200).json({ ok: true });
+    } catch (e) {
+      return res.status(500).json({ error: e.message });
+    }
+  }
+
   // ── yt-download: baixa YouTube via yt-dlp no Railway com qualidade escolhida ──
   // Fluxo: browser POST com {youtube_url, quality} → Vercel → Railway /download-youtube
   // → yt-dlp baixa da CDN direto + muxa → Supabase Storage → public URL de volta
@@ -254,15 +314,26 @@ module.exports = async function handler(req, res) {
       parts.push(Buffer.from(`--${boundary}--\r\n`, 'utf8'));
       const body = Buffer.concat(parts);
 
-      const wR = await fetch('https://api.openai.com/v1/audio/transcriptions', {
-        method: 'POST',
-        headers: {
-          Authorization: 'Bearer ' + OPENAI,
-          'Content-Type': `multipart/form-data; boundary=${boundary}`,
-          'Content-Length': String(body.length),
-        },
-        body,
-      });
+      // aborta ANTES do maxDuration de 60s do Vercel: melhor um erro JSON
+      // claro do que um 504 de texto puro que vira "HTTP 504" no toast
+      let wR;
+      try {
+        wR = await fetch('https://api.openai.com/v1/audio/transcriptions', {
+          method: 'POST',
+          headers: {
+            Authorization: 'Bearer ' + OPENAI,
+            'Content-Type': `multipart/form-data; boundary=${boundary}`,
+            'Content-Length': String(body.length),
+          },
+          body,
+          signal: AbortSignal.timeout(48000),
+        });
+      } catch (err) {
+        if (err.name === 'TimeoutError' || err.name === 'AbortError') {
+          return res.status(504).json({ error: 'A transcrição demorou demais — tente um vídeo mais curto' });
+        }
+        throw err;
+      }
       if (!wR.ok) {
         const et = await wR.text();
         return res.status(502).json({ error: 'Whisper falhou: ' + et.slice(0, 150) });
@@ -293,7 +364,9 @@ module.exports = async function handler(req, res) {
       // duracao minima legivel de 0.7s
       for (const c of captions) if (c.end - c.start < 0.7) c.end = c.start + 0.7;
 
-      return res.status(200).json({ ok: true, captions, language: wd.language || null });
+      // words: timestamps POR PALAVRA (modo "palavra por palavra" do editor —
+      // a legenda acompanha a narração exatamente como falada)
+      return res.status(200).json({ ok: true, captions, words, language: wd.language || null });
     } catch (e) {
       console.error('[auto-captions]', e.message);
       return res.status(500).json({ error: e.message });
@@ -405,6 +478,25 @@ module.exports = async function handler(req, res) {
     }
   }
 
+  // ── rename-project: renomeia um projeto em edicao ────────────────────────
+  // Body: { project_id, nome_projeto }
+  if (action === 'rename-project') {
+    const projectId = req.body?.project_id;
+    const nome = (req.body?.nome_projeto || '').slice(0, 120).trim();
+    if (!projectId || !nome) return res.status(400).json({ error: 'project_id e nome_projeto obrigatórios' });
+    const supaH = { apikey: SK, Authorization: 'Bearer ' + SK, 'Content-Type': 'application/json' };
+    try {
+      const r = await fetch(
+        `${SU}/rest/v1/editor_jobs?id=eq.${projectId}&user_id=eq.${userId}&status=eq.editing`,
+        { method: 'PATCH', headers: { ...supaH, Prefer: 'return=minimal' }, body: JSON.stringify({ nome_projeto: nome }) }
+      );
+      if (!r.ok) return res.status(500).json({ error: 'rename_failed' });
+      return res.status(200).json({ ok: true, nome_projeto: nome });
+    } catch (e) {
+      return res.status(500).json({ error: e.message });
+    }
+  }
+
   // ── delete-project: apaga projeto em edicao ──────────────────────────────
   if (action === 'delete-project') {
     const projectId = req.body?.project_id;
@@ -446,7 +538,9 @@ module.exports = async function handler(req, res) {
       if (dur <= 0) return res.status(400).json({ error: 'duracao invalida' });
       effectiveClips = [{ source_in: inT, source_out: outT }];
     }
-    effectiveClips.sort((a, b) => a.source_in - b.source_in);
+    // NÃO reordenar por source_in: o exportPayload já entrega os clips na ORDEM
+    // DA TIMELINE. Ordenar por source_in embaralhava takes (source_in é relativo
+    // a CADA fonte) e ignorava a reordenação de clips feita pelo usuário.
     const totalDur = effectiveClips.reduce((acc, c) => acc + (c.source_out - c.source_in), 0);
     if (totalDur < 0.5) return res.status(400).json({ error: 'duracao total muito curta' });
 
@@ -473,12 +567,26 @@ module.exports = async function handler(req, res) {
       source_width: projectState.video.width || 1080,
       source_height: projectState.video.height || 1920,
       aspect_strategy: projectState.aspect_strategy || 'crop_center',
-      clips: effectiveClips.map(c => ({ source_in: c.source_in, source_out: c.source_out })),
+      // preserva TODOS os campos do clip (media_url dos takes, scale, opacity,
+      // speed, frozen/reversed/mirrored) — antes só ia source_in/out e o Railway
+      // renderizava take do vídeo principal, sem escala/velocidade/efeitos.
+      clips: effectiveClips.map(c => ({ ...c })),
       transitions: projectState.transitions || [],
-      texts: (projectState.texts || []).filter(t => t.active !== false),
+      // APÓSTROFO QUEBRA O DRAWTEXT (achado 14/08, reproduzido): dentro de
+      // text='...' do ffmpeg, \' NÃO escapa — a aspa fecha, a vírgula do texto
+      // corta a cadeia -vf e o pedaço seguinte vira "filtro" (o "No such
+      // filter: '0.000'" do export do user). O apóstrofo TIPOGRÁFICO (’) é
+      // visualmente igual e inofensivo — sanitiza AQUI porque vale já em
+      // produção (o Railway de main só se cura no merge).
+      texts: (projectState.texts || []).filter(t => t.active !== false).map(t => ({
+        ...t,
+        content: String(t.content || '').replace(/'/g, '’'),
+        ...(Array.isArray(t.lines) ? { lines: t.lines.map(l => String(l).replace(/'/g, '’')) } : {}),
+      })),
       volumes: projectState.volumes || { video: 1, audio_extra: 1 },
-      output_width: 1080,
-      output_height: 1920,
+      // resolução escolhida no modal de export (fallback 1080×1920)
+      output_width: projectState.output_width || 1080,
+      output_height: projectState.output_height || 1920,
       supabase_url: SU,
       supabase_key: SK,
     };

@@ -26,6 +26,78 @@ body {
 
 .be-dim { font-size: 11px; color: var(--text-dim); font-family: var(--mono); }
 
+/* ── TELA INICIAL (estilo CapCut: criar projeto + grid de projetos salvos) ── */
+.be-home {
+  height: 100dvh; overflow-y: auto;
+  padding: 24px clamp(16px, 5vw, 64px) 60px;
+  display: flex; flex-direction: column; gap: 20px;
+}
+.be-home-head {
+  display: flex; align-items: center; justify-content: space-between;
+  padding-bottom: 8px;
+}
+.be-home-head .be-logo { font-size: 22px; font-weight: 700; }
+.be-home-head .be-logo b { color: var(--neon); }
+.be-home-exit { color: var(--text-sec); text-decoration: none; font-size: 13px; }
+.be-home-exit:hover { color: var(--text); }
+.be-home-create {
+  display: flex; align-items: center; gap: 16px;
+  width: 100%; padding: 22px 26px; cursor: pointer; text-align: left;
+  color: #fff; font-family: var(--font);
+  background: linear-gradient(100deg, #0088cc, #00aaff 60%, #38bdf8);
+  border: none; border-radius: 16px;
+  box-shadow: 0 10px 30px rgba(0, 170, 255, .25); transition: transform .12s, box-shadow .12s;
+}
+.be-home-create:hover { transform: translateY(-1px); box-shadow: 0 14px 40px rgba(0, 170, 255, .35); }
+.be-home-create-ico { font-size: 30px; line-height: 1; font-weight: 400; }
+.be-home-create-txt { display: flex; flex-direction: column; font-size: 18px; font-weight: 700; }
+.be-home-create-txt small { font-size: 12px; font-weight: 500; opacity: .85; margin-top: 2px; }
+.be-home-sub { font-size: 13px; font-weight: 700; color: var(--text-sec); letter-spacing: .02em; }
+.be-home-grid {
+  display: grid; gap: 16px;
+  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+}
+.be-home-empty {
+  grid-column: 1 / -1; padding: 40px 0; text-align: center;
+  color: var(--text-dim); font-size: 13px;
+}
+.be-home-card { cursor: pointer; }
+.be-home-thumb-wrap {
+  position: relative; aspect-ratio: 9 / 16; border-radius: 12px; overflow: hidden;
+  background: #05101f; border: 1px solid var(--blue-border); transition: border-color .12s;
+}
+.be-home-card:hover .be-home-thumb-wrap { border-color: var(--neon); }
+.be-home-thumb { width: 100%; height: 100%; object-fit: cover; display: block; }
+.be-home-thumb-ph {
+  display: flex; align-items: center; justify-content: center; font-size: 34px;
+}
+.be-home-dots {
+  position: absolute; top: 6px; right: 6px;
+  width: 28px; height: 28px; border-radius: 8px; cursor: pointer;
+  background: rgba(2, 8, 23, .7); border: none; color: #fff; font-size: 16px; line-height: 1;
+  display: flex; align-items: center; justify-content: center;
+}
+.be-home-dots:hover { background: rgba(0, 170, 255, .5); }
+.be-home-card-name {
+  margin-top: 8px; font-size: 13px; font-weight: 600;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.be-home-card-date { font-size: 11px; color: var(--text-dim); }
+.be-home-menu {
+  position: fixed; z-index: 1000; min-width: 170px; padding: 5px;
+  background: #0b1526; border: 1px solid var(--blue-border);
+  border-radius: 10px; box-shadow: 0 12px 34px rgba(0, 0, 0, .6);
+  display: flex; flex-direction: column; gap: 2px;
+}
+.be-home-menu button {
+  display: block; width: 100%; text-align: left; cursor: pointer;
+  padding: 9px 12px; border: none; border-radius: 7px;
+  background: transparent; color: var(--text); font-family: var(--font); font-size: 13px;
+}
+.be-home-menu button:hover { background: var(--blue-dim); }
+.be-home-menu button.danger { color: #ff6b6b; }
+.be-home-menu button.danger:hover { background: rgba(239, 68, 68, .15); }
+
 /* ── header ── */
 .be-header {
   display: flex; align-items: center; gap: 12px;
@@ -34,7 +106,10 @@ body {
   border-bottom: 1px solid var(--blue-border);
   flex-shrink: 0;
 }
-.be-back { color: var(--text-sec); text-decoration: none; font-size: 20px; padding: 4px 8px; }
+.be-back {
+  color: var(--text-sec); text-decoration: none; font-size: 20px; padding: 4px 8px;
+  background: none; border: none; cursor: pointer; font-family: var(--font); line-height: 1;
+}
 .be-back:hover { color: var(--neon); }
 .be-project-name {
   background: transparent; border: 1px solid transparent; border-radius: 8px;
@@ -62,6 +137,60 @@ body {
   white-space: nowrap;
 }
 .be-tool-btn:hover { background: var(--blue-dim); border-color: var(--neon); }
+
+/* ── popup de carregamento ao importar mídia ── */
+.be-import-modal {
+  position: fixed; inset: 0; z-index: 9998;
+  display: flex; align-items: center; justify-content: center;
+  background: rgba(2, 8, 23, .72); backdrop-filter: blur(3px);
+}
+.be-import-card {
+  width: min(340px, 86vw); padding: 26px 24px; text-align: center;
+  background: #0a1526; border: 1px solid var(--blue-border);
+  border-radius: 16px; box-shadow: 0 20px 60px rgba(0, 0, 0, .5);
+}
+.be-import-spin {
+  width: 42px; height: 42px; margin: 0 auto 16px;
+  border: 3px solid rgba(0, 170, 255, .18); border-top-color: var(--neon);
+  border-radius: 50%; animation: beImportSpin .8s linear infinite;
+}
+@keyframes beImportSpin { to { transform: rotate(360deg); } }
+.be-import-title { font-weight: 700; font-size: 14px; margin-bottom: 4px; }
+.be-import-name {
+  font-size: 12px; color: #8aa0b8; margin-bottom: 14px;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.be-import-card .be-progress { margin: 0 0 8px; }
+.be-import-pct { font-size: 12px; font-weight: 700; color: var(--neon); font-variant-numeric: tabular-nums; }
+
+/* ── linha da biblioteca de mídia (estilo CapCut: thumb + info + ações) ── */
+.be-media-row {
+  display: flex; align-items: center; gap: 8px;
+  padding: 6px 4px; border-bottom: 1px solid rgba(255, 255, 255, .06);
+}
+.be-media-thumb {
+  flex: 0 0 auto; width: 52px; height: 32px; border-radius: 5px;
+  object-fit: cover; background: #05101f; border: 1px solid var(--blue-border);
+}
+.be-media-thumb-ph {
+  display: flex; align-items: center; justify-content: center;
+  font-size: 15px; line-height: 1;
+}
+.be-media-info { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.be-media-name {
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  font-size: 12px; font-weight: 600;
+}
+.be-media-meta { font-size: 10px; }
+.be-media-badge {
+  font-size: 9px; font-weight: 700; letter-spacing: .02em; align-self: flex-start;
+  padding: 1px 6px; border-radius: 999px; white-space: nowrap;
+}
+.be-media-badge.on { color: #22c55e; background: rgba(34, 197, 94, .12); }
+.be-media-badge.off { color: #8aa0b8; background: rgba(138, 160, 184, .1); }
+.be-media-actions { flex: 0 0 auto; display: flex; gap: 4px; }
+.be-media-btn { padding: 3px 7px; font-size: 12px; line-height: 1; }
+.be-media-del:hover { background: rgba(239, 68, 68, .15); border-color: #ef4444; }
 .be-export-btn {
   display: inline-block;
   background: linear-gradient(135deg, #1a6bff, var(--neon));
@@ -95,52 +224,276 @@ body {
 .be-workspace {
   flex: 1; min-height: 0; min-width: 0;
   display: grid;
-  grid-template-columns: 64px 300px minmax(0, 1fr);
-  grid-template-rows: minmax(0, 1fr) auto;
+  /* 3 colunas CapCut: ferramentas | configurações (flexível, meio) | preview
+     (coluna DEFINIDA à direita, não sprawla no meio). Estas medidas são só o
+     ponto de partida: o resizer sobrescreve as TRÊS larguras (as duas divisas
+     verticais) e a altura da timeline via grid-template-rows. */
+  grid-template-columns: 232px minmax(0, 1fr) clamp(340px, 33vw, 560px);
+  grid-template-rows: minmax(0, 1fr) 200px;
   gap: 10px;
   padding: 10px 14px 12px;
   max-width: 100vw;
 }
 /* grid items nao podem estourar o track (min-width:auto = blowout classico) */
-.be-rail, .be-preview-area, .be-props, .be-timeline-area { min-width: 0; }
+.be-library, .be-preview-area, .be-props, .be-timeline-area { min-width: 0; }
 
-/* rail de acoes (esquerda, CapCut-style: Midia / Texto / Audio) */
-.be-rail {
+/* ── BIBLIOTECA DE MÍDIA (coluna 1) ── */
+.be-library {
   grid-column: 1; grid-row: 1;
-  display: flex; flex-direction: column; gap: 8px;
-  padding-top: 4px;
+  display: flex; flex-direction: column; gap: 8px; min-height: 0;
+  background: var(--card); border: 1px solid var(--blue-border);
+  border-radius: 14px; padding: 10px;
+  /* contenção: o conteúdo fixo (rail/importar/dica) não encolhe — se a linha
+     de cima ficar menor que ele, CLIPA no cartão em vez de vazar por cima da
+     timeline (o resizer já evita chegar aqui; isto fecha a classe) */
+  overflow: hidden;
+}
+.be-library-body { display: flex; flex-direction: column; gap: 8px; min-height: 0; flex: 1; }
+.be-library-list { display: flex; flex-direction: column; gap: 6px; overflow-y: auto; min-height: 0; flex: 1; }
+/* rail de acoes: linha horizontal no topo da biblioteca */
+.be-rail {
+  display: flex; flex-direction: row; gap: 6px;
 }
 .be-rail-btn {
-  background: var(--card); border: 1px solid var(--blue-border);
-  color: var(--text-sec); border-radius: 12px; padding: 10px 4px;
-  font-family: var(--font); font-size: 10px; font-weight: 700; cursor: pointer;
-  display: flex; flex-direction: column; align-items: center; gap: 4px;
+  flex: 1;
+  background: rgba(2, 8, 23, .5); border: 1px solid var(--blue-border);
+  color: var(--text-sec); border-radius: 10px; padding: 8px 2px;
+  font-family: var(--font); font-size: 9px; font-weight: 700; cursor: pointer;
+  display: flex; flex-direction: column; align-items: center; gap: 3px;
   transition: all .15s;
 }
-.be-rail-btn span { font-size: 18px; line-height: 1; color: var(--neon); }
+.be-rail-btn span { font-size: 15px; line-height: 1; color: var(--neon); }
 .be-rail-btn:hover { border-color: var(--neon); color: var(--text); }
 
 .be-preview-area {
-  grid-column: 3; grid-row: 1;
+  /* CapCut: o player ocupa a coluna direita INTEIRA (altura total, do topo ao
+     rodapé) — a timeline vive só nas colunas 1-2, AO LADO, não embaixo dele.
+     A janela expande pros lados pelo divisor vertical (user 2026-07-22). */
+  grid-column: 3; grid-row: 1 / -1;
   display: flex; flex-direction: column; align-items: center; justify-content: center;
   gap: 8px; min-height: 0;
 }
+/* CapCut: o frame é o PAINEL ESCURO que preenche a coluna do preview; o palco
+   (vídeo + camadas) fica 9:16 CENTRALIZADO dentro dele. Antes o frame era o
+   próprio 9:16 flutuando — agora o painel enche o lado direito como no CapCut.
+   (mesma abordagem do fullscreen, já validada). */
 .be-preview-frame {
   position: relative;
+  width: 100%;
   height: calc(100% - 44px);
-  aspect-ratio: 9 / 16;
-  max-width: 100%;
   background: #000;
   border-radius: 12px;
   overflow: hidden;
   border: 1px solid var(--blue-border);
+  display: flex; align-items: center; justify-content: center;
+  container-type: size;  /* cqw/cqh do palco medem O FRAME (formato dinâmico) */
+}
+/* palco: mantém as camadas (vídeo + overlay) juntas, na PROPORÇÃO DO PROJETO.
+   --be-arn (número, ex. 1.7778) vem do sync(); o min() de cqw/cqh encaixa o
+   palco inteiro no frame nos DOIS eixos — 9:16 encosta em altura, 16:9 em
+   largura. max-width sozinho quebrava o aspecto quando prendia (h fixa). */
+.be-stage {
+  position: relative;
+  width: min(100cqw, calc(100cqh * var(--be-arn, 0.5625)));
+  height: min(100cqh, calc(100cqw / var(--be-arn, 0.5625)));
+  /* o QUADRO precisa ser visível contra o painel preto: sem isto, trocar o
+     formato com vídeo vertical não mudava nenhum pixel na tela (user 14/08
+     'se mantém em formato de storie') — o palco era transparente. */
+  background: #05101f;
+  outline: 1px solid var(--blue-border);
 }
 .be-preview-frame video {
+  position: absolute; inset: 0;   /* double-buffer: 2 vídeos empilhados */
   width: 100%; height: 100%;
   object-fit: cover; /* espelha crop_center do export */
   display: block;
 }
-.be-transport { display: flex; align-items: center; gap: 12px; }
+/* o buffer (pré-carregando o próximo take) fica escondido até o swap */
+.be-preview-frame video.be-buffering { visibility: hidden; }
+
+/* ── biblioteca de áudio agrupada por CATEGORIA ── */
+.be-audiolib-cats { display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 8px; }
+.be-audiolib-cat {
+  background: none; border: 1px solid var(--blue-border); border-radius: 999px;
+  color: var(--text-sec); font-size: 10.5px; font-weight: 700;
+  padding: 3px 9px; cursor: pointer; white-space: nowrap;
+}
+.be-audiolib-cat:hover { background: var(--blue-dim); color: var(--text); }
+.be-audiolib-cat.active { background: var(--blue-dim); border-color: var(--neon); color: var(--neon); }
+.be-audiolib-catnome {
+  font-size: 10px; text-transform: uppercase; letter-spacing: .08em;
+  color: var(--text-sec); margin: 10px 0 3px; font-weight: 800;
+}
+
+/* ── LIQUID GLASS: vidro translúcido com blur (pedido do user 2026-07-29) ── */
+.be-glass {
+  background: rgba(10, 25, 47, .55);
+  backdrop-filter: blur(16px) saturate(1.5);
+  -webkit-backdrop-filter: blur(16px) saturate(1.5);
+  border: 1px solid rgba(130, 190, 255, .28);
+  border-radius: 12px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, .38), inset 0 1px 0 rgba(255, 255, 255, .10);
+}
+
+.be-export-somaudio {
+  display: flex; align-items: center; gap: 8px; font-size: 12.5px;
+  cursor: pointer; user-select: none; margin-top: 2px;
+}
+.be-export-somaudio input { accent-color: #22c1dc; width: 15px; height: 15px; }
+
+/* ── CORTAR RESPIROS: painel de processamento ── */
+.be-respiros-pop {
+  position: absolute; top: 34px; left: 50%; transform: translateX(-50%);
+  z-index: 46; width: 300px; padding: 12px 14px;
+  display: flex; flex-direction: column; gap: 8px;
+}
+.be-respiros-tit { font-weight: 800; font-size: 13px; display: flex; align-items: center; gap: 7px; }
+.be-respiros-ia {
+  display: inline-block; font-size: 15px;
+  animation: beRespIa 1.4s ease-in-out infinite;
+}
+@keyframes beRespIa {
+  0%, 100% { transform: scale(1) rotate(0deg); opacity: .85 }
+  50% { transform: scale(1.18) rotate(-8deg); opacity: 1 }
+}
+.be-respiros-info {
+  font-family: var(--mono); font-size: 11px; color: var(--text-sec);
+  display: flex; justify-content: space-between;
+}
+.be-respiros-pop .be-tool-btn { align-self: flex-end; padding: 3px 10px; font-size: 11px; }
+
+/* ── LOCUÇÃO: pill de gravação flutuando sobre a timeline ── */
+.be-timeline-area { position: relative; }
+.be-rec-pill {
+  position: absolute; top: 34px; right: 14px; z-index: 45;
+  display: flex; align-items: center; gap: 8px; padding: 7px 12px;
+}
+.be-rec-dot {
+  width: 10px; height: 10px; border-radius: 50%; background: #ff4757;
+  animation: beRecDot 1.1s ease-in-out infinite;
+}
+.be-rec-pill.pausada .be-rec-dot { animation: none; opacity: .45; }
+@keyframes beRecDot {
+  0%, 100% { transform: scale(1); box-shadow: 0 0 0 0 rgba(255, 71, 87, .5); }
+  50% { transform: scale(1.25); box-shadow: 0 0 0 7px rgba(255, 71, 87, 0); }
+}
+.be-rec-time { font-family: var(--mono); font-size: 12px; font-weight: 800; color: #ffb3bb; min-width: 34px; }
+.be-rec-pill button {
+  background: rgba(255, 255, 255, .08); border: 1px solid rgba(130, 190, 255, .25);
+  border-radius: 7px; color: var(--text); cursor: pointer;
+  font-size: 12px; line-height: 1; padding: 5px 8px;
+}
+.be-rec-pill button:hover { background: rgba(255, 71, 87, .25); border-color: #ff4757; }
+#beRecVoice.gravando {
+  color: #ff4757; border-color: #ff4757;
+  animation: beRecBtn 1.2s ease-in-out infinite;
+}
+@keyframes beRecBtn {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(255, 71, 87, .35); }
+  50% { box-shadow: 0 0 0 6px rgba(255, 71, 87, 0); }
+}
+
+/* ── APRIMORAR ÁUDIO: botão na toolbar + popover no hover (liquid glass) ── */
+.be-fx-wrap { position: relative; display: inline-flex; }
+#beAudioFxBtn.ativo { color: var(--neon); border-color: var(--neon); }
+/* o SVG herda a cor do botão (inclusive o neon do estado ativo) */
+.be-fx-btn { display: inline-flex; align-items: center; justify-content: center; padding: 5px 9px; }
+.be-fx-btn svg { display: block; }
+.be-audiofx-pop {
+  position: absolute; top: calc(100% + 8px); left: 0; width: 252px; z-index: 90;
+  padding: 10px 12px; display: flex; flex-direction: column; gap: 9px;
+  font-size: 12.5px; text-align: left; cursor: default;
+}
+.be-audiofx-pop input:disabled + * , .be-audiofx-pop label:has(input:disabled) { opacity: .5; }
+.be-audiofx-tit { font-weight: 800; font-size: 13px; }
+.be-audiofx-row {
+  display: flex; align-items: center; gap: 8px;
+  font-size: 12.5px; cursor: pointer; user-select: none;
+}
+.be-audiofx-row input { accent-color: #22c1dc; width: 15px; height: 15px; }
+.be-fx-gema { font-size: 11px; }
+.be-audiofx-int {
+  display: flex; align-items: center; gap: 8px; font-size: 11.5px;
+  padding-left: 22px; color: var(--text-sec);
+}
+.be-audiofx-int input { flex: 1; }
+.be-audiofx-int output { font-family: var(--mono); font-size: 11px; min-width: 24px; text-align: right; }
+
+/* janelinha de zoom do preview (canto inferior direito, como no CapCut) */
+.be-pvzoom {
+  position: absolute; right: 8px; bottom: 8px; z-index: 60;
+  display: flex; align-items: center; gap: 2px;
+  background: rgba(4, 16, 31, .88); border: 1px solid var(--blue-border);
+  border-radius: 8px; padding: 3px 5px;
+  font-size: 11px; font-weight: 800; font-family: var(--mono);
+  color: var(--text-sec); user-select: none;
+}
+.be-pvzoom.ativo { border-color: var(--neon); color: var(--text); }
+.be-pvzoom button {
+  background: none; border: none; color: var(--text-sec); cursor: pointer;
+  font-size: 12px; line-height: 1; padding: 2px 5px; border-radius: 5px;
+}
+.be-pvzoom button:hover { background: var(--blue-dim); color: var(--text); }
+.be-pvzoom #bePvZoomVal { min-width: 38px; text-align: center; }
+
+/* ── FULLSCREEN (tecla F): barra de tempo/controle ── */
+.be-fs-bar { display: none; }
+/* O navegador FORÇA o frame a 100%×100% da tela (width/height !important) — não
+   dá pra reduzi-lo. Então o frame vira uma moldura preta que CENTRALIZA o palco,
+   e o palco fica no FORMATO do vídeo (9:16). Assim o vídeo vertical não estica
+   e as camadas (texto/pip) seguem alinhadas. Ajusta ao formato do vídeo editado. */
+.be-preview-frame:fullscreen {
+  display: flex; align-items: center; justify-content: center;
+  background: #000; border-radius: 0;
+}
+.be-preview-frame:fullscreen::backdrop { background: #000; }
+.be-preview-frame:fullscreen .be-stage {
+  position: relative; inset: auto;
+  width: min(100cqw, calc(100cqh * var(--be-arn, 0.5625)));
+  height: min(100cqh, calc(100cqw / var(--be-arn, 0.5625)));
+}
+.be-preview-frame:fullscreen video { object-fit: cover; }
+.be-preview-frame:fullscreen .be-fs-bar {
+  display: flex; align-items: center; gap: 14px; z-index: 100;
+  position: absolute; left: 0; right: 0; bottom: 0;
+  padding: 16px 24px; background: linear-gradient(transparent, rgba(0,0,0,.7));
+}
+.be-fs-play, .be-fs-exit {
+  background: rgba(255,255,255,.15); border: none; color: #fff; cursor: pointer;
+  width: 40px; height: 40px; border-radius: 50%; font-size: 15px; flex: none;
+}
+.be-fs-progress { flex: 1; height: 6px; background: rgba(255,255,255,.25); border-radius: 3px; cursor: pointer; }
+.be-fs-fill, #beFsFill { height: 100%; width: 0; background: var(--neon); border-radius: 3px; }
+.be-fs-time { color: #fff; font-family: var(--mono); font-size: 13px; min-width: 96px; text-align: right; }
+.be-transport { display: flex; align-items: center; gap: 12px; width: 100%; padding: 0 4px; }
+/* seletor de PROPORÇÃO sob o preview (estilo CapCut, user 14/08) */
+.be-formato-wrap { position: relative; margin-left: auto; }
+.be-formato-btn {
+  background: rgba(0,229,255,.06); border: 1px solid var(--blue-border);
+  color: var(--text-dim); font-size: 12px; padding: 5px 10px; border-radius: 8px;
+  cursor: pointer; display: flex; align-items: center; gap: 6px; white-space: nowrap;
+}
+.be-formato-btn:hover { border-color: var(--neon); color: var(--text); }
+.be-formato-menu {
+  position: absolute; bottom: calc(100% + 8px); right: 0; z-index: 60;
+  min-width: 190px; max-height: 320px; overflow-y: auto;
+  background: #071224; border: 1px solid var(--blue-border); border-radius: 10px;
+  box-shadow: 0 10px 30px rgba(0,0,0,.55); padding: 6px;
+}
+.be-formato-item {
+  display: flex; align-items: center; gap: 10px; width: 100%;
+  background: none; border: 0; color: var(--text-dim); font-size: 12.5px;
+  padding: 7px 10px; border-radius: 7px; cursor: pointer; text-align: left;
+}
+.be-formato-item:hover { background: rgba(0,229,255,.08); color: var(--text); }
+.be-formato-item.active { color: var(--neon); }
+.be-formato-ico {
+  width: 22px; height: 16px; display: inline-flex; align-items: center; justify-content: center;
+}
+.be-formato-ico i {
+  display: block; border: 1.5px solid currentColor; border-radius: 2px;
+}
+.be-formato-dims { margin-left: auto; font-size: 11px; opacity: .6; }
 .be-play-btn {
   width: 40px; height: 40px; border-radius: 50%;
   background: linear-gradient(135deg, #1a6bff, var(--neon));
@@ -174,6 +527,154 @@ body {
   color: var(--text); border-radius: 8px; padding: 8px; font-family: var(--font); font-size: 12px;
   width: 100%;
 }
+/* ── painel de configuração com abas (estilo CapCut) ── */
+.be-cfg-tabs { display: flex; gap: 2px; border-bottom: 1px solid var(--blue-border); margin: 2px 0 8px; overflow-x: auto; }
+.be-cfg-tab {
+  background: none; border: none; color: var(--text-sec); cursor: pointer;
+  font-family: var(--font); font-size: 12px; padding: 6px 8px; white-space: nowrap;
+  border-bottom: 2px solid transparent; margin-bottom: -1px; transition: color .12s;
+}
+.be-cfg-tab:hover { color: var(--text); }
+.be-cfg-tab.active { color: var(--neon); border-bottom-color: var(--neon); font-weight: 700; }
+.be-cfg-subtabs { display: flex; gap: 4px; flex-wrap: wrap; margin-bottom: 10px; }
+.be-cfg-subtab {
+  background: rgba(2, 8, 23, .6); border: 1px solid var(--blue-border); color: var(--text-sec);
+  cursor: pointer; font-family: var(--font); font-size: 11px; padding: 4px 10px; border-radius: 999px;
+  transition: all .12s;
+}
+.be-cfg-subtab:hover { color: var(--text); border-color: var(--neon); }
+.be-cfg-subtab.active { color: #041018; background: var(--neon); border-color: var(--neon); font-weight: 700; }
+.be-cfg-panel { display: flex; flex-direction: column; gap: 10px; }
+.be-cfg-sub { display: flex; flex-direction: column; gap: 10px; }
+.be-slider-label b { color: var(--neon); font-variant-numeric: tabular-nums; float: right; }
+
+/* ── painel de LEGENDAS com previews animados ── */
+.be-side-sub { font-size: 10px; text-transform: uppercase; letter-spacing: .08em; color: var(--text-sec); margin-top: 4px; }
+.be-cap-modes { display: flex; gap: 8px; }
+.be-cap-card {
+  flex: 1; background: rgba(2, 8, 23, .6); border: 1px solid var(--blue-border);
+  border-radius: 10px; padding: 8px; cursor: pointer; display: flex; flex-direction: column;
+  gap: 6px; align-items: center; transition: border-color .12s, background .12s;
+}
+.be-cap-card:hover { border-color: var(--neon); }
+.be-cap-card.active { border-color: var(--neon); background: rgba(0, 170, 255, .12); }
+.be-cap-name { font-size: 11px; color: var(--text); font-weight: 600; }
+.be-cap-demo {
+  width: 100%; height: 46px; background: #04101f; border-radius: 6px;
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 1px; overflow: hidden;
+}
+.demo-multi span { font-weight: 800; font-size: 11px; color: #fff; text-shadow: 0 1px 2px #000; opacity: 0; animation: capfade 3.2s infinite; }
+.demo-multi span:nth-child(2) { animation-delay: .35s; }
+@keyframes capfade { 0%,12%{opacity:0;transform:translateY(4px);} 28%,80%{opacity:1;transform:none;} 100%{opacity:0;} }
+.demo-word { flex-direction: row !important; gap: 4px !important; }
+.demo-word i { font-style: normal; font-weight: 800; font-size: 12px; color: #ffd32a; text-shadow: 0 1px 2px #000; opacity: 0; animation: cappop 2.4s infinite; }
+.demo-word i:nth-child(2) { animation-delay: .45s; }
+.demo-word i:nth-child(3) { animation-delay: .9s; }
+@keyframes cappop { 0%,4%{opacity:0;transform:scale(.5);} 12%,42%{opacity:1;transform:scale(1);} 58%,100%{opacity:0;} }
+/* ── galeria de modelos de legenda (categorias + prévia no hover) ── */
+.be-cap-busca {
+  width: 100%; background: #04101f; border: 1px solid var(--blue-border);
+  border-radius: 8px; color: var(--text); padding: 6px 8px; font-size: 12px;
+}
+.be-cap-galeria { display: grid; grid-template-columns: 74px 1fr; gap: 8px; }
+.be-cap-cats { display: flex; flex-direction: column; gap: 4px; }
+.be-cap-cat {
+  background: none; border: 1px solid transparent; border-radius: 7px;
+  color: var(--text-sec); font-size: 11px; font-weight: 700; text-align: left;
+  padding: 5px 7px; cursor: pointer; white-space: nowrap;
+}
+.be-cap-cat:hover { background: var(--blue-dim); color: var(--text); }
+.be-cap-cat.active { background: var(--blue-dim); border-color: var(--blue-border); color: var(--neon); }
+.be-cap-cat.fav.active { color: #ffd32a; }
+.be-cap-grade {
+  display: grid; grid-template-columns: 1fr 1fr; gap: 6px;
+  max-height: 216px; overflow-y: auto; padding-right: 2px;
+}
+.be-cap-vazio { grid-column: 1 / -1; padding: 10px 4px; }
+.be-cap-modelo {
+  position: relative; background: #04101f; border: 1px solid var(--blue-border);
+  border-radius: 8px; height: 44px; cursor: pointer; overflow: hidden;
+  display: flex; align-items: center; justify-content: center; padding: 0 4px;
+}
+.be-cap-modelo:hover { border-color: var(--neon); }
+.be-cap-modelo.active { border-color: var(--neon); box-shadow: 0 0 0 1px var(--neon) inset; }
+.be-cap-mini {
+  font-size: 13px; font-weight: 800; line-height: 1;
+  text-shadow: 0 1px 2px #000; white-space: nowrap;
+  max-width: 100%; overflow: hidden; text-overflow: ellipsis;
+}
+.be-cap-star {
+  position: absolute; top: 1px; right: 3px; font-size: 10px; line-height: 1;
+  color: rgba(150,190,230,.35); cursor: pointer;
+}
+.be-cap-star.on { color: #ffd32a; }
+.be-cap-star:hover { color: #ffd32a; }
+.be-cap-hint { font-size: 10px; }
+/* PRÉVIA SÓ NO HOVER: a grade fica parada (não distrai) e o modelo mostra a
+   animação DELE quando o mouse passa — é a mesma animação que vai pro vídeo */
+.be-cap-modelo.anim-fade:hover .be-cap-mini  { animation: beCapFade 1.4s ease-in-out infinite; }
+.be-cap-modelo.anim-pop:hover .be-cap-mini   { animation: beCapPop 1.2s ease-out infinite; }
+.be-cap-modelo.anim-subir:hover .be-cap-mini { animation: beCapSubir 1.4s ease-out infinite; }
+@keyframes beCapFade { 0%,100% { opacity: 0 } 25%,75% { opacity: 1 } }
+@keyframes beCapPop {
+  0% { opacity: 0; transform: scale(.6) }
+  35% { opacity: 1; transform: scale(1.08) }
+  55%,100% { opacity: 1; transform: scale(1) }
+}
+@keyframes beCapSubir {
+  0% { opacity: 0; transform: translateY(70%) }
+  40%,100% { opacity: 1; transform: none }
+}
+
+.be-cap-styles { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.be-cap-style {
+  background: #04101f; border: 1px solid var(--blue-border); border-radius: 8px; height: 42px;
+  cursor: pointer; display: flex; align-items: center; justify-content: center; overflow: hidden;
+  transition: border-color .12s;
+}
+.be-cap-style:hover { border-color: var(--neon); }
+.be-cap-style.active { border-color: var(--neon); box-shadow: 0 0 0 1px var(--neon) inset; }
+.be-cap-style b { font-size: 15px; font-weight: 800; letter-spacing: .02em; animation: cappop2 2.8s infinite; }
+@keyframes cappop2 { 0%,8%{opacity:0;transform:scale(.7);} 20%,72%{opacity:1;transform:scale(1);} 88%,100%{opacity:0;transform:scale(.92);} }
+.be-cap-generate { background: linear-gradient(135deg, #1a6bff, var(--neon)); color: #fff; font-weight: 700; border: none; margin-top: 4px; }
+
+/* ── editor de texto/legenda rico ── */
+.be-text-tab { display: flex; flex-direction: column; gap: 10px; }
+.be-cap-applyall {
+  display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--text);
+  background: rgba(0, 170, 255, .08); border: 1px solid var(--blue-border);
+  border-radius: 8px; padding: 8px 10px; cursor: pointer;
+}
+.be-cap-applyall input { accent-color: var(--neon); width: 15px; height: 15px; }
+.be-btn-group { display: inline-flex; gap: 2px; }
+.be-btn-group button {
+  background: rgba(2, 8, 23, .7); border: 1px solid var(--blue-border); color: var(--text-sec);
+  border-radius: 6px; padding: 4px 9px; cursor: pointer; font-family: var(--font); font-size: 12px;
+  transition: all .12s;
+}
+.be-btn-group button:hover { color: var(--text); border-color: var(--neon); }
+.be-transcript { display: flex; flex-direction: column; gap: 3px; max-height: 340px; overflow-y: auto; }
+.be-transcript-row {
+  display: flex; gap: 10px; align-items: flex-start; padding: 8px 8px; border-radius: 7px;
+  cursor: pointer; font-size: 12px; color: var(--text); transition: background .1s;
+  border: 1px solid transparent;
+}
+.be-transcript-row:hover { background: rgba(0, 170, 255, .08); }
+.be-transcript-row.active { background: rgba(0, 170, 255, .14); border-color: var(--neon); }
+.be-transcript-n { color: var(--text-sec); font-family: var(--mono); font-size: 11px; min-width: 18px; text-align: right; }
+.be-transcript-tx { flex: 1; line-height: 1.35; }
+
+/* ── biblioteca de áudio (Músicas/Efeitos/Favoritos) ── */
+.be-audio-lib { display: flex; flex-direction: column; gap: 3px; max-height: 300px; overflow-y: auto; min-height: 40px; }
+.be-audio-lib-row { display: flex; align-items: center; gap: 8px; padding: 6px 4px; border-bottom: 1px solid rgba(255,255,255,.06); font-size: 12px; }
+.be-audiolib-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.be-audiolib-play, .be-audiolib-star {
+  background: rgba(2,8,23,.6); border: 1px solid var(--blue-border); color: var(--text-sec);
+  width: 24px; height: 24px; border-radius: 6px; cursor: pointer; font-size: 11px; flex: none;
+}
+.be-audiolib-star { color: #ffd32a; border-color: transparent; background: none; }
+
 .be-transitions { display: flex; flex-direction: column; gap: 6px; }
 .be-trans-item { font-size: 11px; color: var(--text-sec); display: flex; justify-content: space-between; align-items: center; gap: 8px; }
 .be-trans-item select {
@@ -183,32 +684,81 @@ body {
 
 /* ── timeline multi-track ── */
 .be-timeline-area {
-  grid-column: 1 / -1; grid-row: 2;
-  display: flex; flex-direction: column; gap: 6px;
+  /* só colunas 1-2: a coluna do player (3) é altura total à direita (CapCut) */
+  grid-column: 1 / 3; grid-row: 2;
+  display: flex; flex-direction: column; gap: 6px; min-height: 0;
 }
-.be-toolbar { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+/* ⚠️ A BARRA NUNCA QUEBRA EM DUAS LINHAS. Com `flex-wrap: wrap` cada botão
+   novo empurrava a timeline pra baixo: ao acrescentar "✂🤖 Respiros" o canvas
+   caiu de ~150px pra 87px e a FAIXA DE ÁUDIO saiu inteira da área visível.
+   Num editor profissional a altura da timeline não pode depender de quantas
+   ferramentas existem — a barra rola na horizontal e a timeline fica intacta. */
+.be-toolbar {
+  display: flex; gap: 6px; align-items: center;
+  flex-wrap: nowrap; overflow-x: auto; overflow-y: hidden;
+  scrollbar-width: thin; padding-bottom: 2px;
+}
+.be-toolbar > * { flex-shrink: 0; }
 .be-toolbar-sep { width: 1px; height: 20px; background: var(--blue-border); margin: 0 4px; }
 .be-toolbar-spacer { flex: 1; }
-.be-timeline-row { display: flex; gap: 0; }
+.be-timeline-row { display: flex; gap: 0; flex: 1; min-height: 0; }
 .be-track-headers {
-  width: 36px; flex-shrink: 0;
+  width: 44px; flex-shrink: 0;
   background: rgba(4, 16, 31, .8);
   border: 1px solid var(--blue-border); border-right: none;
   border-radius: 12px 0 0 12px;
-  display: flex; flex-direction: column;
-  padding: 0;
+  position: relative; overflow: hidden; /* rows absolutas alinhadas ao canvas */
 }
 .be-track-h {
-  display: flex; align-items: center; justify-content: center;
-  color: var(--text-dim); font-size: 13px; font-weight: 800;
+  position: absolute; left: 0; right: 0;
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 1px;
+  color: var(--text-dim); font-size: 12px; font-weight: 800;
   font-family: var(--mono);
   border-top: 1px solid rgba(0, 170, 255, .06);
 }
+.be-track-h.be-track-hidden { opacity: .45; }
+.be-track-ic { line-height: 1; }
+.be-track-eye {
+  background: none; border: none; cursor: pointer; padding: 0 4px;
+  font-size: 11px; line-height: 1.2; color: var(--text-sec); border-radius: 4px;
+}
+.be-track-eye:hover { background: var(--blue-dim); color: var(--text); }
+/* abas do Retoque (Básico | HSL | Curvas | Roda de cores) */
+.be-grade-abas { margin-bottom: 6px; }
+.be-grade-nota { font-size: 10px; margin-bottom: 4px; }
+.be-grade-canal-r::-webkit-slider-runnable-track { background: linear-gradient(90deg, #0b1526, #ff4757); }
+.be-grade-canal-g::-webkit-slider-runnable-track { background: linear-gradient(90deg, #0b1526, #4ade80); }
+.be-grade-canal-b::-webkit-slider-runnable-track { background: linear-gradient(90deg, #0b1526, #38bdf8); }
+/* arrastar o olhinho reordena as camadas (2026-07-29) */
+.be-track-eye { touch-action: none; }
+.be-track-eye-drag { background: var(--blue-dim); color: var(--text); transform: scale(1.25); }
+.be-track-h.be-track-alvo {
+  background: rgba(0, 170, 255, .18);
+  box-shadow: inset 0 0 0 1px rgba(0, 170, 255, .55);
+}
+/* barra de rolagem das faixas (ate 9 camadas de video/texto/audio) */
+.be-vscroll {
+  position: absolute; top: 0; right: 0; width: 10px; height: 100%;
+  z-index: 20; display: none;
+}
+.be-vscroll-thumb {
+  position: absolute; right: 2px; width: 6px; border-radius: 3px;
+  background: rgba(150, 190, 230, .35); cursor: grab; touch-action: none;
+}
+.be-vscroll-thumb:hover, .be-vscroll-thumb.be-vscroll-drag {
+  background: var(--neon); cursor: grabbing;
+}
 .be-timeline-wrap {
-  flex: 1; min-width: 0;
+  flex: 1; min-width: 0; min-height: 0;
   background: #04101f; border: 1px solid var(--blue-border);
   border-radius: 0 12px 12px 0;
-  height: 190px; overflow: hidden; position: relative;
+  /* SEM height fixa: preenche a área da timeline (que o divisor redimensiona).
+     Antes travava em 190px → redimensionar só criava espaço vazio embaixo e a
+     timeline não crescia. Agora o canvas usa toda a altura (o ResizeObserver
+     recalcula → mais espaço pras camadas). */
+  align-self: stretch;
+  overflow: hidden; position: relative;
 }
 #beTimeline {
   width: 100%; height: 100%; display: block;
@@ -257,6 +807,29 @@ body {
 }
 .be-export-video { width: 100%; max-height: 300px; border-radius: 10px; background: #000; }
 
+/* ── modal de EXPORTAÇÃO: passo de opções (estilo CapCut: vídeo à ESQUERDA,
+   infos à DIREITA). O modal fica LARGO só neste passo. ── */
+#beExportModal .be-modal-box.be-modal-wide { width: 640px; }
+#beExportOptions { text-align: left; }
+/* display:flex era o que faltava — sem ele o flex-direction:row não fazia nada
+   e o thumb (aspect 9/16 em bloco) virava width:100% = vídeo gigante em cima. */
+.be-export-opts { display: flex; flex-direction: row; align-items: stretch; gap: 18px; }
+.be-export-optthumb-wrap {
+  flex: 0 0 clamp(180px, 34%, 240px); align-self: start;
+  aspect-ratio: var(--be-export-ar, 9 / 16); border-radius: 10px; overflow: hidden;
+  background: #000; border: 1px solid var(--blue-border);
+}
+.be-export-optthumb { width: 100%; height: 100%; object-fit: cover; display: block; }
+.be-export-fields { flex: 1; display: flex; flex-direction: column; justify-content: center; gap: 12px; min-width: 0; }
+.be-export-field { display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: var(--text-sec); font-weight: 600; }
+.be-export-field input, .be-export-field select {
+  background: rgba(2, 8, 23, .6); border: 1px solid var(--blue-border); border-radius: 8px;
+  color: var(--text); font-family: var(--font); font-size: 13px; padding: 9px 11px; width: 100%;
+}
+.be-export-field select:disabled { opacity: .55; }
+.be-export-actions { display: flex; flex-direction: row; gap: 10px; margin-top: 4px; }
+.be-export-actions .be-export-btn { flex: 1; }
+
 /* ── projetos ── */
 .be-projects {
   position: fixed; left: 14px; bottom: 14px; width: 280px; max-width: calc(100vw - 28px);
@@ -294,23 +867,32 @@ body {
 
 /* ── texto overlay (classe usada pelo overlay.js) ── */
 .be-text-overlay { font-weight: 700; }
+/* entrada suave da legenda (aparece com fade+pop de 0.18s em vez de piscar seco).
+   Só toca UMA vez, quando o elemento nasce — no "palavra por palavra" cada
+   palavra ganha o próprio pop ao surgir. */
+.be-text-overlay { animation: beCapIn .18s ease-out; }
+@keyframes beCapIn {
+  from { opacity: 0; transform: translate(-50%, -50%) scale(.86); }
+  to   { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+}
+@media (prefers-reduced-motion: reduce) { .be-text-overlay { animation: none; } }
 
 /* ── mobile (CapCut mobile: preview em cima, timeline, props em sheet) ── */
 @media (max-width: 860px) {
   .be-workspace {
     grid-template-columns: minmax(0, 1fr);
-    grid-template-rows: auto minmax(0, 1fr) auto auto;
+    grid-template-rows: auto minmax(0, 1fr) auto auto auto;
     padding: 6px 8px 10px;
   }
-  .be-rail {
+  .be-library {
     grid-column: 1; grid-row: 1;
-    flex-direction: row; padding-top: 0;
+    max-height: 26dvh;
   }
-  .be-rail-btn { flex: 1; flex-direction: row; padding: 8px; gap: 6px; font-size: 11px; }
+  .be-rail-btn { flex-direction: row; padding: 8px; gap: 6px; font-size: 11px; }
   .be-rail-btn span { font-size: 15px; }
   .be-preview-area { grid-column: 1; grid-row: 2; }
   .be-props {
-    grid-column: 1; grid-row: 4;
+    grid-column: 1; grid-row: 5;
     max-height: 34dvh;
   }
   .be-timeline-area { grid-column: 1; grid-row: 3; }
@@ -323,18 +905,338 @@ body {
 }
 
 /* ── divisores arrastaveis (CapCut) ── */
+/* SÓ NA LINHA DE CIMA (fix 2026-08-14): as larguras que estes divisores
+   ajustam existem apenas na row 1 — com grid-row 1/-1 a barra atravessava a
+   TIMELINE por cima (print do user). */
 .be-gutter-v {
   grid-column: 2; grid-row: 1; justify-self: end;
   width: 8px; margin-right: -9px; cursor: col-resize; z-index: 30;
   border-radius: 4px; transition: background .15s;
 }
 .be-gutter-v:hover, .be-gutter-v:active { background: rgba(0,170,255,.35); }
-.be-gutter-h {
-  height: 8px; margin: -4px 0; cursor: row-resize; z-index: 30;
-  border-radius: 4px; transition: background .15s;
+/* divisa entre o painel de FERRAMENTAS (Mídia/Texto/Áudio) e o de configurações
+   — a coluna 1 era fixa em 232px (user 2026-07-29) */
+.be-gutter-lib {
+  grid-column: 1; grid-row: 1; justify-self: end;
+  width: 8px; margin-right: -9px; cursor: col-resize; z-index: 30;
+  border-radius: 4px; transition: background .15s; touch-action: none;
 }
-.be-gutter-h:hover, .be-gutter-h:active { background: rgba(0,170,255,.35); }
+.be-gutter-lib:hover, .be-gutter-lib:active { background: rgba(0,170,255,.35); }
+/* divisa da timeline: barra AGARRÁVEL e visível (arraste pra cima = timeline
+   mais alta, encolhe os painéis de cima) — user 2026-07-20 */
+.be-gutter-h {
+  height: 10px; margin: -5px 0 1px; cursor: row-resize; z-index: 30;
+  border-radius: 5px; transition: background .15s;
+  display: flex; align-items: center; justify-content: center;
+}
+.be-gutter-h::after {
+  content: ''; width: 46px; height: 4px; border-radius: 3px;
+  background: var(--blue-border); transition: background .15s;
+}
+.be-gutter-h:hover, .be-gutter-h:active { background: rgba(0,170,255,.12); }
+.be-gutter-h:hover::after, .be-gutter-h:active::after { background: var(--neon); }
 
 @media (max-width: 860px) {
-  .be-gutter-v, .be-gutter-h { display: none; }
+  .be-gutter-v, .be-gutter-h, .be-gutter-lib { display: none; }
 }
+
+/* ── ESTADO VAZIO DENTRO DO PALCO (2026-07-29) ──────────────────────────────
+   Antes, projeto sem mídia abria uma tela de importação em cima de tudo e o
+   usuário não via o editor. Agora o convite vive dentro do preview e o resto
+   da ferramenta fica visível e utilizável em volta. */
+.be-vazio {
+  position: absolute; inset: 0; display: none;
+  flex-direction: column; align-items: center; justify-content: center; gap: 9px;
+  background: rgba(2, 8, 23, .72); backdrop-filter: blur(2px);
+  border: 1.5px dashed rgba(0, 170, 255, .28); border-radius: 10px;
+  text-align: center; padding: 18px; z-index: 5;
+}
+.be-vazio-ico { font-size: 40px; opacity: .9 }
+.be-vazio-tit { font-size: 15px; font-weight: 700; color: #eaf3ff }
+.be-vazio-sub { font-size: 12.5px; color: #8299bd; line-height: 1.5; max-width: 260px }
+.be-vazio-btn {
+  margin-top: 4px; padding: 9px 18px; border-radius: 9px; cursor: pointer;
+  background: var(--neon); color: #04121f; border: none;
+  font-size: 13px; font-weight: 700;
+}
+.be-vazio-btn:hover { filter: brightness(1.08) }
+.be-vazio-dim { font-family: var(--mono, monospace); font-size: 10.5px; color: #5d7290 }
+
+/* ── MARCADOR DA MÁSCARA NO PLAYER (2026-07-29) ─────────────────────────────
+   Antes a máscara só tinha sliders: o usuário ajustava no escuro. Agora a
+   forma aparece por cima do vídeo e é o próprio controle. */
+.be-maskui { position: absolute; inset: 0; z-index: 9; pointer-events: none }
+.be-mask-shape {
+  position: absolute; cursor: move; pointer-events: auto;
+  border: 1.5px solid rgba(0, 170, 255, .95);
+  box-shadow: 0 0 0 1px rgba(2, 8, 23, .55), 0 0 14px rgba(0, 170, 255, .3);
+  background: rgba(0, 170, 255, .05);
+}
+.be-mask-h {
+  position: absolute; width: 13px; height: 13px; border-radius: 50%;
+  background: #fff; border: 2px solid var(--neon); pointer-events: auto;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, .5);
+}
+.be-mask-h[data-parte="nw"] { left: -7px; top: -7px; cursor: nwse-resize }
+.be-mask-h[data-parte="ne"] { right: -7px; top: -7px; cursor: nesw-resize }
+.be-mask-h[data-parte="sw"] { left: -7px; bottom: -7px; cursor: nesw-resize }
+.be-mask-h[data-parte="se"] { right: -7px; bottom: -7px; cursor: nwse-resize }
+/* no círculo os cantos ficam sobre a borda da forma, não do quadrado */
+.be-mask-shape[data-forma="circle"] .be-mask-h[data-parte="nw"] { left: 8%; top: 8% }
+.be-mask-shape[data-forma="circle"] .be-mask-h[data-parte="ne"] { right: 8%; top: 8% }
+.be-mask-shape[data-forma="circle"] .be-mask-h[data-parte="sw"] { left: 8%; bottom: 8% }
+.be-mask-shape[data-forma="circle"] .be-mask-h[data-parte="se"] { right: 8%; bottom: 8% }
+
+/* ── MOLDURA DO VÍDEO NO PLAYER (2026-07-29) ────────────────────────────────
+   Aparece quando a sub-aba NÃO é "Mascarar": move e escala a cena dentro do
+   quadro, como no CapCut. Um marcador por vez — máscara e vídeo nunca juntos. */
+.be-frameui { position: absolute; inset: 0; z-index: 8; pointer-events: none }
+.be-frame-box {
+  position: absolute; cursor: move; pointer-events: auto;
+  border: 1.5px solid rgba(255, 255, 255, .9);
+  box-shadow: 0 0 0 1px rgba(2, 8, 23, .5);
+}
+.be-frame-h {
+  position: absolute; width: 12px; height: 12px; pointer-events: auto;
+  background: #fff; border: 2px solid rgba(2, 8, 23, .55); border-radius: 3px;
+}
+.be-frame-h[data-parte="nw"] { left: -6px; top: -6px; cursor: nwse-resize }
+.be-frame-h[data-parte="ne"] { right: -6px; top: -6px; cursor: nesw-resize }
+.be-frame-h[data-parte="sw"] { left: -6px; bottom: -6px; cursor: nesw-resize }
+.be-frame-h[data-parte="se"] { right: -6px; bottom: -6px; cursor: nwse-resize }
+/* guias de terços: só durante o gesto (referência ajuda a enquadrar, mas
+   referência fixa polui o preview) */
+.be-frame-guias {
+  position: absolute; inset: 0; opacity: 0; transition: opacity .12s;
+  background:
+    linear-gradient(to right, transparent 33.2%, rgba(255,255,255,.28) 33.3%, rgba(255,255,255,.28) 33.5%, transparent 33.6%),
+    linear-gradient(to right, transparent 66.2%, rgba(255,255,255,.28) 66.3%, rgba(255,255,255,.28) 66.5%, transparent 66.6%),
+    linear-gradient(to bottom, transparent 33.2%, rgba(255,255,255,.28) 33.3%, rgba(255,255,255,.28) 33.5%, transparent 33.6%),
+    linear-gradient(to bottom, transparent 66.2%, rgba(255,255,255,.28) 66.3%, rgba(255,255,255,.28) 66.5%, transparent 66.6%);
+}
+
+/* ── PAINEL DE RETOQUE / correção de cor (2026-07-29) ───────────────────────
+   Trilhas coloridas nos controles de cor: a cor indica pra onde o valor puxa,
+   igual ao CapCut (frio↔quente, verde↔magenta, cinza↔saturado). */
+.be-grade-topo { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 4px }
+.be-grade-campos { display: flex; flex-direction: column; gap: 7px }
+.be-grade-grupo {
+  font-family: var(--mono, monospace); font-size: 10px; letter-spacing: .08em;
+  text-transform: uppercase; color: #5d7290; margin: 8px 0 1px;
+}
+.be-grade-linha { display: grid; grid-template-columns: 92px 1fr 34px; align-items: center; gap: 8px }
+.be-grade-linha label { font-size: 12px; color: #b8c9e0 }
+.be-grade-linha output {
+  font-family: var(--mono, monospace); font-size: 11px; color: #8299bd; text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+.be-grade-linha input[type="range"] { width: 100%; accent-color: var(--neon) }
+.be-grade-trilha-temp { background: linear-gradient(to right, #2f6fd0, #d9d9d9, #e8c33a); border-radius: 3px }
+.be-grade-trilha-matiz { background: linear-gradient(to right, #2fbf6f, #d9d9d9, #c04fd0); border-radius: 3px }
+.be-grade-trilha-sat { background: linear-gradient(to right, #8a8a8a, #d94b4b); border-radius: 3px }
+
+/* ── ABA DE TRANSIÇÕES (2026-07-29) — layout do CapCut ──────────────────────
+   Categorias à esquerda, grade à direita, busca em cima. A miniatura de cada
+   card ANIMA o próprio efeito no hover: duas camadas com transform/opacity,
+   compostas pela GPU. 18 cards animando não custam CPU. */
+.be-trans-panel { display: flex; flex-direction: column; height: 100%; min-height: 0; gap: 8px }
+.be-trans-busca { display: flex; gap: 6px; align-items: center }
+.be-trans-busca input {
+  flex: 1; min-width: 0; padding: 7px 10px; border-radius: 8px;
+  background: rgba(255,255,255,.05); border: 1px solid var(--border, #1e2f4a);
+  color: #eaf3ff; font-size: 12.5px;
+}
+.be-trans-corpo { display: grid; grid-template-columns: 92px 1fr; gap: 8px; flex: 1; min-height: 0 }
+.be-trans-cats { display: flex; flex-direction: column; gap: 2px; overflow-y: auto }
+.be-trans-cat {
+  text-align: left; padding: 6px 8px; border-radius: 7px; cursor: pointer;
+  background: transparent; border: none; color: #8299bd; font-size: 12px;
+}
+.be-trans-cat:hover { background: rgba(255,255,255,.05); color: #eaf3ff }
+.be-trans-cat.active { background: rgba(0,170,255,.14); color: var(--neon) }
+.be-trans-cat.fav { color: #fbbf24 }
+.be-trans-grade {
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(78px, 1fr));
+  gap: 8px; overflow-y: auto; align-content: start; padding-right: 2px;
+}
+.be-trans-vazio { grid-column: 1 / -1; font-size: 12px; line-height: 1.5; padding: 10px 2px }
+.be-trans-card { position: relative; cursor: grab; user-select: none }
+.be-trans-card:active { cursor: grabbing }
+.be-trans-nome {
+  font-size: 10.5px; color: #b8c9e0; margin-top: 3px; text-align: center;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.be-trans-star {
+  position: absolute; top: 3px; right: 3px; z-index: 2; width: 20px; height: 20px;
+  border: none; border-radius: 50%; cursor: pointer; font-size: 11px; line-height: 1;
+  background: rgba(2,8,23,.65); color: #64748b;
+}
+.be-trans-star.on { color: #fbbf24 }
+.be-trans-star:hover { color: #fbbf24 }
+
+/* miniatura: duas camadas que se trocam com o efeito da transição */
+.be-trans-mini {
+  position: relative; width: 100%; aspect-ratio: 1; border-radius: 8px;
+  overflow: hidden; background: #0b1524; border: 1px solid var(--border, #1e2f4a);
+}
+.be-trans-mini span { position: absolute; inset: 0; will-change: transform, opacity, filter }
+.be-trans-a { background: linear-gradient(135deg, #1d4ed8, #06b6d4) }
+.be-trans-b { background: linear-gradient(135deg, #f59e0b, #ef4444) }
+.be-trans-card:hover .be-trans-mini span { animation-duration: 1.5s; animation-iteration-count: infinite }
+
+/* cada tipo de prévia = um par de animações */
+.be-fx-cross    .be-trans-b { opacity: 0 }
+.be-trans-card:hover .be-fx-cross .be-trans-b { animation-name: beFxFade }
+.be-fx-flash    .be-trans-b { opacity: 0 }
+.be-trans-card:hover .be-fx-flash .be-trans-b { animation-name: beFxFade }
+.be-trans-card:hover .be-fx-flash .be-trans-a { animation-name: beFxFlash }
+.be-fx-slide    .be-trans-b { transform: translateY(100%) }
+.be-trans-card:hover .be-fx-slide .be-trans-b { animation-name: beFxSlideY }
+.be-fx-wipe     .be-trans-b { clip-path: inset(100% 0 0 0) }
+.be-trans-card:hover .be-fx-wipe .be-trans-b { animation-name: beFxWipe }
+.be-fx-radial   .be-trans-b { clip-path: circle(0% at 50% 50%) }
+.be-trans-card:hover .be-fx-radial .be-trans-b { animation-name: beFxCircle }
+.be-fx-circulo  .be-trans-b { clip-path: circle(0% at 50% 50%) }
+.be-trans-card:hover .be-fx-circulo .be-trans-b { animation-name: beFxCircle }
+.be-fx-blur     .be-trans-b { opacity: 0 }
+.be-trans-card:hover .be-fx-blur .be-trans-b { animation-name: beFxFade }
+.be-trans-card:hover .be-fx-blur .be-trans-a { animation-name: beFxBlur }
+.be-fx-glitch   .be-trans-b { opacity: 0 }
+.be-trans-card:hover .be-fx-glitch .be-trans-b { animation-name: beFxGlitch }
+.be-fx-pixel    .be-trans-b { opacity: 0 }
+.be-trans-card:hover .be-fx-pixel .be-trans-b { animation-name: beFxFade }
+.be-trans-card:hover .be-fx-pixel .be-trans-a { animation-name: beFxPixel }
+.be-fx-zoom     .be-trans-b { opacity: 0; transform: scale(1.6) }
+.be-trans-card:hover .be-fx-zoom .be-trans-b { animation-name: beFxZoom }
+.be-fx-shake    .be-trans-b { opacity: 0 }
+.be-trans-card:hover .be-fx-shake .be-trans-b { animation-name: beFxFade }
+.be-trans-card:hover .be-fx-shake .be-trans-a { animation-name: beFxShake }
+
+@keyframes beFxFade   { 0%,15% { opacity: 0 } 60%,100% { opacity: 1 } }
+@keyframes beFxFlash  { 0%,15% { filter: brightness(1) } 35% { filter: brightness(4) } 60%,100% { filter: brightness(1) } }
+@keyframes beFxSlideY { 0%,15% { transform: translateY(100%) } 70%,100% { transform: translateY(0) } }
+@keyframes beFxWipe   { 0%,15% { clip-path: inset(100% 0 0 0) } 70%,100% { clip-path: inset(0 0 0 0) } }
+@keyframes beFxCircle { 0%,15% { clip-path: circle(0% at 50% 50%) } 70%,100% { clip-path: circle(75% at 50% 50%) } }
+@keyframes beFxBlur   { 0%,15% { filter: blur(0) } 40% { filter: blur(7px) } 70%,100% { filter: blur(0) } }
+@keyframes beFxZoom   { 0%,15% { opacity: 0; transform: scale(1.6) } 70%,100% { opacity: 1; transform: scale(1) } }
+@keyframes beFxPixel  { 0%,15% { filter: contrast(1) } 40% { filter: contrast(2.4) saturate(1.8) } 70%,100% { filter: contrast(1) } }
+@keyframes beFxShake  { 0%,15% { transform: translateX(0) } 25% { transform: translateX(-9%) } 35% { transform: translateX(8%) } 45% { transform: translateX(-5%) } 60%,100% { transform: translateX(0) } }
+@keyframes beFxGlitch {
+  0%,15% { opacity: 0; clip-path: inset(0 0 0 0) }
+  30% { opacity: 1; clip-path: inset(0 0 62% 0) }
+  45% { opacity: 1; clip-path: inset(48% 0 22% 0) }
+  60% { opacity: 1; clip-path: inset(72% 0 0 0) }
+  70%,100% { opacity: 1; clip-path: inset(0 0 0 0) }
+}
+@media (prefers-reduced-motion: reduce) {
+  .be-trans-card:hover .be-trans-mini span { animation: none }
+}
+
+
+/* ── TRANSIÇÃO DE VERDADE NO PLAYER (2026-07-29 · papéis 2026-08-07) ────────
+   Os DOIS vídeos ficam visíveis: quem tem .be-trans-saindo é a cena que SAI,
+   quem tem .be-trans-entrando é a que ENTRA (o transition-fx reconcilia as
+   classes com os papéis do player a cada frame). O JS escreve só --p (0..1)
+   no palco; tudo aqui deriva dali.
+
+   !important NOS EFEITOS: a shell escreve transform/opacity INLINE no elemento
+   ativo (escala/posição/opacidade da cena) — sem !important o inline vencia e
+   o efeito não animava nada durante a transição. O transform da CENA continua
+   valendo: viaja na custom property --betf e cada efeito COMPÕE var(--betf,). */
+.be-em-transicao video.be-trans-entrando {
+  visibility: visible !important;   /* vence o .be-buffering do double-buffer */
+  z-index: 2;
+}
+/* entrada ainda SEM frame decodificado fica invisível: elemento visível sem
+   frame pinta PRETO por cima da cena que sai (era o "preto antes" do user) */
+.be-em-transicao video.be-trans-entrando:not(.be-trans-pronta) { opacity: 0 !important }
+.be-em-transicao video.be-trans-saindo { z-index: 1 }
+.be-em-transicao video { will-change: transform, opacity, clip-path, filter }
+
+/* dissolver: a que entra aparece por cima */
+[data-fx="cross"] video.be-trans-entrando { opacity: var(--p) !important }
+/* esmaecer preto/branco: escurece/clareia no miolo e a nova surge */
+[data-fx="flash"] video.be-trans-saindo   { filter: brightness(calc(1 + (0.5 - abs(var(--p) - 0.5)) * 3)) !important }
+[data-fx="flash"] video.be-trans-entrando { opacity: var(--p) !important; filter: brightness(calc(1 + (0.5 - abs(var(--p) - 0.5)) * 3)) !important }
+/* DESLIZAR: a cena que entra REALMENTE entra pela borda — e pela borda CERTA.
+   data-dir vem do catálogo (eixo+sinal): yp = baixo, yn = cima, xn = esquerda.
+   Antes tudo era translateY fixo e "Deslizar esquerda" deslizava na vertical. */
+[data-fx="slide"] video.be-trans-entrando { transform: translateY(calc((1 - var(--p)) * -100%)) var(--betf,) !important }
+[data-fx="slide"] video.be-trans-saindo   { transform: translateY(calc(var(--p) * 18%)) var(--betf,) !important }
+[data-fx="slide"][data-dir="yn"] video.be-trans-entrando { transform: translateY(calc((1 - var(--p)) * 100%)) var(--betf,) !important }
+[data-fx="slide"][data-dir="yn"] video.be-trans-saindo   { transform: translateY(calc(var(--p) * -18%)) var(--betf,) !important }
+[data-fx="slide"][data-dir="xn"] video.be-trans-entrando { transform: translateX(calc((1 - var(--p)) * 100%)) var(--betf,) !important }
+[data-fx="slide"][data-dir="xn"] video.be-trans-saindo   { transform: translateX(calc(var(--p) * -18%)) var(--betf,) !important }
+/* varredura: a nova é revelada por uma borda que corre na direção do nome */
+[data-fx="wipe"] video.be-trans-entrando  { clip-path: inset(0 0 calc((1 - var(--p)) * 100%) 0) !important }
+[data-fx="wipe"][data-dir="yn"] video.be-trans-entrando { clip-path: inset(calc((1 - var(--p)) * 100%) 0 0 0) !important }
+[data-fx="wipe"][data-dir="xn"] video.be-trans-entrando { clip-path: inset(0 0 0 calc((1 - var(--p)) * 100%)) !important }
+/* radial / círculo: revela em círculo a partir do centro */
+[data-fx="radial"] video.be-trans-entrando  { clip-path: circle(calc(var(--p) * 110%) at 50% 50%) !important }
+[data-fx="circulo"] video.be-trans-entrando { clip-path: circle(calc(var(--p) * 110%) at 50% 50%) !important }
+/* desfoque: as duas borram no encontro */
+[data-fx="blur"] video.be-trans-saindo   { filter: blur(calc((0.5 - abs(var(--p) - 0.5)) * 18px)) !important; opacity: calc(1 - var(--p)) !important }
+[data-fx="blur"] video.be-trans-entrando { filter: blur(calc((0.5 - abs(var(--p) - 0.5)) * 18px)) !important; opacity: var(--p) !important }
+/* zoom de choque: a que sai cresce, a que entra chega grande e assenta */
+[data-fx="zoom"] video.be-trans-saindo   { transform: scale(calc(1 + var(--p) * 0.6)) var(--betf,) !important; opacity: calc(1 - var(--p)) !important }
+[data-fx="zoom"] video.be-trans-entrando { transform: scale(calc(1.6 - var(--p) * 0.6)) var(--betf,) !important; opacity: var(--p) !important }
+/* agitação: sacode as duas no encontro */
+[data-fx="shake"] video.be-trans-saindo,
+[data-fx="shake"] video.be-trans-entrando { transform: translateX(calc(sin(var(--p) * 30rad) * (0.5 - abs(var(--p) - 0.5)) * 12%)) var(--betf,) !important }
+[data-fx="shake"] video.be-trans-entrando { opacity: var(--p) !important }
+/* pixel/falha: bandas + salto lateral na cena que entra */
+[data-fx="pixel"] video.be-trans-entrando  { opacity: var(--p) !important; filter: contrast(calc(1 + (0.5 - abs(var(--p) - 0.5)) * 3)) saturate(1.6) !important }
+[data-fx="glitch"] video.be-trans-entrando {
+  opacity: var(--p) !important;
+  clip-path: inset(calc(abs(sin(var(--p) * 18rad)) * 22%) 0 calc(abs(cos(var(--p) * 14rad)) * 18%) 0) !important;
+  transform: translateX(calc(sin(var(--p) * 40rad) * 2.5%)) var(--betf,) !important;
+}
+@media (prefers-reduced-motion: reduce) {
+  .be-em-transicao video.be-trans-entrando { transform: none !important; clip-path: none !important }
+}
+
+/* ── cards da aba Animação (Entrada/Saída/Combinação) ── */
+.be-anim-cards {
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(86px, 1fr));
+  gap: 8px; padding: 4px 0;
+}
+.be-anim-card {
+  display: flex; flex-direction: column; align-items: center; gap: 6px;
+  background: rgba(0,229,255,.04); border: 1px solid var(--blue-border);
+  color: var(--text-dim); font-size: 11.5px; padding: 10px 6px; border-radius: 10px;
+  cursor: pointer; text-align: center;
+}
+.be-anim-card:hover { border-color: var(--neon); color: var(--text); }
+.be-anim-card.active { border-color: var(--neon); color: var(--neon); background: rgba(0,229,255,.10); }
+.be-anim-ico { font-size: 18px; line-height: 1; }
+
+/* seção de animação no painel da camada */
+.be-ov-anim { display: flex; flex-direction: column; gap: 8px; margin-top: 4px; }
+
+/* aviso de primeira versão na home (lançamento 14/08) */
+.be-home-aviso {
+  display: flex; align-items: center; gap: 12px; justify-content: space-between;
+  background: rgba(0,229,255,.07); border: 1px solid var(--blue-border);
+  border-radius: 10px; padding: 10px 14px; font-size: 13px; color: var(--text-dim);
+  margin-bottom: 4px;
+}
+.be-home-aviso b { color: var(--neon); }
+.be-home-aviso button {
+  background: none; border: 0; color: var(--text-dim); cursor: pointer; font-size: 14px;
+}
+.be-home-aviso button:hover { color: var(--text); }
+
+/* barra do guardião (recuperar sessão após chuva de erros) */
+#beGuardiaoBarra {
+  position: fixed; left: 50%; bottom: 18px; transform: translateX(-50%); z-index: 300;
+  display: flex; align-items: center; gap: 12px; max-width: 92vw;
+  background: #0a1526; border: 1px solid rgba(255,180,60,.5); border-radius: 12px;
+  padding: 10px 14px; font-size: 13px; color: #eaf6ff;
+  box-shadow: 0 10px 30px rgba(0,0,0,.55);
+}
+#beGuardiaoBarra button {
+  background: rgba(0,229,255,.1); border: 1px solid var(--blue-border); color: var(--neon);
+  border-radius: 8px; padding: 6px 12px; cursor: pointer; font-size: 12.5px; white-space: nowrap;
+}
+#beGuardiaoBarra button:hover { border-color: var(--neon); }
+#beGuardiaoBarra #beGuardiaoX { background: none; border: 0; color: #7f93ad; }

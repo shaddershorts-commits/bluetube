@@ -20,7 +20,11 @@ export function createAutosave(store, onStatus) {
   async function saveNow() {
     if (inFlight) { queued = true; return; }
     const state = store.getState();
-    if (!state.video) return; // nada pra salvar ainda
+    // projeto SEM vídeo também salva: dá pra começar só pela locução/áudio
+    // (o backend aceita video_url null no insert e no update)
+    const temConteudo = state.video || state.audio_clips?.length ||
+      state.texts?.length || state.overlays?.length || state.media?.length;
+    if (!temConteudo) return; // nada pra salvar ainda
     inFlight = true;
     status('saving');
     try {
@@ -32,8 +36,15 @@ export function createAutosave(store, onStatus) {
       status('saved');
     } catch (e) {
       console.warn('[autosave] falhou:', e.message);
+      if (e.status === 401) {
+        // sem sessão: parar de tentar está certo (retry viraria spam de 401),
+        // mas parar EM SILÊNCIO não — o usuário seguia editando achando que
+        // salvava e perdia tudo ao fechar a aba. O aviso fica FIXO no header.
+        disabled = true;
+        status('error', 'sessão expirou — entre de novo pra continuar salvando');
+        return;
+      }
       status('error', e.message);
-      if (e.status === 401) { disabled = true; return; } // sem sessao — para de tentar
       setTimeout(() => { schedule(0); }, retryDelay);
       retryDelay = Math.min(60000, retryDelay * 2);
     } finally {
