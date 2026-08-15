@@ -11,7 +11,7 @@
 // ── AS REGRAS, TODAS MEDIDAS EM 13-14/08/2026 ──────────────────────────────
 // · Duração 15-50 min (pedido do dono). Cruza as duas faixas da API, então a
 //   busca pede `long` E `medium` e o corte fino é aqui, com a duração exata.
-// · Até 10 MIL inscritos (15/08). O pedido era "sem selo de verificado", e o selo NÃO
+// · Até 100 MIL inscritos (15/08). O pedido era "sem selo de verificado", e o selo NÃO
 //   EXISTE na API. O substituto é o número que gera o selo (liberado a partir
 //   de 100 mil); o dono apertou pra 70 mil e depois pra 10 mil — mira canal
 //   MESMO pequeno. Custo medido: dos 60 canais do acervo, só 11 sobrevivem a
@@ -37,7 +37,7 @@ const { youtubeRequest } = require('./_helpers/youtube');
 
 const DUR_MIN_S = 15 * 60;
 const DUR_MAX_S = 50 * 60;
-const MAX_INSCRITOS = 10_000;   // 15/08: 70k → 10k, pedido do dono
+const MAX_INSCRITOS = 100_000;  // 15/08: 70k → 10k → 100k (o dono viu a conta do volume)
 const PISOS = [30_000, 100_000, 300_000];
 const BUSCAS_POR_RODADA = 8;
 const RETENCAO_DIAS = 90;
@@ -58,7 +58,13 @@ const PAISES = ['US', 'ES', 'BR', 'DE'];
 // GB/CA/AU entraram em 15/08 quando o dono pediu foco em canal de língua
 // inglesa: só os EUA deixavam de fora metade do mercado anglófono. Não estão
 // em PAISES (o padrão segue os 4 pedidos originais) — chegam via `paises=`.
-const IDIOMA_DO_PAIS = { US: 'en', ES: 'es', BR: 'pt', DE: 'de', GB: 'en', CA: 'en', AU: 'en', IE: 'en', NZ: 'en' };
+// MX/AR/CO/CL/PE entraram junto com o reforço de espanhol: a Espanha sozinha
+// é a menor fatia do mercado hispanófono no YouTube.
+const IDIOMA_DO_PAIS = {
+  US: 'en', ES: 'es', BR: 'pt', DE: 'de',
+  GB: 'en', CA: 'en', AU: 'en', IE: 'en', NZ: 'en',
+  MX: 'es', AR: 'es', CO: 'es', CL: 'es', PE: 'es',
+};
 
 // O vocabulário É a curadoria desta página: ele define o que ela encontra.
 // Mira conteúdo SEM ROSTO — narração sobre imagem, história contada,
@@ -128,6 +134,23 @@ const TERMOS = [
   'sleep meditation story', 'rain sounds story', 'calm narration',
   'business collapse', 'company downfall', 'billionaire story',
   'true crime narration', 'murder case explained', 'court case explained',
+  // ── ESPANHOL (15/08, pedido do dono) ──────────────────────────────────
+  // O catálogo era inglês + português; o espanhol tinha meia dúzia de termos
+  // e por isso o mercado ES rendia quase nada. Estes são os equivalentes dos
+  // nichos sem rosto que já funcionam nos outros idiomas.
+  'documental completo', 'historia real', 'caso sin resolver',
+  'misterio sin resolver', 'crimen real', 'desaparición misteriosa',
+  'historia oscura', 'historia olvidada', 'archivos desclasificados',
+  'civilizaciones perdidas', 'antiguo egipto', 'imperio romano',
+  'segunda guerra mundial', 'documental histórico', 'edad media',
+  'misterios del océano', 'documental espacio', 'agujero negro',
+  'documental naturaleza', 'animales salvajes', 'depredadores',
+  'historias de terror', 'relatos de miedo', 'leyendas urbanas',
+  'narración de terror', 'historias para dormir', 'cuentos infantiles',
+  'audiolibro completo', 'narración relajante', 'meditación guiada',
+  'psicología explicada', 'curiosidades increíbles', 'datos sorprendentes',
+  'explicado en detalle', 'cómo funciona', 'auge y caída',
+  'accidente aéreo', 'historia de supervivencia', 'expedición fallida',
 ];
 
 const seg = (iso) => {

@@ -53,7 +53,7 @@ test('as duas faixas da API são pedidas — 15-50min cruza medium e long', () =
 });
 
 test('o teto de inscritos é o substituto do selo, e canal que esconde não passa', () => {
-  assert.equal(I.MAX_INSCRITOS, 10_000, 'teto baixado pra 10 mil em 15/08 a pedido do dono — canal MESMO pequeno');
+  assert.equal(I.MAX_INSCRITOS, 100_000, 'teto passeou 70k→10k→100k; 10k caiu porque só 11 de 60 canais passavam');
   assert.match(API, /c\.oculto \|\| c\.subs > MAX_INSCRITOS/,
     'canal que esconde a contagem não pode passar por engano — sem número, na dúvida fica fora');
   // O porquê do substituto fica escrito: o selo não existe na API.
