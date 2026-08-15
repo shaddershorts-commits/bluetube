@@ -2235,6 +2235,27 @@ function filtrosDaAnimacao(c, W, H, stIn, durVis) {
     `crop=${W}:${H}:'(iw-${W})/2+(iw-${W})/2*sin(2*PI*t/${perLoop(2.2)})':'(ih-${H})/2'`);
   return out;
 }
+// ── ÁUDIO DA CENA estilo CapCut (15/08) — espelho de core/voz-mod.js ────────
+// Modificador de voz: pitch = asetrate*f + aresample + atempo=1/f (duração
+// intacta); eco = aecho; telefone = passa-banda de linha telefônica.
+function filtrosVozMod(id) {
+  const pitch = (f) => [`asetrate=44100*${f}`, 'aresample=44100', `atempo=${(1 / f).toFixed(4)}`];
+  switch (id) {
+    case 'grave': return pitch(0.8);
+    case 'agudo': return pitch(1.3);
+    case 'helio': return pitch(1.5);
+    case 'eco': return ['aecho=0.8:0.55:120|240:0.5|0.25'];
+    case 'telefone': return ['highpass=f=300', 'lowpass=f=3400', 'acrusher=bits=10:mode=log:mix=0.15'];
+    default: return [];
+  }
+}
+// Preencher canal (CapCut): o canal escolhido toca nos DOIS lados.
+function filtrosCanalCena(canal) {
+  if (canal === 'esq') return ['pan=stereo|c0=c0|c1=c0'];
+  if (canal === 'dir') return ['pan=stereo|c0=c1|c1=c1'];
+  return [];
+}
+
 // ── QUADROS-CHAVE de movimento (user 14/08): reta por partes em t ───────────
 // pts = [{T, V}] em tempo ABSOLUTO da régua final e pixels; a expressão fica
 // presa no primeiro/último valor fora do intervalo (mesma regra do preview —
@@ -2565,6 +2586,9 @@ async function processEditV0(jobId, p) {
     // um clip com fit próprio força a normalização de TODOS (senão o concat
     // mistura resoluções — mesmo motivo do multiSource)
     const temFitProprio = (p.clips || []).some(c => c && c.fit);
+    // REMOVER FUNDO (15/08): cena com bg sai composta no quadro NORM — os
+    // demais precisam acompanhar (mesma regra do fit próprio)
+    const temBgAlgum = (p.clips || []).some(c => c && c.bg && c.bg.modo);
     // TRANSIÇÕES entram JÁ NO TRIM: os vizinhos de cada emenda ganham dur/2 de
     // material EMPRESTADO na borda (além do corte; sem material, clona o frame
     // da ponta) — é o que o xfade consome sem encurtar a régua. Ver
@@ -2618,9 +2642,10 @@ async function processEditV0(jobId, p) {
       // da cadeia inteira depende dele)
       const faltaHeadOut = (headSrc - (c.source_in - ssSrc)) / v;
       const lerSrc = (c.source_out + tailSrc) - ssSrc;
-      const vfPartes = [
+      const temBg = c.bg && ['chroma', 'custom', 'auto'].includes(c.bg.modo);
+      const vfPre = [
         // animação geométrica (zoom/deslize/pulso) exige quadro fixo — normaliza JÁ AQUI
-        ...((multiSource || temFitProprio || clipeTemAnimGeo(c)) ? [normPara(c)] : []),
+        ...((multiSource || temFitProprio || temBgAlgum || clipeTemAnimGeo(c)) ? [normPara(c)] : []),
         ...fGrade,
         // velocidade/espelho/escala/posição/opacidade da cena
         ...filtrosDaCena(c, NORM_W, NORM_H),
@@ -2628,32 +2653,90 @@ async function processEditV0(jobId, p) {
       // GARANTIA DE COMPRIMENTO (só quando há empréstimo): clona o frame da
       // ponta pra cobrir cabeça sem material e EOF antes da hora, e corta no
       // alvo exato. Pro reverso a garantia roda DEPOIS da inversão.
+      const vfPos = [];
       if (comBorrow && c.reversed !== true) {
-        if (faltaHeadOut > 0.001) vfPartes.push(`tpad=start_mode=clone:start_duration=${faltaHeadOut.toFixed(3)}`);
-        vfPartes.push(`tpad=stop_mode=clone:stop_duration=${(Math.max(bw.antes, bw.depois) + 0.3).toFixed(3)}`);
-        vfPartes.push(`trim=duration=${alvo.toFixed(3)}`, 'setpts=PTS-STARTPTS');
+        if (faltaHeadOut > 0.001) vfPos.push(`tpad=start_mode=clone:start_duration=${faltaHeadOut.toFixed(3)}`);
+        vfPos.push(`tpad=stop_mode=clone:stop_duration=${(Math.max(bw.antes, bw.depois) + 0.3).toFixed(3)}`);
+        vfPos.push(`trim=duration=${alvo.toFixed(3)}`, 'setpts=PTS-STARTPTS');
       }
       // ANIMAÇÃO DA CENA (aba Animação): aplicada por último — aqui t é o
       // tempo FINAL do arquivo do clipe; a cena visível começa em bw.antes
       // (0 sem transição) e dura alvo - antes - depois.
       if (c.anim_in || c.anim_out || c.anim_loop) {
-        vfPartes.push(...filtrosDaAnimacao(c, NORM_W, NORM_H, bw.antes, alvo - bw.antes - bw.depois));
+        vfPos.push(...filtrosDaAnimacao(c, NORM_W, NORM_H, bw.antes, alvo - bw.antes - bw.depois));
       }
       // -ss antes do -i = fast seek (keyframe). Pra accuracy: -ss depois do -i (frame accurate, lento)
       // V0 usa fast seek + re-encode pra balance
       // com transição na cadeia TODO clip sai 30fps/yuv420p: xfade e concat de
       // filter_complex exigem fps/formato iguais entre as entradas
-      await run('ffmpeg', [
-        '-y', '-ss', String(ssSrc), '-t', String(lerSrc),
-        '-i', srcFor(c),
-        ...(vfPartes.length ? ['-vf', vfPartes.join(','), '-r', '30', '-pix_fmt', 'yuv420p']
-          : (plano.temXfade ? ['-r', '30', '-pix_fmt', 'yuv420p'] : [])),
-        '-c:v', 'libx264', '-preset', 'ultrafast', '-crf', '18', // intermediário (re-encodado no concat/final)
-        '-c:a', 'aac', '-b:a', '128k',
-        '-force_key_frames', 'expr:gte(t,0)',
-        '-an', // pass1 sem audio (audio mux na fase final)
-        out,
-      ]);
+      if (!temBg) {
+        const vfPartes = [...vfPre, ...vfPos];
+        await run('ffmpeg', [
+          '-y', '-ss', String(ssSrc), '-t', String(lerSrc),
+          '-i', srcFor(c),
+          ...(vfPartes.length ? ['-vf', vfPartes.join(','), '-r', '30', '-pix_fmt', 'yuv420p']
+            : (plano.temXfade ? ['-r', '30', '-pix_fmt', 'yuv420p'] : [])),
+          '-c:v', 'libx264', '-preset', 'ultrafast', '-crf', '18', // intermediário (re-encodado no concat/final)
+          '-c:a', 'aac', '-b:a', '128k',
+          '-force_key_frames', 'expr:gte(t,0)',
+          '-an', // pass1 sem audio (audio mux na fase final)
+          out,
+        ]);
+      } else {
+        // ── REMOVER FUNDO (15/08): a cena vira [fg com alpha] sobre PRETO ──
+        // chroma = chromakey com números PRONTOS do payload (core/fundo.js);
+        // custom = máscara pintada (branco = remover → negate + alphamerge);
+        // auto = vídeo DUPLO [cor|máscara] gerado no navegador (MediaPipe) —
+        // ele é a PRÓPRIA fonte visual (o áudio segue vindo do original).
+        const fcIn = ['-y'];
+        const fc = [];
+        const preStr = vfPre.length ? vfPre.join(',') + ',' : '';
+        const posStr = vfPos.length ? ',' + vfPos.join(',') : '';
+        if (c.bg.modo === 'auto') {
+          const dupla = path.join(dir, `bgdupla_${i}.webm`);
+          await downloadFile(c.bg.dupla_url, dupla);
+          // t=0 do duplo = bg.src_in no arquivo original
+          const off = Math.max(0, ssSrc - (Number(c.bg.src_in) || 0));
+          fcIn.push('-ss', String(off), '-t', String(lerSrc), '-i', dupla);
+          // format ANTES do split: sem isso a negociação de formato PROPAGA o
+          // gray do ramo da máscara pro split inteiro e a cor vira luma
+          // (azul→cinza 29 — pego na sonda 15/08)
+          fc.push('[0:v]fps=30,format=yuv420p,split[bd1][bd2]');
+          fc.push('[bd1]crop=iw/2:ih:0:0[bc]');
+          fc.push('[bd2]crop=iw/2:ih:iw/2:0,format=gray[bm]');
+          fc.push(`[bc][bm]alphamerge,${preStr}format=yuva420p[fg]`);
+        } else if (c.bg.modo === 'custom') {
+          fcIn.push('-ss', String(ssSrc), '-t', String(lerSrc), '-i', srcFor(c));
+          const maskP = path.join(dir, `bgmask_${i}.png`);
+          await downloadFile(c.bg.mask_url, maskP);
+          // -t é OBRIGATÓRIO no -loop: sem ele o PNG decodifica pra sempre e
+          // o job fica pendurado no trim (pego na sonda 15/08)
+          fcIn.push('-loop', '1', '-t', String(lerSrc), '-i', maskP);
+          fc.push(`[0:v]${preStr}format=yuv420p[v0]`);
+          fc.push(`[1:v]fps=30,scale=${NORM_W}:${NORM_H},format=gray,negate[bm]`);
+          fc.push('[v0][bm]alphamerge[fg]');
+        } else {
+          fcIn.push('-ss', String(ssSrc), '-t', String(lerSrc), '-i', srcFor(c));
+          const corHex = /^#[0-9a-fA-F]{6}$/.test(c.bg.cor || '') ? c.bg.cor.slice(1) : '00d000';
+          const sim = num(c.bg.similarity, 0.15, 0.01, 1);
+          const blend = num(c.bg.blend, 0.06, 0, 1);
+          // despill só existe pra verde/azul — decide pela cor da chave
+          const [rK, gK, bK] = [0, 2, 4].map(k => parseInt(corHex.slice(k, k + 2), 16));
+          const tipoDesp = gK >= rK && gK >= bK ? 'green' : (bK > rK ? 'blue' : null);
+          const mixD = num(c.bg.despill, 0, 0, 1);
+          const desp = mixD > 0.01 && tipoDesp ? `,despill=type=${tipoDesp}:mix=${mixD.toFixed(2)}` : '';
+          fc.push(`[0:v]${preStr}format=yuva420p,chromakey=0x${corHex}:${sim.toFixed(3)}:${blend.toFixed(3)}${desp}[fg]`);
+        }
+        fc.push(`color=black:s=${NORM_W}x${NORM_H}:r=30[bgc]`);
+        fc.push(`[bgc][fg]overlay=shortest=1${posStr}[vout]`);
+        await run('ffmpeg', [
+          ...fcIn,
+          '-filter_complex', fc.join(';'),
+          '-map', '[vout]', '-r', '30', '-pix_fmt', 'yuv420p',
+          '-c:v', 'libx264', '-preset', 'ultrafast', '-crf', '18',
+          '-force_key_frames', 'expr:gte(t,0)', '-an', out,
+        ]);
+      }
       // REVERSO: o filtro `reverse` guarda o clipe INTEIRO na memória. Rodar
       // direto num clipe longo derruba o container por OOM — então o clipe já
       // cortado é fatiado, cada pedaço é invertido e eles voltam na ordem
@@ -2760,6 +2843,17 @@ async function processEditV0(jobId, p) {
         const fxCena = filtrosDeAudioFx({ fx_ruido: c.fx_ruido, fx_voz: c.fx_voz,
                                           fx_voz_int: c.fx_voz_int, fx_norm: c.fx_norm,
                                           speed: velocidadeDaCena(c) });
+        // ÁUDIO DA CENA estilo CapCut (15/08): modificador de voz ANTES dos fx
+        // (a voz alterada é o que se aprimora), canal/volume depois, fades por
+        // ÚLTIMO em tempo DA RÉGUA (o atempo do speed já rodou dentro dos fx).
+        fxCena.unshift(...filtrosVozMod(c.voz_mod));
+        fxCena.push(...filtrosCanalCena(c.canal));
+        const dbCena = Number(c.volume_db) || 0;
+        if (dbCena !== 0) fxCena.push(`volume=${dbCena.toFixed(1)}dB`);
+        const fadeInCena = Math.min(Number(c.fade_in) || 0, durLinha / 2);
+        const fadeOutCena = Math.min(Number(c.fade_out) || 0, durLinha / 2);
+        if (fadeInCena > 0.01) fxCena.push(`afade=t=in:st=0:d=${fadeInCena.toFixed(3)}`);
+        if (fadeOutCena > 0.01) fxCena.push(`afade=t=out:st=${(durLinha - fadeOutCena).toFixed(3)}:d=${fadeOutCena.toFixed(3)}`);
         if (c.reversed === true) fxCena.unshift('areverse');
         await run('ffmpeg', [
           '-y', '-ss', String(c.source_in), '-t', String(dur),

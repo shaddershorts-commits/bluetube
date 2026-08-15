@@ -128,19 +128,28 @@ test('BlueClean é anunciado como Master (ele responde 403 pro Full)', () => {
   );
 });
 
-test('editor de vídeo e "criar com IA" ficam explicitamente proibidos', () => {
+// ATUALIZADO 15/08 (lançamento): o BlueEditor SAIU da lista de espera e virou
+// ferramenta recomendável (Master); só GERAÇÃO de vídeo por IA segue proibida.
+test('BlueEditor LANÇADO na lista (Master) e geração por IA segue proibida', () => {
   assert.ok(
     /NÃO EXISTE AINDA/.test(FONTE),
-    'sem a proibição escrita, o modelo inventa que a casa tem editor',
+    'a proibição do que não existe (geração por IA) precisa continuar escrita',
   );
   assert.ok(
-    /BlueEditor é só lista de espera|lista de espera/.test(FONTE),
-    'o estado real do BlueEditor (lista de espera) precisa estar dito',
+    /GERAÇÃO de vídeo por IA/i.test(FONTE),
+    'o que segue proibido é a GERAÇÃO de vídeo por IA — dito com todas as letras',
   );
-  // e não pode estar recomendado como se funcionasse
   assert.ok(
-    !/• BlueEditor \(/.test(FONTE),
-    'BlueEditor não pode entrar na lista de ferramentas enquanto for teaser',
+    /• BlueEditor \(\/blueEditor\)/.test(FONTE) && /LANÇADO/.test(FONTE),
+    'o BlueEditor lançado precisa estar na lista de ferramentas da casa',
+  );
+  assert.ok(
+    /BlueEditor.*\(Master\)|\(Master\).*editor de vídeo/i.test(FONTE),
+    'o Blublu precisa saber que o editor é EXCLUSIVO Master (Full não acessa)',
+  );
+  assert.ok(
+    !/lista de espera/.test(FONTE),
+    'não pode sobrar menção a lista de espera — o editor está no ar',
   );
 });
 

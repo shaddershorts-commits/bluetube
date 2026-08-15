@@ -522,6 +522,26 @@ body {
 .be-audio-row .be-dim { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .be-slider-label { font-size: 11px; color: var(--text-sec); display: flex; flex-direction: column; gap: 4px; }
 .be-slider-label input[type=range] { accent-color: var(--neon); }
+/* linha de checkbox estilo CapCut (Áudio da cena, Remover fundo — 15/08) */
+.be-check-row {
+  font-size: 11px; color: var(--text-sec); display: flex; align-items: center;
+  gap: 8px; padding: 6px 4px; border-radius: 8px; cursor: pointer;
+}
+.be-check-row:hover { background: rgba(59, 130, 246, .08); }
+.be-check-row input[type=checkbox] { accent-color: var(--neon); }
+.be-check-row select {
+  background: rgba(2, 8, 23, .7); border: 1px solid var(--blue-border);
+  color: var(--text); border-radius: 8px; padding: 4px 8px; font-family: var(--font); font-size: 11px;
+}
+/* barra de progresso (remoção automática de fundo — 15/08) */
+.be-progress {
+  height: 6px; border-radius: 999px; background: rgba(59, 130, 246, .15);
+  overflow: hidden; margin: 6px 0;
+}
+.be-progress > div {
+  height: 100%; width: 0; border-radius: 999px;
+  background: linear-gradient(90deg, #3b82f6, #a97fee); transition: width .3s;
+}
 .be-select {
   background: rgba(2, 8, 23, .7); border: 1px solid var(--blue-border);
   color: var(--text); border-radius: 8px; padding: 8px; font-family: var(--font); font-size: 12px;

@@ -11,6 +11,8 @@ import { createInitialState, normalizeLoadedState, validarFormato, createFullCli
 import { transicaoPorId } from './transitions.js';
 import { timelineSegments, segmentAt, mainTrackItems, clipSpeed, clipTimelineDur, audioTimelineDur, overlayTimelineDur, audioLaneMap, captionAudioPlan, cenaTemAudio } from './selectors.js';
 import { upsertKf, KF_EPS } from './keyframes.js';
+import { vozValida, canalValido, VOL_DB_MIN, VOL_DB_MAX, FADE_MAX } from './voz-mod.js';
+import { validarBg } from './fundo.js';
 // REGRAS DE CAMADA (2026-07-29): faixa de texto so aceita texto, dois itens
 // nao se sobrepoem na mesma camada. O reducer e o funil — validar aqui (e nao
 // na UI) garante que arrasto, colar e menu de contexto obedecem a mesma regra.
@@ -746,6 +748,64 @@ export function reduce(state, action) {
       const audio_clips = state.audio_clips.slice();
       audio_clips[idx] = novo;
       return touch({ ...state, audio_clips });
+    }
+
+    case A.SET_CLIP_AUDIO: {
+      // ÁUDIO DA CENA estilo CapCut (15/08): volume em dB, fades, canal e
+      // modificador de voz — merge parcial com clamps AQUI (a UI manda cru).
+      // Valor padrão = campo AUSENTE (payload/normalize só viajam o que existe).
+      const idx = state.clips.findIndex(c => c.id === action.clipId);
+      if (idx < 0) return state;
+      const c = state.clips[idx];
+      const p = action.patch || {};
+      const novo = { ...c };
+      const põe = (campo, v, some) => { if (some) delete novo[campo]; else novo[campo] = v; };
+      if (p.volume_db !== undefined) {
+        const db = Math.round(clamp(Number(p.volume_db) || 0, VOL_DB_MIN, VOL_DB_MAX) * 10) / 10;
+        põe('volume_db', db, db === 0);
+      }
+      if (p.fade_in !== undefined) {
+        const f = Math.round(clamp(Number(p.fade_in) || 0, 0, FADE_MAX) * 10) / 10;
+        põe('fade_in', f, f === 0);
+      }
+      if (p.fade_out !== undefined) {
+        const f = Math.round(clamp(Number(p.fade_out) || 0, 0, FADE_MAX) * 10) / 10;
+        põe('fade_out', f, f === 0);
+      }
+      if (p.canal !== undefined) {
+        const ch = canalValido(p.canal);
+        põe('canal', ch, ch === 'both');
+      }
+      if (p.voz_mod !== undefined) {
+        const v = vozValida(p.voz_mod);
+        põe('voz_mod', v, v === null);
+      }
+      if (JSON.stringify(novo) === JSON.stringify(c)) return state;
+      const clips = state.clips.slice();
+      clips[idx] = novo;
+      return touch({ ...state, clips });
+    }
+
+    case A.SET_CLIP_BG: {
+      // REMOVER FUNDO da cena (15/08): patch faz merge sobre o bg atual
+      // (sliders do chroma mandam só o campo mexido); null remove. A validação
+      // mora em core/fundo.js — id/modo inválido morre aqui, não no render.
+      const idx = state.clips.findIndex(c => c.id === action.clipId);
+      if (idx < 0) return state;
+      const c = state.clips[idx];
+      const clips = state.clips.slice();
+      if (action.patch === null) {
+        if (!c.bg) return state;
+        const { bg, ...resto } = c;
+        clips[idx] = resto;
+        return touch({ ...state, clips });
+      }
+      const base = (c.bg && c.bg.modo === action.patch.modo) ? c.bg : {};
+      const novo = validarBg({ ...base, ...action.patch });
+      if (!novo) return state;
+      if (JSON.stringify(novo) === JSON.stringify(c.bg)) return state;
+      clips[idx] = { ...c, bg: novo };
+      return touch({ ...state, clips });
     }
 
     case A.DETACH_AUDIO: {
