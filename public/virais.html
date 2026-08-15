@@ -2656,24 +2656,22 @@ function igFomoClose(e){
       return;
     }
     if (sel.value === '__longos'){
-      // EXCLUSIVO MASTER (pedido do dono). O Nicho Secreto acima aceita Full;
-      // este não. O portão de verdade é no servidor (api/longos.js) — aqui é
-      // só pra o Full não bater numa tela de erro sem explicação.
+      // EXCLUSIVO MASTER. O portão de verdade é no servidor (api/longos.js);
+      // aqui é só pra o Full não navegar até uma tela que vai negar.
       if (planB() !== 'master'){
         sel.value = window._nichoAnterior || '';
         bbInjeta(); document.getElementById('bbUpsell').classList.add('on');
         return;
       }
-      window._longosMode = true;
-      document.querySelectorAll('.filter-btn').forEach(el=>el.classList.add('bb-off'));
-      document.getElementById('regionSelect')?.classList.add('bb-off');
-      carregarLongosGrid();
+      // Vai pra PÁGINA de longos em vez de desenhar aqui: esta grade é 9:16 e
+      // cortava a capa de vídeo de 30min no meio, com o título da tela ainda
+      // dizendo "Shorts virais". O filtro é o caminho, não o lugar.
+      location.href = '/longos';
       return;
     }
     window._nichoAnterior = sel.value;
-    if (window._secretMode || window._longosMode){
+    if (window._secretMode){
       window._secretMode = false;
-      window._longosMode = false;
       document.querySelectorAll('.filter-btn').forEach(el=>el.classList.remove('bb-off'));
       document.getElementById('regionSelect')?.classList.remove('bb-off');
     }
@@ -2683,12 +2681,11 @@ function igFomoClose(e){
   const _origCarregar = window.carregarHistorico;
   window.carregarHistorico = function(p){
     if (window._secretMode){ carregarSecretosGrid(); return; }
-    if (window._longosMode){ carregarLongosGrid(); return; }
     return _origCarregar(p);
   };
   const _origBadge = window.atualizarBadgeBanco;
   window.atualizarBadgeBanco = function(){
-    if (window._secretMode || window._longosMode) return;
+    if (window._secretMode) return;
     return _origBadge();
   };
   window.carregarSecretosGrid = async function(){
@@ -2734,113 +2731,6 @@ function igFomoClose(e){
     }catch(e){ grid.innerHTML = '<div style="grid-column:1/-1;text-align:center;padding:40px;color:#7d92b8">Erro ao abrir a pasta secreta. Tenta de novo.</div>'; }
   };
 
-  // ── VÍDEOS LONGOS (15/08/2026) ──────────────────────────────────────────
-  // Acervo próprio (tabela longos_virais), separado da Virais de Shorts: 15-50
-  // min, canal com até 70 mil inscritos e que postou nos últimos dias. O card
-  // mostra DURAÇÃO e RITMO em vez do "usar no BlueTube" dos shorts — vídeo de
-  // 30 minutos não entra no fluxo de corte, e o que interessa aqui é achar
-  // canal pequeno acelerando.
-  window._longosMode = false;
-  window.carregarLongosGrid = async function(){
-    const grid = document.getElementById('grid');
-    if (!grid) return;
-    grid.innerHTML = '<div style="grid-column:1/-1;text-align:center;padding:40px;color:#7d92b8;font-family:var(--mono);font-size:12px">🎬 Abrindo os vídeos longos…</div>';
-    const el = document.getElementById('banco-stats');
-    const tk = localStorage.getItem('bt_token') || '';
-    try{
-      const r = await fetch(`/api/longos?action=listar&piso=30000&ordem=views&limit=48&token=${encodeURIComponent(tk)}`);
-      if (!window._longosMode) return; // saiu do modo enquanto carregava
-      if (r.status === 403){
-        grid.innerHTML = '<div style="grid-column:1/-1;text-align:center;padding:40px;color:#7d92b8">Vídeos Longos é exclusivo do plano Master.</div>';
-        return;
-      }
-      if (!r.ok){ grid.innerHTML = '<div style="grid-column:1/-1;text-align:center;padding:40px;color:#7d92b8">Sessão expirada — entre de novo.</div>'; return; }
-      const d = await r.json();
-      const itens = d.items || [];
-      // Sem este botão, o único jeito de sair do modo é reabrir o dropdown e
-      // adivinhar que "Todos os nichos" é a volta — pedido do dono.
-      if (el) el.innerHTML = `🎬 Vídeos Longos · ${(d.total||0).toLocaleString('pt-BR')} vídeos de 15-50 min · canais até 70 mil inscritos`
-        + ` <button onclick="voltarPraShorts()" style="margin-left:10px;background:rgba(92,255,208,.12);border:1px solid rgba(92,255,208,.4);border-radius:8px;padding:5px 11px;font-family:var(--font);font-size:12px;font-weight:700;color:#5cffd0;cursor:pointer">↩ Voltar pros Shorts</button>`;
-      const pagEl = document.getElementById('historico-paginacao'); if (pagEl) pagEl.style.display='none';
-      if (!itens.length){ grid.innerHTML = '<div style="grid-column:1/-1;text-align:center;padding:40px;color:#7d92b8">Nenhum vídeo longo no acervo ainda.</div>'; return; }
-      grid.innerHTML = itens.map((v,i)=>{
-        const views = Number(v.views)||0;
-        const vf = views>=1e6 ? (views/1e6).toFixed(1)+'M' : views>=1e3 ? Math.round(views/1e3)+'K' : String(views);
-        const mins = Math.round(Number(v.duracao_segundos||0)/60);
-        const ritmo = Number(v.views_por_hora)||0;
-        const rf = ritmo >= 1000 ? Math.round(ritmo/1000)+'K/h' : ritmo > 0 ? Math.round(ritmo)+'/h' : '';
-        const url = v.url || `https://youtube.com/watch?v=${v.youtube_id}`;
-        return `<a class="short-card" href="${url}" target="_blank" rel="noopener" data-vid="${escHtml(v.youtube_id)}" style="border-color:rgba(92,255,208,.35)">
-          <div class="card-thumb-wrap">
-            ${v.thumbnail_url?`<img class="card-thumb" src="${v.thumbnail_url}" alt="${escHtml(v.titulo||'')}" loading="lazy" data-cap="${escHtml(v.titulo||'')}" onload="btCapaMorta(this)" onerror="btCapaMorta(this)"/>`:''}
-            <div class="card-overlay"><span class="card-views">${vf} views</span></div>
-            <div class="play-btn"><svg width="16" height="16" viewBox="0 0 24 24" fill="white"><path d="M8 5v14l11-7z"/></svg></div>
-            <div class="card-rank" style="background:linear-gradient(135deg,#065f46,#5cffd0);color:#04121a">🎬 #${i+1}</div>
-            <div style="position:absolute;right:8px;bottom:8px;background:rgba(2,8,23,.85);border:1px solid rgba(92,255,208,.4);color:#5cffd0;border-radius:6px;padding:2px 7px;font-family:var(--mono);font-size:11px;font-weight:700">${mins}min</div>
-            ${marcadorSalvar('youtube', v.youtube_id, { title: v.titulo, thumbnail: v.thumbnail_url, channel: v.canal_nome, views: v.views, video_url: url })}
-          </div>
-          <div class="card-info">
-            <div class="card-title">${escHtml(v.titulo||'')}</div>
-            <div class="card-channel">${escHtml(v.canal_nome||'')}${v.canal_inscritos?` · ${Math.round(Number(v.canal_inscritos)/1000)}K inscritos`:''}</div>
-            <div class="card-meta"><span class="card-views-badge">${vf}</span>${rf?`<span class="card-views-badge" style="background:rgba(92,255,208,.15);color:#5cffd0">↗ ${rf}</span>`:''}<span class="card-date">${timeAgo(v.publicado_em)}</span></div>
-          </div>
-        </a>`;
-      }).join('');
-    }catch(e){ grid.innerHTML = '<div style="grid-column:1/-1;text-align:center;padding:40px;color:#7d92b8">Erro ao abrir os vídeos longos. Tenta de novo.</div>'; }
-  };
-
-  // A URL acompanha o modo: /virais?nicho=longos. Isso faz o link ser
-  // compartilhável, sobreviver ao F5 e ligar o botão "voltar" do navegador.
-  // pathname preservado de propósito — a página é servida em mais de um
-  // caminho e reescrever pra '/virais' na mão quebraria os outros.
-  function urlLongos(ligado){
-    try{
-      const u = new URL(location.href);
-      if (ligado) u.searchParams.set('nicho','longos'); else u.searchParams.delete('nicho');
-      if (u.href !== location.href) history.pushState({ longos: !!ligado }, '', u.href);
-    }catch(e){}
-  }
-
-  window.voltarPraShorts = function(){
-    const sel = document.getElementById('nichoSelect');
-    if (!sel) return;
-    sel.value = '';
-    window.onNichoChange();   // já limpa o modo, reativa os filtros e recarrega
-  };
-
-  // Entrar/sair pelo dropdown mexe na URL; entrar pela URL mexe no dropdown.
-  const _entrarLongos = window.onNichoChange;
-  window.onNichoChange = function(){
-    const sel = document.getElementById('nichoSelect');
-    const alvo = sel && sel.value === '__longos';
-    const r = _entrarLongos.apply(this, arguments);
-    // só depois de rodar, porque o portão de Master pode ter revertido a seleção
-    urlLongos(alvo && document.getElementById('nichoSelect').value === '__longos');
-    return r;
-  };
-
-  function aplicarUrl(){
-    const querLongos = new URLSearchParams(location.search).get('nicho') === 'longos';
-    const sel = document.getElementById('nichoSelect');
-    if (!sel) return;
-    if (querLongos && !window._longosMode){
-      if (planB() !== 'master') return;   // sem upsell no deep-link: só ignora
-      sel.value = '__longos';
-      window._longosMode = true;
-      document.querySelectorAll('.filter-btn').forEach(el=>el.classList.add('bb-off'));
-      document.getElementById('regionSelect')?.classList.add('bb-off');
-      carregarLongosGrid();
-    } else if (!querLongos && window._longosMode){
-      sel.value = '';
-      window._longosMode = false;
-      document.querySelectorAll('.filter-btn').forEach(el=>el.classList.remove('bb-off'));
-      document.getElementById('regionSelect')?.classList.remove('bb-off');
-      if (_origOnNicho) _origOnNicho();
-    }
-  }
-  window.addEventListener('popstate', aplicarUrl);
-  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', aplicarUrl);
-  else aplicarUrl();
 })();
 </script>
 

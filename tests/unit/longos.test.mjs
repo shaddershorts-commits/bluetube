@@ -180,10 +180,17 @@ test('o portão de Master é do SERVIDOR, não só da tela', () => {
   assert.match(VIRAIS, /planB\(\) !== 'master'/);
 });
 
-test('sair do modo tem botão próprio e a URL acompanha', () => {
-  assert.match(VIRAIS, /voltarPraShorts/, 'sem botão, só dá pra sair adivinhando pelo dropdown');
-  assert.match(VIRAIS, /searchParams\.set\('nicho','longos'\)/, 'a URL precisa virar link compartilhável');
-  assert.match(VIRAIS, /addEventListener\('popstate'/, 'o botão voltar do navegador tem que funcionar');
+test('o filtro LEVA pra página /longos, não desenha na grade da Virais', () => {
+  // Feedback do dono com print (15/08): desenhar os longos dentro da grade da
+  // Virais errou por dois motivos ao mesmo tempo — a grade é 9:16 e cortava a
+  // capa de vídeo de 30 minutos no meio, e a página seguia dizendo "Shorts
+  // virais em alta agora". A página /longos já é 16:9 e tem identidade
+  // própria; o filtro é o CAMINHO até ela, não um lugar pra reconstruí-la.
+  assert.match(VIRAIS, /location\.href = '\/longos'/, 'o filtro tem que navegar pra página');
+  assert.equal(/carregarLongosGrid|_longosMode/.test(VIRAIS), false,
+    'sobrou maquinário de desenhar longos dentro da Virais — foi isso que deu o card 9:16');
+  // E a volta existe na página de destino, senão o caminho é só de ida.
+  assert.match(HTML, /href="\/virais"[^>]*>↩ Voltar pros Shorts/);
 });
 
 test('NÃO toca em nada da Virais de Shorts', () => {
