@@ -287,33 +287,47 @@ export function effectiveOverlays(state) {
  *   2) audio do video, SE nao foi separado/removido
  *   3) audio do video ja separado (kind 'video'), se ainda existe
  *   null = nao ha voz pra transcrever (nunca gera "legenda fantasma"). */
-export function captionAudioPlan(state) {
+/** TODOS os candidatos a fonte de legenda, na ordem de prioridade "cega"
+ *  (quem gera pode re-ranquear MEDINDO voz — ver escolherFonteComVoz na
+ *  shell). Cada item: { url, segments, rotulo, origem }.
+ *
+ *  Nasceu do bug real de 15/08 ("só legendou um efeito"): a regra antiga
+ *  "extra vence o vídeo" foi pensada pra locução, mas efeito de biblioteca
+ *  também é 'extra' — e roubava a vez da fala. Agora:
+ *   - som de BIBLIOTECA (origem:'biblioteca') vai pro FIM da fila, sempre;
+ *   - nome que cheira a voz (🎙 voz do Demucs, locução, narração) vai pra
+ *     FRENTE; o resto fica no meio, e o VAD decide por cima de tudo. */
+export function captionAudioPlanos(state) {
   const audios = effectiveAudioClips(state);
   const extras = audios.filter(a => a.kind !== 'video' && a.url);
   const detachedVid = audios.filter(a => a.kind === 'video');
 
-  const planFor = (list, urlOf) => {
+  const planosDe = (list, urlOf, rotuloDe, origem) => {
     const byUrl = new Map();
     for (const a of list) {
       const url = urlOf(a);
       if (!url) continue;
-      if (!byUrl.has(url)) byUrl.set(url, []);
-      byUrl.get(url).push({
+      if (!byUrl.has(url)) byUrl.set(url, { segs: [], nome: a.filename || 'áudio' });
+      byUrl.get(url).segs.push({
         tStart: a.start, fileIn: a.source_in, fileOut: a.source_out,
         speed: clipSpeed(a),
       });
     }
-    let best = null, bestCov = -1;
-    for (const [url, segments] of byUrl) {
-      const cov = segments.reduce((s, x) => s + (x.fileOut - x.fileIn), 0);
-      if (cov > bestCov) { bestCov = cov; best = { url, segments }; }
-    }
-    return best;
+    return [...byUrl.entries()]
+      .map(([url, x]) => ({ url, segments: x.segs, rotulo: rotuloDe(x.nome), origem }))
+      .sort((p, q) => cobertura(q) - cobertura(p));
   };
+  const cobertura = (p) => p.segments.reduce((s, x) => s + (x.fileOut - x.fileIn), 0);
+  const cheiraAVoz = (a) => /voz|vocal|locu|narr|grava|voice|speech|🎙/i.test(a.filename || '');
 
-  // 1) narracao propria do editor tem prioridade
-  if (extras.length) return planFor(extras, a => a.url);
-  // 2) audio do video principal (nao separado) — segmentos = clips do principal
+  const biblio = extras.filter(a => a.origem === 'biblioteca');
+  const proprios = extras.filter(a => a.origem !== 'biblioteca');
+  const comVoz = proprios.filter(cheiraAVoz);
+  const outros = proprios.filter(a => !cheiraAVoz(a));
+
+  const out = [];
+  out.push(...planosDe(comVoz, a => a.url, n => n, 'voz'));
+  out.push(...planosDe(outros, a => a.url, n => n, 'importado'));
   if (!state.audio_detached && state.video?.url) {
     const segs = timelineSegments(state)
       .filter(s => s.clip.media_id == null)  // takes tem audio proprio, fora do escopo
@@ -321,11 +335,27 @@ export function captionAudioPlan(state) {
         tStart: s.tStart, fileIn: s.clip.source_in, fileOut: s.clip.source_out,
         speed: s.effSpeed || 1,
       }));
-    return segs.length ? { url: state.video.url, segments: segs } : null;
+    if (segs.length) out.push({ url: state.video.url, segments: segs, rotulo: 'áudio do vídeo', origem: 'video' });
   }
-  // 3) audio do video ja separado mas ainda presente
-  if (detachedVid.length && state.video?.url) return planFor(detachedVid, () => state.video.url);
-  return null;
+  if (detachedVid.length && state.video?.url) {
+    out.push(...planosDe(detachedVid, () => state.video.url, () => 'áudio do vídeo (separado)', 'video'));
+  }
+  out.push(...planosDe(biblio, a => a.url, n => n + ' (biblioteca)', 'biblioteca'));
+  return out;
+}
+
+export function captionAudioPlan(state) {
+  const planos = captionAudioPlanos(state);
+  if (!planos.length) return null;
+  // LEI DA ÂNCORA: se já existem legendas presas numa fonte (src_url), essa
+  // fonte É o plano — o ressincronizar (caption-sync) mapeia os tempos DELA;
+  // trocar de fonte no meio quebraria toda legenda já gerada.
+  const ancorada = (state.texts || []).find(t => t.caption === true && t.src_url);
+  if (ancorada) {
+    const p = planos.find(x => x.url === ancorada.src_url);
+    if (p) return p;
+  }
+  return planos[0];
 }
 
 /** URL da midia de um clip/overlay: media_id -> pool; sem media_id -> video

@@ -260,6 +260,8 @@ export function normalizeLoadedState(raw) {
       source_in: a.source_in, source_out: a.source_out,
       volume: typeof a.volume === 'number' ? clamp(a.volume, 0, 2) : 1,
       ...(typeof a.speed === 'number' ? { speed: clamp(a.speed, 0.1, 100) } : {}),
+      // origem da biblioteca (15/08): a legenda automática não escolhe efeito
+      ...(a.origem === 'biblioteca' ? { origem: 'biblioteca' } : {}),
       lane: Number.isInteger(a.lane) && a.lane >= 0 ? Math.min(MAX_AUDIO_LANE, a.lane) : null,
       // Aprimorar áudio: sem copiar aqui, reabrir o projeto apagaria os
       // efeitos em silêncio (a MESMA classe de bug do grade do Retoque)

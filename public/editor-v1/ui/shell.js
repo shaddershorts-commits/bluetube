@@ -4,7 +4,7 @@
 // com cabecalhos de track. Store continua a unica fonte de verdade.
 
 import * as act from '../core/actions.js';
-import { totalDuration, canExport, timelineSegments, captionAudioPlan, mainTrackItems, compoundTemAudio, propriedadeDaCena, segmentAt, mediaUrlFor, fitDaCena, formatoDoProjeto, overlayTimelineDur } from '../core/selectors.js';
+import { totalDuration, canExport, timelineSegments, captionAudioPlan, captionAudioPlanos, mainTrackItems, compoundTemAudio, propriedadeDaCena, segmentAt, mediaUrlFor, fitDaCena, formatoDoProjeto, overlayTimelineDur } from '../core/selectors.js';
 import { posNoTempo, kfIndexEm, KF_EPS } from '../core/keyframes.js';
 import { TEXT_FONTS, TEXT_SIZES, MAX_AUDIO_LANE, FORMATOS } from '../core/schema.js';
 import { ANIMACOES } from '../core/text-anim.js';
@@ -2089,6 +2089,10 @@ export function mountEditor(root, store, opts = {}) {
       // o RECORTE salvo viaja pro clipe novo (a razão de existir do favorito ✂)
       store.dispatch(act.addAudioClip({
         url: it.url, filename: it.name, duration: it.duration || 10,
+        // marca a ORIGEM: som de biblioteca (música/efeito) NUNCA é a voz do
+        // usuário — a legenda automática usa isto pra não transcrever efeito
+        // (bug real 15/08: "só legendou um efeito")
+        origem: 'biblioteca',
         ...(temRecorte ? { source_in: it.source_in || 0, source_out: it.source_out } : {}),
         ...(it.speed ? { speed: it.speed } : {}),
       }));
@@ -2683,19 +2687,60 @@ export function mountEditor(root, store, opts = {}) {
     return caps.length;
   }
 
+  // ── ESCOLHA POR VOZ MEDIDA (bug real 15/08: "só legendou um efeito") ──────
+  // Com mais de um candidato, o VAD (o MESMO detector do Cortar Respiros) mede
+  // quantos segundos de FALA cada fonte tem dentro dos trechos usados na
+  // timeline — e a fala vence. Som contínuo parede-a-parede (música/efeito)
+  // é penalizado: fala respira. Falhou a medição? Cai na ordem cega de sempre.
+  async function escolherFonteComVoz(planos) {
+    if (planos.length === 1) return planos[0];
+    const candidatos = planos.slice(0, 4);
+    const notas = [];
+    for (const p of candidatos) {
+      try {
+        const v = store.getState().video;
+        const url = (p.url === v?.url && localPreview.for === p.url && localPreview.url)
+          ? localPreview.url : p.url;
+        const ac = new AbortController();
+        const timer = setTimeout(() => ac.abort(), 25000);
+        const scan = await scanAudio(url, { signal: ac.signal });
+        clearTimeout(timer);
+        const det = detectarFala(scan.samples, scan.sr);
+        let falaSeg = 0, usado = 0;
+        for (const s of p.segments) {
+          usado += (s.fileOut - s.fileIn);
+          for (const f of det.falas) {
+            falaSeg += Math.max(0, Math.min(f.out, s.fileOut) - Math.max(f.in, s.fileIn));
+          }
+        }
+        const cob = usado > 0 ? falaSeg / usado : 0;
+        notas.push({ p, nota: cob > 0.92 ? falaSeg * 0.35 : falaSeg });
+      } catch { notas.push({ p, nota: -1 }); }
+    }
+    notas.sort((a, b) => b.nota - a.nota);
+    return notas[0].nota <= 0 ? candidatos[0] : notas[0].p;
+  }
+
   async function generateCaptions() {
     const state = store.getState();
     const mode = $('#beCapMode')?.value || 'frase';
-    // escolhe a fonte de audio REAL (voz do editor > audio do video; nunca
-    // o audio fantasma de um video mudo) — user 2026-07-20
-    const plan = captionAudioPlan(state);
-    if (!plan) {
+    // candidatos a fonte (voz do editor, áudio do vídeo, separado…) — nunca
+    // o áudio fantasma de um vídeo mudo (user 2026-07-20)
+    const planos = captionAudioPlanos(state);
+    if (!planos.length) {
       return toast('Nenhum áudio com voz pra transcrever. Adicione seu áudio (aba Áudio) ou reative o áudio do vídeo.', true);
+    }
+    // legendas já ancoradas numa fonte → mantém a fonte (consistência do sync)
+    let plan = captionAudioPlan(state);
+    const jaAncorado = (state.texts || []).some(t => t.caption === true && t.src_url === plan.url);
+    if (!jaAncorado && planos.length > 1) {
+      toast('🎤 Procurando as falas entre os áudios…');
+      plan = await escolherFonteComVoz(planos);
     }
     try {
       // re-transcreve se a FONTE mudou (trocou/adicionou áudio próprio etc)
       if (!lastCaptionWords || lastCaptionKey !== plan.url) {
-        toast('Transcrevendo áudio… (pode levar ~1min)');
+        toast(`Transcrevendo: ${plan.rotulo || 'áudio'}… (pode levar ~1min)`);
         const r = await api.autoCaptions(plan.url);
         lastCaptionWords = r.words || [];
         // IDIOMA: o Whisper devolve qual é, e agora a gente USA. O agrupamento

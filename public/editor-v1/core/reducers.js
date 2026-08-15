@@ -701,6 +701,8 @@ export function reduce(state, action) {
         source_in: sIn, source_out: sOut,
         volume: (Number(m.volume) > 0 && Number(m.volume) <= 1) ? Number(m.volume) : 1,
         ...(Number(m.speed) > 0 ? { speed: Math.min(100, Math.max(0.1, Number(m.speed))) } : {}),
+        // origem 'biblioteca' = música/efeito da casa (a legenda nunca escolhe)
+        ...(m.origem === 'biblioteca' ? { origem: 'biblioteca' } : {}),
         active: true,
       };
       return touch({
