@@ -454,7 +454,10 @@ async function metricas(req, res, { SU, h }) {
   // devolveu `23502 not-null violation` e ZERO linhas atualizadas.
   // Reenviar as obrigatórias com o mesmo valor é o preço de manter UMA
   // requisição por lote de 50, em vez de 44 PATCHes individuais.
-  const r = await fetch(`${SU}/rest/v1/longos_virais?ativo=eq.true&select=youtube_id,titulo,url,canal_id,duracao_segundos,views,views_anterior,medido_em&limit=2000`, { headers: h });
+  // `views_por_hora` vem junto porque TODA linha do lote precisa mandar essa
+  // chave (ver o bloco do upsert abaixo) — e quando não há ritmo novo o certo
+  // é reenviar o que já estava lá, não apagar com null.
+  const r = await fetch(`${SU}/rest/v1/longos_virais?ativo=eq.true&select=youtube_id,titulo,url,canal_id,duracao_segundos,views,views_anterior,medido_em,views_por_hora&limit=2000`, { headers: h });
   if (!r.ok) return res.status(500).json({ error: 'list_failed' });
   const atuais = await r.json();
   stat.lidos = atuais.length;
@@ -493,6 +496,15 @@ async function metricas(req, res, { SU, h }) {
       views: agoraViews,
       views_anterior: v.views,
       medido_em: agoraIso,
+      // ⚠️ SEMPRE presente, mesmo sem ritmo novo. O upsert em lote do PostgREST
+      // exige que TODOS os objetos tenham EXATAMENTE as mesmas chaves; bastava
+      // um vídeo sem ritmo pra ele recusar o lote inteiro com
+      // `PGRST102 All object keys must match` — foi o que aconteceu em 15/08:
+      // 44 vídeos com ritmo calculado e ZERO gravados, deixando a aba Canais
+      // sem nenhuma faixa de views/hora. O valor antigo é reenviado de
+      // propósito: quem não tem número novo mantém o que já tinha, em vez de
+      // ser zerado por uma passada cedo demais.
+      views_por_hora: v.views_por_hora ?? null,
     };
     // Só há ritmo se houve medição anterior COM data. A primeira passada grava
     // a base e devolve views_por_hora nulo — dizer 0 seria inventar.

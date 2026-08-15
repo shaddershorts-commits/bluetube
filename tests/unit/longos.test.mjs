@@ -57,7 +57,9 @@ test('o teto de inscritos é o substituto do selo, e canal que esconde não pass
   assert.match(API, /c\.oculto \|\| c\.subs > MAX_INSCRITOS/,
     'canal que esconde a contagem não pode passar por engano — sem número, na dúvida fica fora');
   // O porquê do substituto fica escrito: o selo não existe na API.
-  assert.match(API, /o selo NÃO\n\/\/\s*EXISTE na API/);
+  // \r? porque no Windows o checkout converte pra CRLF e o teste quebrava sem
+  // nada ter mudado no código.
+  assert.match(API, /o selo NÃO\r?\n\/\/\s*EXISTE na API/);
 });
 
 test('os três pisos são os pedidos, e o menor corta na coleta', () => {
@@ -355,4 +357,33 @@ test('métricas: ler N e gravar 0 responde 503, não "ok"', () => {
   assert.match(m, /const falhou = linhas\.length > 0 && stat\.atualizados === 0;/);
   assert.match(m, /res\.status\(falhou \? 503 : 200\)/,
     'a 1ª versão devolveu ok:true com atualizados:0 e o erro escondido no array — é o modo de falha que já custou 7 dias aqui');
+});
+
+// ═══ O LOTE DE MÉTRICAS PRECISA TER AS MESMAS CHAVES (15/08/2026) ════════════
+//
+// Bug real: a aba Canais ficou SEM nenhuma faixa de views/hora (10k/30k/100k
+// não devolviam nada). A causa não era coleta faltando nem filtro errado — o
+// ritmo era CALCULADO certo (44 vídeos numa passada) e a GRAVAÇÃO era recusada
+// inteira com `PGRST102 All object keys must match`.
+//
+// Motivo: `views_por_hora` só era adicionado à linha quando havia ritmo novo.
+// Um único vídeo sem ritmo no lote (primeira medição, ou janela < 30min) fazia
+// os objetos terem conjuntos de chaves diferentes, e o upsert em lote do
+// PostgREST recusa o lote INTEIRO nesse caso. 44 lidos, 0 gravados.
+
+test('toda linha de métrica leva views_por_hora, com ritmo ou sem', () => {
+  const bloco = API.slice(API.indexOf('const linha = {'), API.indexOf('linhas.push(linha)'));
+  assert.match(bloco, /views_por_hora:/,
+    'sem a chave fixa na linha, um vídeo sem ritmo derruba o lote inteiro (PGRST102)');
+  const iChave = bloco.indexOf('views_por_hora:');
+  const iCondicao = bloco.indexOf('if (v.medido_em)');
+  assert.ok(iChave < iCondicao,
+    'a chave tem que ser montada ANTES do if — dentro dele ela volta a ser condicional');
+});
+
+test('sem ritmo novo, o valor antigo é PRESERVADO (não zerado)', () => {
+  assert.match(API, /views_por_hora: v\.views_por_hora \?\? null/,
+    'reenviar null apagaria o ritmo de quem já tinha, numa passada cedo demais');
+  assert.match(API, /select=youtube_id[^`]*views_por_hora/,
+    'pra preservar o valor antigo ele precisa vir no SELECT');
 });
