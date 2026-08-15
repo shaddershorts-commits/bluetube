@@ -58,6 +58,28 @@ module.exports = async function handler(req, res) {
     } catch (e) { return res.status(200).json({ gifs: [], erro: e.message }); }
   }
 
+  // ── GET sons: catálogo de músicas do story (royalty-free + sons originais).
+  // PÚBLICO como o gifs — o catálogo não é do usuário. Data-driven: cada faixa é
+  // uma linha em blue_sounds, então trocar/expandir o acervo é só inserir linhas
+  // (zero mudança de código). origem: 'royalty' (livre de direitos) | 'original'.
+  if (req.method === 'GET' && action === 'sons') {
+    const q = (req.query?.q || '').trim();
+    const origem = req.query?.origem === 'original' ? 'original' : (req.query?.origem === 'royalty' ? 'royalty' : null);
+    try {
+      let url = `${SU}/rest/v1/blue_sounds?select=id,titulo,artista,url,capa_url,duracao,origem,usos&order=usos.desc,created_at.desc&limit=60`;
+      if (origem) url += `&origem=eq.${origem}`;
+      if (q) {
+        // PostgREST usa '*' como curinga do ilike na URL (vira % no SQL).
+        // Tira vírgula/parênteses pra não quebrar o agrupamento do or=(...).
+        const enc = encodeURIComponent(q.replace(/[(),*]/g, ' ').trim());
+        url += `&or=(titulo.ilike.*${enc}*,artista.ilike.*${enc}*)`;
+      }
+      const r = await fetch(url, { headers: H });
+      const sons = r.ok ? await r.json() : [];
+      return res.status(200).json({ sons: Array.isArray(sons) ? sons : [] });
+    } catch (e) { return res.status(200).json({ sons: [], erro: e.message }); }
+  }
+
   // ── Auth check — todas as outras actions requerem token
   const token = req.method === 'GET' ? req.query.token : req.body?.token;
   if (!token) return res.status(401).json({ error: 'Login necessário' });
