@@ -1,0 +1,308 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8"/>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='8' fill='%231a6bff'/><path d='M12 8l12 8-12 8V8z' fill='white'/></svg>"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Vídeos Longos Virais de Criadores Dark | BlueTube Longos</title>
+<link rel="canonical" href="https://www.bluetubeviral.com/longos"/>
+<meta name="description" content="Vídeos longos que estouraram em canais pequenos e sem rosto. Descoberta por views, sem canal pré-selecionado.">
+<meta name="robots" content="noindex"/>
+<link rel="preconnect" href="https://fonts.googleapis.com"/>
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet"/>
+<style>
+/* Mesmos tokens da /virais — a página tem que parecer da mesma casa. */
+:root{
+  --bg:#020817;--card:rgba(10,22,40,0.9);--blue:rgba(0,170,255,1);
+  --blue-dim:rgba(0,170,255,0.12);--blue-border:rgba(0,170,255,0.18);
+  --neon:#00aaff;--gold:#fbbf24;--red:#ff4444;--verde:#5cffd0;
+  --text:#e8f4ff;--text-dim:rgba(150,190,230,0.45);--text-sec:rgba(150,190,230,0.72);
+  --font:'Syne',sans-serif;--mono:'JetBrains Mono',monospace;
+}
+*{margin:0;padding:0;box-sizing:border-box}
+html,body{min-height:100vh;background:var(--bg);color:var(--text);font-family:var(--font);overflow-x:hidden}
+a{color:inherit;text-decoration:none}
+
+/* ── FUNDO: é aqui que mora o "remete a tecnologia" ────────────────────────
+   Grade fina + orbes desfocados + varredura lenta. Mesma gramática da /virais,
+   com uma linha de varredura a mais — é a página mais "laboratório" do site,
+   e o movimento sutil é o que dá a sensação de sistema rodando. */
+.bg{position:fixed;inset:0;z-index:0;pointer-events:none}
+.bg-grid{position:absolute;inset:0;background-image:linear-gradient(rgba(0,170,255,.028) 1px,transparent 1px),linear-gradient(90deg,rgba(0,170,255,.028) 1px,transparent 1px);background-size:48px 48px}
+.bg-orb{position:absolute;border-radius:50%;filter:blur(130px);opacity:.3}
+.orb1{width:700px;height:700px;background:radial-gradient(circle,rgba(0,80,255,.35),transparent 70%);top:-200px;right:-200px}
+.orb2{width:420px;height:420px;background:radial-gradient(circle,rgba(92,255,208,.14),transparent 70%);bottom:-120px;left:-120px}
+.scan{position:absolute;left:0;right:0;height:1px;background:linear-gradient(90deg,transparent,rgba(0,170,255,.5),transparent);animation:scan 9s linear infinite;opacity:.5}
+@keyframes scan{0%{top:-2%}100%{top:102%}}
+@media(prefers-reduced-motion:reduce){.scan{animation:none;opacity:0}}
+
+nav{position:fixed;top:0;left:0;right:0;z-index:100;display:flex;align-items:center;justify-content:space-between;padding:16px 32px;background:rgba(2,8,23,.88);backdrop-filter:blur(20px);border-bottom:1px solid var(--blue-border)}
+.logo{display:flex;align-items:center;gap:10px;font-size:17px;font-weight:800;letter-spacing:-.4px}
+.logo-mark{width:30px;height:30px;border-radius:9px;background:linear-gradient(135deg,#1a6bff,#00aaff);display:flex;align-items:center;justify-content:center;font-size:13px}
+.logo-sub{font-family:var(--mono);font-size:8px;letter-spacing:.14em;text-transform:uppercase;color:var(--neon);opacity:.65;display:block}
+.btn-back{font-family:var(--mono);font-size:11px;color:var(--text-sec);background:var(--blue-dim);border:1px solid var(--blue-border);border-radius:8px;padding:7px 14px;cursor:pointer;transition:all .2s}
+.btn-back:hover{border-color:rgba(0,170,255,.4);color:var(--text)}
+
+main{position:relative;z-index:2;max-width:1280px;margin:0 auto;padding:110px 24px 80px}
+.page-eyebrow{font-family:var(--mono);font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--neon);margin-bottom:8px;display:flex;align-items:center;gap:8px}
+.page-eyebrow::before{content:'';width:22px;height:1px;background:var(--neon)}
+h1{font-size:clamp(28px,4vw,42px);font-weight:800;letter-spacing:-1.2px;line-height:1.05}
+h1 em{font-style:normal;background:linear-gradient(135deg,#00aaff,#5cffd0);-webkit-background-clip:text;background-clip:text;color:transparent}
+.page-sub{font-family:var(--mono);font-size:12px;color:var(--text-sec);margin-top:10px;line-height:1.7;max-width:640px}
+
+/* ── ABAS: Virais | Canais ─────────────────────────────────────────────── */
+.abas{display:flex;gap:8px;margin:26px 0 18px;flex-wrap:wrap}
+.aba{display:flex;align-items:center;gap:9px;font-family:var(--mono);font-size:12px;font-weight:600;letter-spacing:.04em;
+  padding:11px 20px;border-radius:12px;cursor:pointer;background:rgba(0,170,255,.05);
+  border:1px solid var(--blue-border);color:var(--text-sec);transition:all .18s}
+.aba:hover{border-color:rgba(0,170,255,.42);color:var(--text)}
+.aba.on{background:linear-gradient(135deg,rgba(0,170,255,.18),rgba(92,255,208,.1));border-color:rgba(0,170,255,.6);color:#fff;box-shadow:0 0 24px rgba(0,170,255,.14)}
+.aba .pt{width:6px;height:6px;border-radius:50%;background:var(--verde);box-shadow:0 0 8px var(--verde)}
+
+/* ── FILTROS ──────────────────────────────────────────────────────────── */
+.barra{display:flex;gap:18px;flex-wrap:wrap;align-items:center;margin-bottom:22px}
+.grupo{display:flex;align-items:center;gap:8px}
+.grupo-tit{font-family:var(--mono);font-size:9.5px;letter-spacing:.14em;text-transform:uppercase;color:var(--text-dim)}
+.chips{display:flex;border:1px solid var(--blue-border);border-radius:10px;overflow:hidden}
+.chip{font-family:var(--mono);font-size:11px;font-weight:600;padding:8px 15px;cursor:pointer;border:none;background:transparent;color:var(--text-sec);transition:all .18s;white-space:nowrap}
+.chip:hover:not(.on){background:rgba(0,170,255,.06);color:var(--text)}
+.chip.on{background:linear-gradient(135deg,#1a6bff,#00aaff);color:#fff}
+
+/* ── GRADE ────────────────────────────────────────────────────────────── */
+.grade{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:18px}
+.card{background:var(--card);border:1px solid var(--blue-border);border-radius:16px;overflow:hidden;transition:all .2s;display:flex;flex-direction:column}
+.card:hover{transform:translateY(-3px);border-color:rgba(0,170,255,.45);box-shadow:0 14px 40px rgba(0,0,0,.45)}
+/* 16:9 — vídeo longo NÃO é short. Usar 9:16 aqui cortaria a capa no meio. */
+.thumb-wrap{position:relative;aspect-ratio:16/9;background:rgba(0,170,255,.06);overflow:hidden}
+.thumb-wrap img{width:100%;height:100%;object-fit:cover;display:block}
+.sem-capa{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:8px;
+  background:linear-gradient(135deg,rgba(0,170,255,.10),rgba(0,0,0,.5));padding:14px;text-align:center}
+.sem-capa .ic{font-size:32px;opacity:.7}
+.sem-capa .tx{font-family:var(--mono);font-size:10px;color:var(--text-dim);line-height:1.4}
+.dur{position:absolute;right:8px;bottom:8px;font-family:var(--mono);font-size:10px;font-weight:700;background:rgba(2,8,23,.86);color:#dff3ff;padding:3px 8px;border-radius:6px}
+/* O selo do "estourou": é o número mais interessante da página. */
+.ratio{position:absolute;left:8px;top:8px;font-family:var(--mono);font-size:10px;font-weight:700;padding:4px 9px;border-radius:100px;
+  background:linear-gradient(135deg,#065f46,#5cffd0);color:#02231a;box-shadow:0 4px 14px rgba(92,255,208,.28)}
+.ratio.frio{background:rgba(2,8,23,.8);color:var(--text-sec);box-shadow:none;border:1px solid var(--blue-border)}
+.card-b{padding:13px 14px 15px;display:flex;flex-direction:column;gap:9px;flex:1}
+.tit{font-size:13.5px;font-weight:700;line-height:1.35;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.canal{display:flex;align-items:center;gap:8px;margin-top:auto}
+.canal img{width:26px;height:26px;border-radius:50%;flex:0 0 26px;object-fit:cover;background:rgba(0,170,255,.1)}
+.canal-n{font-family:var(--mono);font-size:10.5px;color:var(--text-sec);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.canal-s{font-family:var(--mono);font-size:9.5px;color:var(--text-dim)}
+.metas{display:flex;gap:10px;font-family:var(--mono);font-size:10.5px;color:var(--text-sec);flex-wrap:wrap}
+.metas b{color:var(--neon);font-weight:700}
+/* Ritmo: views por hora medidas entre duas passadas. Verde porque é o número
+   do "agora", diferente das views totais, que são do passado acumulado. */
+.metas .vh{color:var(--verde);border:1px solid rgba(92,255,208,.3);border-radius:100px;padding:1px 8px}
+.metas .vh b{color:var(--verde)}
+
+/* ── ESTADOS ─────────────────────────────────────────────────────────── */
+.aviso{background:var(--card);border:1px solid var(--blue-border);border-radius:16px;padding:34px 26px;text-align:center;font-family:var(--mono);font-size:12.5px;color:var(--text-sec);line-height:1.8}
+.aviso b{color:var(--text);font-family:var(--font);font-size:15px;display:block;margin-bottom:8px}
+.skel{background:var(--card);border:1px solid var(--blue-border);border-radius:16px;overflow:hidden}
+.skel .sk{aspect-ratio:16/9;background:linear-gradient(90deg,rgba(0,170,255,.05),rgba(0,170,255,.11),rgba(0,170,255,.05));background-size:200% 100%;animation:sk 1.4s linear infinite}
+.skel .sk2{height:52px;margin:12px;border-radius:8px;background:rgba(0,170,255,.06)}
+@keyframes sk{0%{background-position:200% 0}100%{background-position:-200% 0}}
+.mais{display:block;margin:26px auto 0;font-family:var(--mono);font-size:12px;font-weight:700;color:#7fd4ff;background:rgba(0,170,255,.1);
+  border:1px solid rgba(0,170,255,.35);border-radius:100px;padding:11px 26px;cursor:pointer;transition:all .2s}
+.mais:hover{background:rgba(0,170,255,.18);color:#fff}
+@media(max-width:640px){nav{padding:14px 18px}main{padding:96px 16px 60px}.grade{grid-template-columns:1fr;gap:14px}}
+</style>
+</head>
+<body>
+<div class="bg"><div class="bg-grid"></div><div class="bg-orb orb1"></div><div class="bg-orb orb2"></div><div class="scan"></div></div>
+
+<nav>
+  <a class="logo" href="/"><span class="logo-mark">▶</span><span>Blue<span style="color:var(--neon)">Tube</span><span class="logo-sub">Longos</span></span></a>
+  <a class="btn-back" href="/virais">← Virais de Shorts</a>
+</nav>
+
+<main>
+  <div class="page-eyebrow">descoberta por views · sem canal pré-selecionado</div>
+  <h1>Vídeos longos de <em>criadores dark</em></h1>
+  <p class="page-sub">
+    Vídeos de 15 a 50 minutos que estouraram em canais <b style="color:var(--text)">com até 70 mil inscritos</b> —
+    gente sem rosto e sem público cativo, que acertou no conteúdo. Nada aqui vem de canal escolhido a dedo:
+    a busca varre o YouTube e o filtro faz o resto.
+  </p>
+
+  <div class="abas">
+    <button class="aba on" id="abaVirais" onclick="trocarAba('virais')"><span class="pt"></span> Virais</button>
+    <button class="aba" id="abaCanais" onclick="trocarAba('canais')">📡 Canais</button>
+  </div>
+
+  <div class="barra" id="barraVirais">
+    <div class="grupo">
+      <span class="grupo-tit">views</span>
+      <div class="chips" id="chipsPiso">
+        <button class="chip on" data-piso="30000">30 mil+</button>
+        <button class="chip" data-piso="100000">100 mil+</button>
+        <button class="chip" data-piso="300000">300 mil+</button>
+      </div>
+    </div>
+    <div class="grupo">
+      <span class="grupo-tit">ordenar</span>
+      <div class="chips" id="chipsOrdem">
+        <button class="chip on" data-ordem="views">mais vistos</button>
+        <button class="chip" data-ordem="ratio">mais estouraram</button>
+        <button class="chip" data-ordem="ritmo">mais rápidos agora</button>
+        <button class="chip" data-ordem="recentes">recentes</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="barra" id="barraCanais" style="display:none">
+    <div class="grupo">
+      <span class="grupo-tit">ordenar</span>
+      <div class="chips" id="chipsCanais">
+        <button class="chip on" data-ordem="melhor">maior sucesso</button>
+        <button class="chip" data-ordem="ritmo">mais rápidos agora</button>
+        <button class="chip" data-ordem="inscritos">mais inscritos</button>
+        <button class="chip" data-ordem="novos">descobertos agora</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="conteudo"></div>
+  <button class="mais" id="btnMais" style="display:none" onclick="carregarMais()">Carregar mais</button>
+</main>
+
+<script>
+var S = { aba:'virais', piso:30000, ordem:'views', ordemCanais:'melhor', offset:0, total:0, carregando:false };
+var $ = function(id){ return document.getElementById(id); };
+function esc(s){ return String(s==null?'':s).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];}); }
+function num(n){ n=Number(n)||0; return n>=1e6 ? (n/1e6).toFixed(1).replace('.',',')+' mi' : n>=1e3 ? Math.round(n/1e3)+' mil' : String(n); }
+function dur(s){ s=Number(s)||0; var m=Math.floor(s/60); return m+':'+String(s%60).padStart(2,'0'); }
+
+// A capa de vídeo removido do YouTube volta 404 com um JPEG cinza de 120x90
+// DENTRO — o navegador decodifica e o onerror nunca dispara. A única marca
+// confiável é o tamanho. Mesma lição já aplicada na /virais.
+function capa(img){
+  try{
+    if (img.naturalWidth !== 0 && !(img.naturalWidth <= 120 && img.naturalHeight <= 90)) return;
+    var p = img.parentElement; if(!p || p.querySelector('.sem-capa')) { img.style.display='none'; return; }
+    img.style.display='none';
+    var d = document.createElement('div'); d.className='sem-capa';
+    d.innerHTML = '<div class="ic">🎬</div><div class="tx">'+esc(img.getAttribute('data-cap')||'')+'</div>';
+    p.appendChild(d);
+  }catch(e){}
+}
+window.capa = capa;
+
+function esqueleto(n){
+  var h=''; for(var i=0;i<(n||6);i++) h += '<div class="skel"><div class="sk"></div><div class="sk2"></div></div>';
+  $('conteudo').innerHTML = '<div class="grade">'+h+'</div>';
+}
+
+function trocarAba(qual){
+  S.aba = qual; S.offset = 0;
+  $('abaVirais').classList.toggle('on', qual==='virais');
+  $('abaCanais').classList.toggle('on', qual==='canais');
+  $('barraVirais').style.display = qual==='virais' ? '' : 'none';
+  $('barraCanais').style.display = qual==='canais' ? '' : 'none';
+  carregar(true);
+}
+
+function cardVideo(v){
+  var r = Number(v.views_por_inscrito)||0;
+  // 5x é o corte entre "canal pequeno postou" e "canal pequeno ESTOUROU".
+  var quente = r >= 5;
+  return '<a class="card" href="'+esc(v.url)+'" target="_blank" rel="noopener">'
+    + '<div class="thumb-wrap">'
+    + (v.thumbnail_url ? '<img src="'+esc(v.thumbnail_url)+'" loading="lazy" alt="" data-cap="'+esc(v.titulo)+'" onload="capa(this)" onerror="capa(this)"/>' : '')
+    + (r ? '<span class="ratio'+(quente?'':' frio')+'">'+(r>=10?Math.round(r):r.toFixed(1))+'x</span>' : '')
+    + '<span class="dur">'+dur(v.duracao_segundos)+'</span>'
+    + '</div><div class="card-b">'
+    + '<div class="tit">'+esc(v.titulo)+'</div>'
+    + '<div class="metas"><span><b>'+num(v.views)+'</b> views</span><span>'+num(v.likes)+' likes</span>'
+    + (v.views_por_hora!=null ? '<span class="vh">'+num(Math.round(v.views_por_hora))+'/h</span>' : '') + '</div>'
+    + '<div class="canal"><div><div class="canal-n">'+esc(v.canal_nome||'')+'</div>'
+    + '<div class="canal-s">'+num(v.canal_inscritos)+' inscritos</div></div></div>'
+    + '</div></a>';
+}
+
+function cardCanal(c){
+  return '<a class="card" href="https://youtube.com/channel/'+esc(c.channel_id)+'" target="_blank" rel="noopener">'
+    + '<div class="thumb-wrap" style="aspect-ratio:16/9;display:flex;align-items:center;justify-content:center;background:linear-gradient(135deg,rgba(0,170,255,.09),rgba(92,255,208,.05))">'
+    + (c.thumbnail_url ? '<img src="'+esc(c.thumbnail_url)+'" loading="lazy" alt="" style="width:74px;height:74px;border-radius:50%;object-fit:cover" data-cap="'+esc(c.nome||'')+'" onload="capa(this)" onerror="capa(this)"/>' : '<div class="ic" style="font-size:38px">📡</div>')
+    + '</div><div class="card-b">'
+    + '<div class="tit">'+esc(c.nome||'canal')+'</div>'
+    + '<div class="metas">'
+    + (c.views_por_hora!=null ? '<span class="vh"><b>'+num(Math.round(c.views_por_hora))+'</b>/h</span>' : '')
+    + '<span><b>'+num(c.inscritos)+'</b> inscritos</span>'
+    + '<span>'+(c.videos_no_acervo||0)+' no acervo</span>'
+    + (c.pais ? '<span>'+esc(c.pais)+'</span>' : '') + '</div>'
+    + (c.melhor_titulo ? '<div class="canal"><div><div class="canal-s">melhor vídeo · '+num(c.melhor_views)+' views</div>'
+      + '<div class="canal-n">'+esc(c.melhor_titulo)+'</div></div></div>' : '')
+    + '</div></a>';
+}
+
+function vazio(msg, sub){
+  return '<div class="aviso"><b>'+esc(msg)+'</b>'+esc(sub||'')+'</div>';
+}
+
+async function carregar(reset){
+  if (S.carregando) return;
+  S.carregando = true;
+  if (reset) { S.offset = 0; esqueleto(6); }
+  // O endpoint virou exclusivo do Master em 15/08 (ver planoDoToken em
+  // api/longos.js). Sem mandar o token, esta página levaria 403 em tudo.
+  var tk = encodeURIComponent(localStorage.getItem('bt_token') || '');
+  var url = (S.aba === 'virais'
+    ? '/api/longos?action=listar&piso='+S.piso+'&ordem='+S.ordem+'&limit=24&offset='+S.offset
+    : '/api/longos?action=canais&ordem='+S.ordemCanais+'&limit=24&offset='+S.offset)
+    + '&token=' + tk;
+  try{
+    var r = await fetch(url);
+    var d = await r.json();
+    if (r.status === 403) {
+      $('conteudo').innerHTML = '<div class="vazio">Vídeos Longos é exclusivo do plano Master.</div>';
+      S.carregando = false;
+      return;
+    }
+    if (!r.ok || !d.ok) throw new Error(d.error||'falhou');
+    S.total = d.total||0;
+    var itens = d.items||[];
+    var html = itens.map(S.aba==='virais' ? cardVideo : cardCanal).join('');
+    if (reset) {
+      $('conteudo').innerHTML = itens.length
+        ? '<div class="grade">'+html+'</div>'
+        : vazio(
+            S.aba==='virais' ? 'Nenhum vídeo neste filtro ainda' : 'Nenhum canal descoberto ainda',
+            S.aba==='virais'
+              ? 'A coleta roda de 3 em 3 horas e vasculha o YouTube por termo. Se acabou de ligar, dá um tempo — ou baixa o piso de views.'
+              : 'Os canais aparecem aqui conforme os vídeos deles entram no acervo.'
+          );
+    } else {
+      var g = $('conteudo').querySelector('.grade');
+      if (g) g.insertAdjacentHTML('beforeend', html);
+    }
+    S.offset += itens.length;
+    $('btnMais').style.display = (S.offset < S.total && itens.length) ? '' : 'none';
+  }catch(e){
+    $('conteudo').innerHTML = vazio('Não consegui carregar agora', 'Atualize a página em instantes.');
+    $('btnMais').style.display = 'none';
+  }
+  S.carregando = false;
+}
+function carregarMais(){ carregar(false); }
+
+function ligarChips(id, aplicar){
+  var box = $(id); if(!box) return;
+  box.addEventListener('click', function(e){
+    var b = e.target.closest('.chip'); if(!b) return;
+    box.querySelectorAll('.chip').forEach(function(x){ x.classList.toggle('on', x===b); });
+    aplicar(b);
+    carregar(true);
+  });
+}
+ligarChips('chipsPiso', function(b){ S.piso = parseInt(b.dataset.piso,10); });
+ligarChips('chipsOrdem', function(b){ S.ordem = b.dataset.ordem; });
+ligarChips('chipsCanais', function(b){ S.ordemCanais = b.dataset.ordem; });
+
+carregar(true);
+</script>
+</body>
+</html>

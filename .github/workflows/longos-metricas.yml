@@ -1,0 +1,48 @@
+name: Longos — métricas (ritmo)
+
+# De hora em hora. É o que produz o RITMO REAL: views por hora medidas entre
+# duas passadas, e não "views ÷ idade do vídeo" — esse cálculo dilui (a idade
+# mediana do acervo é 174 dias) e deixava tudo abaixo de 1.526/h.
+#
+# Custo: `videos.list` é 1 unidade a cada 50 vídeos. O acervo inteiro cabe em
+# uma chamada. NÃO usa busca, então não encosta nas ~100 buscas/dia da coleta.
+# Minuto 41 pra não disputar fila com cron de minuto redondo.
+on:
+  # SEM schedule de propósito — ver o comentário no topo. Disparo manual
+  # em Actions → Run workflow, ou pela API com admin_secret.
+  workflow_dispatch:
+
+jobs:
+  metricas:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Medir ritmo
+        id: m
+        run: |
+          HTTP_CODE=$(curl -sS --max-time 180 -w "%{http_code}" -o /tmp/r.json \
+            "https://bluetube-ten.vercel.app/api/longos?action=metricas&admin_secret=${{ secrets.ADMIN_SECRET }}")
+          echo "HTTP: $HTTP_CODE"
+          if [ "$HTTP_CODE" != "200" ]; then
+            echo "::error::Métricas falharam com HTTP $HTTP_CODE"
+            cat /tmp/r.json | head -c 600
+            exit 1
+          fi
+          LIDOS=$(node -e "try{console.log(JSON.parse(require('fs').readFileSync('/tmp/r.json','utf8')).lidos||0)}catch(e){console.log('?')}")
+          RITMO=$(node -e "try{console.log(JSON.parse(require('fs').readFileSync('/tmp/r.json','utf8')).com_ritmo||0)}catch(e){console.log('?')}")
+          SUMIDOS=$(node -e "try{console.log(JSON.parse(require('fs').readFileSync('/tmp/r.json','utf8')).sumidos||0)}catch(e){console.log('?')}")
+          # Acervo vazio é estado válido (nada a medir). Acervo COM vídeo e
+          # nenhum lido é falha — e é o tipo que passa despercebido, igual aos
+          # 7 dias de coleta morta do TikTok com o painel verde.
+          if [ "$LIDOS" = "0" ] || [ "$LIDOS" = "?" ]; then
+            echo "::warning::Nada lido — acervo vazio ou consulta falhou"
+          fi
+          echo "✓ lidos: $LIDOS | com ritmo: $RITMO | sumidos do YouTube: $SUMIDOS"
+          echo "ritmo=$RITMO" >> $GITHUB_OUTPUT
+          echo "lidos=$LIDOS" >> $GITHUB_OUTPUT
+
+      - name: Resumo
+        if: always()
+        run: |
+          echo "## Longos — ritmo $(date -u +'%H:%M') UTC" >> $GITHUB_STEP_SUMMARY
+          echo "Vídeos medidos: ${{ steps.m.outputs.lidos }}" >> $GITHUB_STEP_SUMMARY
+          echo "Com ritmo calculado: ${{ steps.m.outputs.ritmo }}" >> $GITHUB_STEP_SUMMARY
