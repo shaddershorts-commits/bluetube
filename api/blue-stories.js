@@ -307,7 +307,13 @@ module.exports = async function handler(req, res) {
     if (!['imagem', 'video', 'texto', 'video_share'].includes(tipo)) {
       return res.status(400).json({ error: 'tipo inválido (imagem|video|texto|video_share)' });
     }
-    if (tipo === 'texto' && !texto) return res.status(400).json({ error: 'texto obrigatório' });
+    // Story de texto: o conteúdo pode vir no campo `texto` OU numa camada de
+    // texto dos overlays (editor "Criar"). Deriva um texto-resumo pra preview.
+    const primeiroTextoOverlay = Array.isArray(overlays)
+      ? (overlays.find(o => o && o.tipo === 'texto' && typeof o.texto === 'string' && o.texto.trim())?.texto || null)
+      : null;
+    const textoEfetivo = (texto && String(texto).trim()) ? texto : primeiroTextoOverlay;
+    if (tipo === 'texto' && !textoEfetivo) return res.status(400).json({ error: 'texto obrigatório' });
     if ((tipo === 'imagem' || tipo === 'video') && !media_url) return res.status(400).json({ error: 'media_url obrigatório' });
     // video_share: vídeo do feed compartilhado no story/status (viewer resolve via video_id)
     if (tipo === 'video_share' && !video_id) return res.status(400).json({ error: 'video_id obrigatório' });
@@ -321,7 +327,7 @@ module.exports = async function handler(req, res) {
         user_id: userId,
         tipo,
         media_url: media_url || null,
-        texto: texto || null,
+        texto: textoEfetivo || null,
         cor_fundo: cor_fundo || '#020817',
         duracao: duracaoFinal,
         visto_por: []
