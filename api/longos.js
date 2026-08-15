@@ -200,7 +200,12 @@ module.exports = async function handler(req, res) {
     // checagem, qualquer pessoa chama /api/longos?action=listar direto no
     // navegador e lê o acervo inteiro. O portão de verdade é aqui.
     if (action === 'listar' || action === 'canais') {
-      const plano = await planoDoToken(req.query.token || (req.body && req.body.token) || '', SU);
+      // admin_secret vale como chave-mestra aqui pelo mesmo motivo que já vale
+      // em coletar/metricas: sem isso não dá pra conferir o acervo nem depurar
+      // sem uma sessão Master na mão. Não abre exposição nova — é o mesmo
+      // segredo, no mesmo endpoint.
+      const dono = req.query.admin_secret && req.query.admin_secret === process.env.ADMIN_SECRET;
+      const plano = dono ? 'master' : await planoDoToken(req.query.token || (req.body && req.body.token) || '', SU);
       if (plano !== 'master') {
         return res.status(403).json({ error: 'master_only', plano, detalhe: 'Vídeos Longos é exclusivo do plano Master.' });
       }
