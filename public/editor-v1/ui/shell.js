@@ -18,12 +18,15 @@ import { formatTime } from '../timeline/layout.js';
 import { createPlayer } from '../preview/player.js';
 import { createOverlay } from '../preview/overlay.js';
 import { createPip } from '../preview/pip.js';
+import { createBgFx } from '../preview/bg-fx.js';
+import { montarRemoverFundo } from './remover-fundo.js';
 import { createMaskUI } from '../preview/mask-ui.js';
 import { createFrameUI } from '../preview/frame-ui.js';
 import { createTransitionsPanel } from './transitions-panel.js';
 import { createTransitionFx } from '../preview/transition-fx.js';
 import { transicaoPorId, TRANSICOES } from '../core/transitions.js';
 import { ANIMACOES_CENA, ANIM_CATEGORIAS, ANIM_POR_ID, progressoDaAnimacao, previewDaAnimacao, previewDoLoop, duracaoDaAnimacao } from '../core/animacoes-cena.js';
+import { VOZES } from '../core/voz-mod.js';
 import { criarGuardiao } from '../core/guardiao.js';
 import {
   CAMPOS_COR, svgDoGrade, vinhetaCss, temAjuste, TODAS_CHAVES,
@@ -54,6 +57,9 @@ export function mountEditor(root, store, opts = {}) {
       if (!v) return null;
       return (localPreview.for === v.url && localPreview.url) ? localPreview.url : v.url;
     },
+    // prévia do Modificador de voz só monta em fonte desta sessão (blob) —
+    // avisar UMA vez em vez de fingir que o efeito não existe (15/08)
+    onVozIndisponivel: () => toast('Prévia ao vivo do modificador indisponível pra este vídeo (reaberto da nuvem) — o efeito sai por inteiro no arquivo final.'),
   }, store);
   const timeline = createTimelineController({
     canvas: $('#beTimeline'),
@@ -165,6 +171,9 @@ export function mountEditor(root, store, opts = {}) {
   }
   const overlay = createOverlay($('#beOverlay'), store, player, openTextPanel);
   const pip = createPip($('#beOverlay').parentElement, videoEl, store, player);
+  // REMOVER FUNDO (15/08): preview WebGL + fiação do painel
+  const bgFx = createBgFx($('#beStage'), videoEl, store, player);
+  const bgUi = montarRemoverFundo({ root, store, player, videoEl, toast });
   // marcador da máscara: arrastar/redimensionar direto no vídeo
   const maskUI = createMaskUI($('#beStage'), store);
   // moldura do vídeo (mover/escalar a cena) — alterna com a máscara pela sub-aba
@@ -201,6 +210,7 @@ export function mountEditor(root, store, opts = {}) {
   let audioLibQuery = '';
   let audioLibCat = null;        // categoria filtrada (null = todas)
   let filledClipId = null;    // guard: não sobrescreve sliders enquanto arrasta
+  let filledCAudId = null;    // idem pros sliders do Áudio da cena (15/08)
   let filledAudioId = null;
   let filledOvId = null;
   // mapeamento log do slider de velocidade: value -100..200 -> 0.10x..100x,
@@ -211,7 +221,7 @@ export function mountEditor(root, store, opts = {}) {
 
   // ── expose pra E2E (fora de producao) ──
   if (location.hostname !== 'www.bluetubeviral.com' && location.hostname !== 'bluetubeviral.com') {
-    window.__BE__ = { store, player, timeline, guardiao, getState: () => store.getState() };
+    window.__BE__ = { store, player, timeline, guardiao, bgFx, getState: () => store.getState() };
   }
 
   // ── reatividade da UI ──
@@ -819,6 +829,8 @@ export function mountEditor(root, store, opts = {}) {
         $('#beOvMute').textContent = ov.muted ? '🔊 Devolver o som da camada' : '🔇 Remover o som da camada';
         // IMAGEM: velocidade não faz sentido (user 14/08) — some; título diz o tipo
         $('#beOvSpeedRow').style.display = ov.kind === 'image' ? 'none' : '';
+        // fundo removido na camada: botão de desligar só quando existe
+        $('#beOvBgOff').style.display = ov.bg ? '' : 'none';
         $('#beOvTitle').textContent = ov.kind === 'image' ? '🖼 Imagem' : '⧉ Camada';
         // Tamanho fora do filledOvId: o scroll no preview também escala e o
         // slider precisa acompanhar (não é campo que o user digita)
@@ -877,11 +889,32 @@ export function mountEditor(root, store, opts = {}) {
         }
         // 🔇 mudo por cena: label reflete o estado sempre (toggle barato)
         $('#beClipMute').textContent = clip.muted ? '🔊 Restaurar áudio desta cena' : '🔇 Remover áudio desta cena';
+        // ── ÁUDIO DA CENA (15/08): sliders só ao trocar de cena; checkboxes
+        // SEMPRE (o painel 🎚 da toolbar mexe no mesmo estado) ────────────────
+        if (filledCAudId !== clip.id) {
+          filledCAudId = clip.id;
+          const db = clip.volume_db ?? 0;
+          $('#beCAudVol').value = db; $('#beCAudVolVal').textContent = db.toFixed(1) + 'dB';
+          const fi = clip.fade_in ?? 0, fo = clip.fade_out ?? 0;
+          $('#beCAudFadeIn').value = fi; $('#beCAudFadeInVal').textContent = fi.toFixed(1) + 's';
+          $('#beCAudFadeOut').value = fo; $('#beCAudFadeOutVal').textContent = fo.toFixed(1) + 's';
+          $('#beCAudVozInt').value = clip.fx_voz_int ?? 75;
+          $('#beCAudVozIntVal').textContent = String(clip.fx_voz_int ?? 75);
+          window.__beRenderVozes?.();
+        }
+        $('#beCAudNorm').checked = clip.fx_norm === true;
+        $('#beCAudVoz').checked = clip.fx_voz === true;
+        $('#beCAudRuido').checked = clip.fx_ruido === true;
+        $('#beCAudVozIntRow').style.display = clip.fx_voz === true ? '' : 'none';
+        $('#beCAudCanal').value = clip.canal || 'both';
+        $('#beCAudSeparar').style.display = state.audio_detached ? 'none' : '';
+        bgUi.sync(state);   // Remover fundo: checkboxes/sliders seguem a cena
         montarPainelGrade();
         preencherPainelGrade(state);
       }
     } else {
       filledClipId = null;
+      filledCAudId = null;
     }
     // botao "separar audio" so faz sentido antes do detach
     $('#beDetachAudio').style.display = state.audio_detached ? 'none' : 'block';
@@ -1572,6 +1605,77 @@ export function mountEditor(root, store, opts = {}) {
     toast(clip.muted ? 'Áudio da cena restaurado ✓' : 'Áudio removido só desta cena ✓');
   });
 
+  // ── ÁUDIO DA CENA estilo CapCut (15/08) ──────────────────────────────────
+  {
+    const clipSel = () => { const s = store.getState(); return s.clips.find(c => c.id === s.selected_clip_id); };
+    // sub-abas Básico / Modificador de voz
+    $('#beCAudTabs').addEventListener('click', (e) => {
+      const btn = e.target.closest('[data-caud]'); if (!btn) return;
+      $('#beCAudTabs').querySelectorAll('.be-cfg-subtab').forEach(b => b.classList.toggle('active', b === btn));
+      root.querySelectorAll('[data-caud-painel]').forEach(p =>
+        p.style.display = p.dataset.caudPainel === btn.dataset.caud ? 'flex' : 'none');
+      if (btn.dataset.caud === 'voz') renderVozes();
+    });
+    // volume (dB) + fades: gesto coalescido, prévia reage no tick (el.volume)
+    const bindCAudSlider = (sel, valSel, campo, fmt) => {
+      $(sel).addEventListener('input', (e) => {
+        const c = clipSel(); if (!c) return;
+        const v = parseFloat(e.target.value);
+        $(valSel).textContent = fmt(v);
+        store.dispatch({ ...act.setClipAudio(c.id, { [campo]: v }), gestureId: 'caud-' + campo + '-' + c.id });
+        player.refreshMute();
+      });
+      $(sel).addEventListener('change', () => store.endGesture());
+    };
+    bindCAudSlider('#beCAudVol', '#beCAudVolVal', 'volume_db', v => v.toFixed(1) + 'dB');
+    bindCAudSlider('#beCAudFadeIn', '#beCAudFadeInVal', 'fade_in', v => v.toFixed(1) + 's');
+    bindCAudSlider('#beCAudFadeOut', '#beCAudFadeOutVal', 'fade_out', v => v.toFixed(1) + 's');
+    // Aprimorar áudio: MESMO estado do painel 🎚 da toolbar (setAudioFx 'clip')
+    const bindCAudFx = (sel, campo) => {
+      $(sel).addEventListener('change', (e) => {
+        const c = clipSel(); if (!c) return;
+        store.dispatch(act.setAudioFx('clip', c.id, { [campo]: e.target.checked }));
+      });
+    };
+    bindCAudFx('#beCAudNorm', 'fx_norm');
+    bindCAudFx('#beCAudVoz', 'fx_voz');
+    bindCAudFx('#beCAudRuido', 'fx_ruido');
+    $('#beCAudVozInt').addEventListener('input', (e) => {
+      const c = clipSel(); if (!c) return;
+      $('#beCAudVozIntVal').textContent = e.target.value;
+      store.dispatch({ ...act.setAudioFx('clip', c.id, { fx_voz_int: parseInt(e.target.value, 10) }), gestureId: 'caudint-' + c.id });
+    });
+    $('#beCAudVozInt').addEventListener('change', () => store.endGesture());
+    $('#beCAudCanal').addEventListener('change', (e) => {
+      const c = clipSel(); if (!c) return;
+      store.dispatch(act.setClipAudio(c.id, { canal: e.target.value }));
+      player.refreshMute();
+    });
+    // Separar áudio = o detach de sempre (Ctrl+Shift+S): o som vira faixa própria
+    $('#beCAudSeparar').addEventListener('click', () => {
+      if (store.getState().audio_detached) { toast('O áudio já está separado em faixa própria.'); return; }
+      store.dispatch(act.detachAudio());
+      toast('Áudio separado — agora ele é uma faixa própria embaixo ✓');
+    });
+    // cards do Modificador de voz — clique aplica na cena (como as animações)
+    window.__beRenderVozes = null;
+    function renderVozes() {
+      const c = clipSel();
+      const atual = c?.voz_mod || null;
+      $('#beCAudVozes').innerHTML = VOZES.map(v =>
+        `<button type="button" class="be-anim-card${atual === (v.id ?? null) ? ' active' : ''}" data-voz="${v.id ?? ''}"><span class="be-anim-ico">${v.icone}</span><span>${v.nome}</span></button>`).join('');
+    }
+    window.__beRenderVozes = renderVozes;
+    $('#beCAudVozes').addEventListener('click', (e) => {
+      const card = e.target.closest('[data-voz]'); if (!card) return;
+      const c = clipSel(); if (!c) return;
+      store.dispatch(act.setClipAudio(c.id, { voz_mod: card.dataset.voz || null }));
+      renderVozes();
+      player.refreshMute();
+      toast(card.dataset.voz ? `Voz ${card.querySelector('span:last-child').textContent} aplicada ✓` : 'Voz normal ✓');
+    });
+  }
+
   // ── MÁSCARA da cena (CapCut: círculo/retângulo + suavizar + cantos) ──
   $('#beMaskShapes').addEventListener('click', (e) => {
     const btn = e.target.closest('button[data-mask]'); if (!btn) return;
@@ -1647,6 +1751,13 @@ export function mountEditor(root, store, opts = {}) {
     store.dispatch({ ...act.setOverlayTransform(id, { scale: sc / 100 }), gestureId: 'ovscale-' + id });
   });
   $('#beOvScale').addEventListener('change', () => store.endGesture());
+  // desligar o fundo removido da camada (religar = pela cena, descendo-a)
+  $('#beOvBgOff').addEventListener('click', () => {
+    const id = store.getState().selected_overlay_id;
+    if (id == null) return;
+    store.dispatch(act.setOverlayBg(id, null));
+    toast('Remoção de fundo desligada nesta camada ✓');
+  });
 
   // ── QUADROS-CHAVE de movimento (user 14/08) ──────────────────────────────
   // ◇ = marca a posição efetiva no instante da agulha (vira ◆ quando a agulha
@@ -2933,6 +3044,8 @@ export function mountEditor(root, store, opts = {}) {
     detachShortcuts();
     document.removeEventListener('visibilitychange', flushOnHide);
     guardiao.destroy();
+    bgFx.destroy();
+    bgUi.destroy();
     player.destroy(); overlay.destroy(); pip.destroy(); maskUI.destroy(); frameUI.destroy(); fxTransicao.destroy(); transPanel.destroy(); clearTimeout(previewTimer); timeline.destroy();
     autosave.destroy(); exporter.destroy();
     for (const t of thumbsRegistry.values()) t.destroy();
@@ -3187,8 +3300,47 @@ function buildTemplate() {
           <button id="beDelClip2" class="be-danger-btn">🗑 Excluir cena</button>
           <div class="be-dim">Arraste as bordas azuis na timeline pra cortar · V liga/desliga · Ctrl+B divide</div>
         </div>
+        <!-- REMOVER PLANO DE FUNDO (15/08, paridade CapCut): automática
+             (pessoa via MediaPipe no navegador), personalizada (pincel) e
+             chroma key — todas com par REAL no render (fiação em
+             ui/remover-fundo.js; preview = bg-fx WebGL). -->
         <div class="be-cfg-sub" data-sub="fundo" style="display:none">
-          <div class="be-dim">🪄 Remoção de plano de fundo por IA — <b>em breve</b>.</div>
+          <label class="be-check-row"><input type="checkbox" id="beBgAuto"/> Remoção automática <span style="opacity:.6;font-size:10px">detecta a pessoa e remove o fundo</span></label>
+          <div id="beBgAutoBox" style="display:none">
+            <div id="beBgAutoStatus" class="be-dim"></div>
+            <div class="be-progress" id="beBgAutoBar" style="display:none"><div></div></div>
+            <button id="beBgAutoCancel" class="be-tool-btn" style="display:none">✕ Cancelar processamento</button>
+          </div>
+          <label class="be-check-row"><input type="checkbox" id="beBgCustom"/> Remoção personalizada</label>
+          <div id="beBgCustomBox" style="display:none">
+            <div id="beBgTools" style="display:flex;gap:6px">
+              <button type="button" data-tool="pincel" class="be-icon-btn active" title="Pincel — marca a área a REMOVER">🖌</button>
+              <button type="button" data-tool="borracha" class="be-icon-btn" title="Borracha — desfaz a marca">🧽</button>
+            </div>
+            <label class="be-slider-label">Tamanho <b id="beBgBrushVal">20</b>
+              <input id="beBgBrush" type="range" min="4" max="80" step="1" value="20"/>
+            </label>
+            <button id="beBgAplicar" class="be-tool-btn">Aplicar</button>
+            <div class="be-dim">Pinte no preview a área a REMOVER (fica vermelha) e clique Aplicar.</div>
+          </div>
+          <label class="be-check-row"><input type="checkbox" id="beBgChroma"/> Chroma key</label>
+          <div id="beBgChromaBox" style="display:none">
+            <div class="be-check-row" style="cursor:default">Seletor de cores
+              <button id="beBgConta" class="be-icon-btn" title="Conta-gotas: clique e depois clique na cor do fundo no preview">💧</button>
+              <span id="beBgCorSwatch" style="width:18px;height:18px;border-radius:4px;border:1px solid rgba(255,255,255,.3);background:#00d000"></span>
+            </div>
+            <label class="be-slider-label">Intensidade <b id="beBgIntVal">20</b>
+              <input id="beBgInt" type="range" min="0" max="100" step="1" value="20"/>
+            </label>
+            <label class="be-slider-label">Suavizar borda <b id="beBgSuaVal">20</b>
+              <input id="beBgSua" type="range" min="0" max="100" step="1" value="20"/>
+            </label>
+            <label class="be-slider-label">Limpar borda <b id="beBgLimVal">0</b>
+              <input id="beBgLim" type="range" min="0" max="100" step="1" value="0"/>
+            </label>
+          </div>
+          <button id="beBgReset" class="be-tool-btn">↺ Redefinir (sem remoção)</button>
+          <div class="be-dim">A área removida sai PRETA no vídeo final (a cena não tem nada atrás). O que você vê no preview é a mesma conta do arquivo.</div>
         </div>
         <div class="be-cfg-sub" data-sub="mascarar" style="display:none">
           <div class="be-btn-group" id="beMaskShapes">
@@ -3209,9 +3361,45 @@ function buildTemplate() {
       </div>
 
       <!-- demais abas (placeholder até implementarmos) -->
+      <!-- ÁUDIO DA CENA estilo CapCut (15/08): Básico (volume dB, fades,
+           aprimorar, canal) + Modificador de voz. Tudo com par REAL no
+           render (extração de áudio por cena no motor). -->
       <div class="be-cfg-panel" data-panel="audio" style="display:none">
-        <button id="beClipMute" class="be-tool-btn">🔇 Remover áudio desta cena</button>
-        <div class="be-dim">Vale SÓ pra cena selecionada — as outras faixas continuam com o áudio delas. Pra editar o áudio na faixa própria, use Separar áudio (Ctrl+Shift+S).</div>
+        <div class="be-cfg-subtabs" id="beCAudTabs">
+          <button type="button" data-caud="basico" class="be-cfg-subtab active">Básico</button>
+          <button type="button" data-caud="voz" class="be-cfg-subtab">Modificador de voz</button>
+        </div>
+        <div data-caud-painel="basico" style="display:flex;flex-direction:column;gap:8px">
+          <label class="be-slider-label">Volume <b id="beCAudVolVal">0.0dB</b>
+            <input id="beCAudVol" type="range" min="-60" max="10" step="0.5" value="0"/>
+          </label>
+          <label class="be-slider-label">Fade-in <b id="beCAudFadeInVal">0.0s</b>
+            <input id="beCAudFadeIn" type="range" min="0" max="5" step="0.1" value="0"/>
+          </label>
+          <label class="be-slider-label">Fade-out <b id="beCAudFadeOutVal">0.0s</b>
+            <input id="beCAudFadeOut" type="range" min="0" max="5" step="0.1" value="0"/>
+          </label>
+          <label class="be-check-row"><input type="checkbox" id="beCAudNorm"/> Normalizar nível de volume</label>
+          <label class="be-check-row"><input type="checkbox" id="beCAudVoz"/> Aprimorar voz</label>
+          <label class="be-slider-label" id="beCAudVozIntRow" style="display:none">Intensidade <b id="beCAudVozIntVal">75</b>
+            <input id="beCAudVozInt" type="range" min="0" max="100" step="1" value="75"/>
+          </label>
+          <label class="be-check-row"><input type="checkbox" id="beCAudRuido"/> Reduzir ruído</label>
+          <label class="be-check-row">Preencher canal
+            <select id="beCAudCanal" style="margin-left:auto">
+              <option value="both">Ambos</option>
+              <option value="esq">Esquerdo</option>
+              <option value="dir">Direito</option>
+            </select>
+          </label>
+          <button id="beCAudSeparar" class="be-tool-btn">≠ Separar áudio (vira faixa própria)</button>
+          <button id="beClipMute" class="be-tool-btn">🔇 Remover áudio desta cena</button>
+          <div class="be-dim">Vale SÓ pra cena selecionada. Volume acima de 0dB é aplicado por inteiro no arquivo final (a prévia satura em 0dB).</div>
+        </div>
+        <div data-caud-painel="voz" style="display:none;flex-direction:column;gap:8px">
+          <div id="beCAudVozes" class="be-anim-cards"></div>
+          <div class="be-dim">Clique aplica na cena e vale no arquivo final. A prévia ao vivo toca quando o vídeo é desta sessão (arquivo recém-importado).</div>
+        </div>
       </div>
       <div class="be-cfg-panel" data-panel="velocidade" style="display:none">
         <label class="be-slider-label">Velocidade <b id="beClipSpeedVal">1.00x</b>
@@ -3286,6 +3474,8 @@ function buildTemplate() {
       <div class="be-dim">Botão direito na camada = Copiar/Cortar/frente-trás. Q/W cortam no cursor.</div>
       <!-- som embutido da camada (user 14/08): permanece a menos que remova -->
       <button id="beOvMute" class="be-tool-btn">🔇 Remover o som da camada</button>
+      <!-- fundo removido é PERMANENTE ao virar camada (15/08); aqui desliga -->
+      <button id="beOvBgOff" class="be-tool-btn" style="display:none">🪄 Fundo removido — ✕ desligar</button>
       <!-- ANIMAÇÃO DA CAMADA (user 14/08): só as anims com par REAL na
            composição do arquivo (fades, deslizes, balanço) — agora em IMAGEM
            também (fade = -loop no render; deslize/balanço = expressão) -->

@@ -7,6 +7,8 @@
 
 import { timelineToSource, totalDuration, playableDuration, segmentAt, timelineSegments, effectiveAudioClips, mediaUrlFor, clipSpeed, segSpeed, audioTimelineDur } from '../core/selectors.js';
 import { criarMotorFx } from './audio-fx.js';
+import { criarVozFx } from './voz-fx.js';
+import { dbParaLinear, fatorFade } from '../core/voz-mod.js';
 
 // opts.primaryUrl(): url preferida do video PRINCIPAL. opts.bufferEl: 2º <video>.
 export function createPlayer(videoEl, opts, store) {
@@ -85,6 +87,27 @@ export function createPlayer(videoEl, opts, store) {
   function vidMuted(state, seg) {
     if (seg?.clip?.muted) return true; // "remover áudio" SÓ desta cena (user 2026-07-24)
     return !!state.audio_detached && (!seg || seg.clip.media_id == null);
+  }
+
+  // ── ÁUDIO DA CENA estilo CapCut (15/08) ──────────────────────────────────
+  // volume em dB + fades compostos no el.volume (vale pra QUALQUER fonte);
+  // acima de 0dB a prévia satura em 1.0 — o ganho inteiro sai no arquivo.
+  const vozFx = criarVozFx();
+  function volumeDaCena(state, seg) {
+    let v = Math.min(1, state.volumes?.video ?? 1);
+    const c = seg?.clip;
+    if (!c) return v;
+    if (c.volume_db) v *= Math.min(1, dbParaLinear(c.volume_db));
+    if (c.fade_in || c.fade_out) {
+      v *= fatorFade(virtualTime - seg.tStart, Math.max(0.01, seg.tEnd - seg.tStart), c.fade_in, c.fade_out);
+    }
+    return Math.min(1, Math.max(0, v));
+  }
+  // modificador de voz/canal: cadeia Web Audio (só fonte desta sessão — blob)
+  function syncVozCena(el, seg) {
+    vozFx.sync(el, seg?.clip || null, () => {
+      opts?.onVozIndisponivel?.();
+    });
   }
 
   function syncVideoToVirtual(seekVideo = true) {
@@ -432,7 +455,8 @@ export function createPlayer(videoEl, opts, store) {
       // garante que o elemento EM EXIBIÇÃO nunca fica mudo (o buffer é mutado
       // no preload; sem isso o áudio sumia às vezes após um swap — user #6)
       d.muted = vidMuted(state, seg);
-      d.volume = Math.min(1, state.volumes?.video ?? 1);
+      d.volume = volumeDaCena(state, seg);
+      syncVozCena(d, seg);
       d.playbackRate = segSpeed(seg);
       preloadNext(state); // aquece o buffer com a próxima fonte
       const vSrc = d.currentTime;
@@ -613,11 +637,13 @@ export function createPlayer(videoEl, opts, store) {
     syncPool();
     syncVideoToVirtual();
     const d = disp();
-    d.muted = vidMuted(state, segmentAt(state, virtualTime));
-    d.volume = Math.min(1, state.volumes?.video ?? 1);
+    const segPlay = segmentAt(state, virtualTime);
+    d.muted = vidMuted(state, segPlay);
+    d.volume = volumeDaCena(state, segPlay);
     playing = true;
     lastTick = 0;
     fxMotor.retomar();   // gesto de play destrava o AudioContext suspenso
+    vozFx.retomar();     // idem pra cadeia do modificador de voz
     if (segmentAt(state, virtualTime)) d.play().catch(() => {});
     preloadNext(state);  // aquece o buffer JÁ no play (fronteira logo à frente)
     syncAudios(virtualTime);
@@ -716,13 +742,18 @@ export function createPlayer(videoEl, opts, store) {
     refreshMute() {
       if (trans) return;   // durante o hold o mudo é do ramo de transição do tick
       const state = store.getState();
-      disp().muted = vidMuted(state, segmentAt(state, virtualTime));
-      disp().volume = Math.min(1, state.volumes?.video ?? 1);
+      const segAqui = segmentAt(state, virtualTime);
+      disp().muted = vidMuted(state, segAqui);
+      disp().volume = volumeDaCena(state, segAqui);
+      syncVozCena(disp(), segAqui);
     },
+    /** estado da cadeia do modificador de voz no elemento em exibição (sonda) */
+    vozDebug: () => vozFx.debug(disp()),
     onUpdate(fn) { listeners.add(fn); return () => listeners.delete(fn); },
     destroy() {
       pause();
       fxMotor.destruir();
+      vozFx.destruir();
       for (const [, e] of pool) { e.el.pause(); e.el.removeAttribute('src'); }
       pool.clear();
       listeners.clear();

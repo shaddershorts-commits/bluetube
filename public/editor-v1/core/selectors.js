@@ -3,6 +3,7 @@
 // virtual (timeline) <-> tempo source (arquivo). Modulo puro.
 
 import { TEXT_SIZE_PCT, FORMATO_PADRAO } from './schema.js';
+import { chromaParaRender } from './fundo.js';
 import { layoutDoTexto } from './text-layout.js';
 // módulo puro (sem DOM), apesar de morar em preview/: é lá que a correção de
 // cor é definida, e o payload precisa dos MESMOS números que desenham a tela
@@ -516,6 +517,16 @@ export function exportPayload(state) {
     ...(seg.clip.anim_loop && seg.clip.anim_loop_dur ? { anim_loop_dur: round3(seg.clip.anim_loop_dur) } : {}),
     ...(dono('mirrored') ? { mirrored: true } : {}),
     ...(dono('muted') ? { muted: true } : {}),          // áudio removido da cena
+    // áudio da CENA estilo CapCut (15/08): o render aplica na extração do
+    // áudio deste clipe (volume=dB, afade em tempo da régua, pan, voz)
+    ...(dono('volume_db') ? { volume_db: dono('volume_db') } : {}),
+    ...(dono('fade_in') ? { fade_in: dono('fade_in') } : {}),
+    ...(dono('fade_out') ? { fade_out: dono('fade_out') } : {}),
+    ...(dono('canal') ? { canal: dono('canal') } : {}),
+    ...(dono('voz_mod') ? { voz_mod: dono('voz_mod') } : {}),
+    // REMOVER FUNDO (15/08): números PRONTOS pro chromakey (core/fundo.js) —
+    // o render não re-deriva nada; máscara/vídeo-duplo viajam por URL
+    ...(dono('bg') ? { bg: bgParaPayload(dono('bg')) } : {}),
     // mídia com proporção diferente do quadro entra INTEIRA (tamanho real,
     // barras) — mesma regra do preview (fitDaCena) = WYSIWYG
     ...(fitDaCena(state, seg) === 'contain' ? { fit: 'contain' } : {}),
@@ -607,6 +618,8 @@ export function exportPayload(state) {
       // por expressão em t — ver keyframes.js (t relativo ao início da camada)
       ...(Array.isArray(o.kf) && o.kf.length
         ? { kf: o.kf.map(k => ({ t: round3(k.t), x: round4(k.x), y: round4(k.y) })) } : {}),
+      // fundo removido na CAMADA: transparência REAL sobre o que está atrás
+      ...(o.bg ? { bg: bgParaPayload(o.bg) } : {}),
       lane: o.lane || 1, // ordem de composicao
       };
     }),
@@ -625,3 +638,17 @@ export function canExport(state) {
 
 function round3(v) { return Math.round(v * 1000) / 1000; }
 function round4(v) { return Math.round(v * 10000) / 10000; }
+
+/** bg da cena no formato do RENDER: chroma vira números prontos
+ *  (similarity/blend/despill), os outros modos viajam por URL. */
+function bgParaPayload(bg) {
+  if (!bg) return null;
+  if (bg.modo === 'chroma') {
+    return { modo: 'chroma', cor: bg.cor, ...chromaParaRender(bg) };
+  }
+  if (bg.modo === 'custom') return { modo: 'custom', mask_url: bg.mask_url };
+  return {
+    modo: 'auto', dupla_url: bg.dupla_url, src_in: round3(bg.src_in), src_out: round3(bg.src_out),
+    ...(bg.dupla_dur > 0 ? { dupla_dur: round3(bg.dupla_dur) } : {}),
+  };
+}

@@ -35,6 +35,11 @@ export const A = {
   SELECT_AUDIO_CLIP: 'SELECT_AUDIO_CLIP',
   // Aprimorar áudio (2026-07-29): reduzir ruído / aprimorar voz / normalizar
   SET_AUDIO_FX: 'SET_AUDIO_FX',
+  // Áudio DA CENA estilo CapCut (15/08): volume em dB, fades, canal, voz
+  SET_CLIP_AUDIO: 'SET_CLIP_AUDIO',
+  // Remover plano de fundo da cena (15/08): chroma / máscara / automático
+  SET_CLIP_BG: 'SET_CLIP_BG',
+  SET_OVERLAY_BG: 'SET_OVERLAY_BG',
   // camadas (overlays)
   CONVERT_TO_OVERLAY: 'CONVERT_TO_OVERLAY',
   SET_ITEM_LANE: 'SET_ITEM_LANE',
@@ -128,6 +133,9 @@ export const UNDOABLE = {
   [A.DELETE_AUDIO_CLIP]: U,
   [A.SET_AUDIO_VOLUME]: U,
   [A.SET_AUDIO_FX]: U,
+  [A.SET_CLIP_AUDIO]: U,
+  [A.SET_CLIP_BG]: U,
+  [A.SET_OVERLAY_BG]: U,
   [A.CONVERT_TO_OVERLAY]: U,
   [A.TRIM_OVERLAY]: U,
   [A.SPLIT_OVERLAY]: U,
@@ -207,6 +215,14 @@ export const setAudioVolume = (audioId, value) => ({ type: A.SET_AUDIO_VOLUME, a
 //             ou clipe COMPOSTO (cascateia pro áudio de dentro)
 // patch = { fx_ruido?, fx_voz?, fx_voz_int?, fx_norm? }
 export const setAudioFx = (alvo, id, patch) => ({ type: A.SET_AUDIO_FX, alvo, id, patch });
+// áudio DA CENA (CapCut 15/08): patch = { volume_db?, fade_in?, fade_out?,
+// canal? ('both'|'esq'|'dir'), voz_mod? (id do catálogo core/voz-mod.js|null) }
+export const setClipAudio = (clipId, patch) => ({ type: A.SET_CLIP_AUDIO, clipId, patch });
+// remover fundo da cena: patch faz merge (modo chroma aceita parcial:
+// {cor}/{intensidade}/…); null remove por inteiro. Ver core/fundo.js.
+export const setClipBg = (clipId, patch) => ({ type: A.SET_CLIP_BG, clipId, patch });
+// fundo removido numa CAMADA: null desliga (o liga/configura acontece na cena)
+export const setOverlayBg = (overlayId, patch) => ({ type: A.SET_OVERLAY_BG, overlayId, patch });
 export const selectAudioClip = (audioId) => ({ type: A.SELECT_AUDIO_CLIP, audioId });
 export const convertToOverlay = (clipId, atT, lane) => ({ type: A.CONVERT_TO_OVERLAY, clipId, atT, lane });
 // muda a camada (z) de um overlay/texto — arrasto vertical na timeline

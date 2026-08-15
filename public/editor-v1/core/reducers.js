@@ -11,6 +11,8 @@ import { createInitialState, normalizeLoadedState, validarFormato, createFullCli
 import { transicaoPorId } from './transitions.js';
 import { timelineSegments, segmentAt, mainTrackItems, clipSpeed, clipTimelineDur, audioTimelineDur, overlayTimelineDur, audioLaneMap, captionAudioPlan, cenaTemAudio } from './selectors.js';
 import { upsertKf, KF_EPS } from './keyframes.js';
+import { vozValida, canalValido, VOL_DB_MIN, VOL_DB_MAX, FADE_MAX } from './voz-mod.js';
+import { validarBg } from './fundo.js';
 // REGRAS DE CAMADA (2026-07-29): faixa de texto so aceita texto, dois itens
 // nao se sobrepoem na mesma camada. O reducer e o funil — validar aqui (e nao
 // na UI) garante que arrasto, colar e menu de contexto obedecem a mesma regra.
@@ -748,6 +750,82 @@ export function reduce(state, action) {
       return touch({ ...state, audio_clips });
     }
 
+    case A.SET_CLIP_AUDIO: {
+      // ÁUDIO DA CENA estilo CapCut (15/08): volume em dB, fades, canal e
+      // modificador de voz — merge parcial com clamps AQUI (a UI manda cru).
+      // Valor padrão = campo AUSENTE (payload/normalize só viajam o que existe).
+      const idx = state.clips.findIndex(c => c.id === action.clipId);
+      if (idx < 0) return state;
+      const c = state.clips[idx];
+      const p = action.patch || {};
+      const novo = { ...c };
+      const põe = (campo, v, some) => { if (some) delete novo[campo]; else novo[campo] = v; };
+      if (p.volume_db !== undefined) {
+        const db = Math.round(clamp(Number(p.volume_db) || 0, VOL_DB_MIN, VOL_DB_MAX) * 10) / 10;
+        põe('volume_db', db, db === 0);
+      }
+      if (p.fade_in !== undefined) {
+        const f = Math.round(clamp(Number(p.fade_in) || 0, 0, FADE_MAX) * 10) / 10;
+        põe('fade_in', f, f === 0);
+      }
+      if (p.fade_out !== undefined) {
+        const f = Math.round(clamp(Number(p.fade_out) || 0, 0, FADE_MAX) * 10) / 10;
+        põe('fade_out', f, f === 0);
+      }
+      if (p.canal !== undefined) {
+        const ch = canalValido(p.canal);
+        põe('canal', ch, ch === 'both');
+      }
+      if (p.voz_mod !== undefined) {
+        const v = vozValida(p.voz_mod);
+        põe('voz_mod', v, v === null);
+      }
+      if (JSON.stringify(novo) === JSON.stringify(c)) return state;
+      const clips = state.clips.slice();
+      clips[idx] = novo;
+      return touch({ ...state, clips });
+    }
+
+    case A.SET_CLIP_BG: {
+      // REMOVER FUNDO da cena (15/08): patch faz merge sobre o bg atual
+      // (sliders do chroma mandam só o campo mexido); null remove. A validação
+      // mora em core/fundo.js — id/modo inválido morre aqui, não no render.
+      const idx = state.clips.findIndex(c => c.id === action.clipId);
+      if (idx < 0) return state;
+      const c = state.clips[idx];
+      const clips = state.clips.slice();
+      if (action.patch === null) {
+        if (!c.bg) return state;
+        const { bg, ...resto } = c;
+        clips[idx] = resto;
+        return touch({ ...state, clips });
+      }
+      const base = (c.bg && c.bg.modo === action.patch.modo) ? c.bg : {};
+      const novo = validarBg({ ...base, ...action.patch });
+      if (!novo) return state;
+      if (JSON.stringify(novo) === JSON.stringify(c.bg)) return state;
+      clips[idx] = { ...c, bg: novo };
+      return touch({ ...state, clips });
+    }
+
+    case A.SET_OVERLAY_BG: {
+      // fundo removido numa CAMADA: null desliga; patch validado religa
+      const idx = state.overlays.findIndex(o => o.id === action.overlayId);
+      if (idx < 0) return state;
+      const o = state.overlays[idx];
+      const overlays = state.overlays.slice();
+      if (action.patch === null) {
+        if (!o.bg) return state;
+        const { bg, ...resto } = o;
+        overlays[idx] = resto;
+        return touch({ ...state, overlays });
+      }
+      const novo = validarBg({ ...(o.bg || {}), ...action.patch });
+      if (!novo || JSON.stringify(novo) === JSON.stringify(o.bg)) return state;
+      overlays[idx] = { ...o, bg: novo };
+      return touch({ ...state, overlays });
+    }
+
     case A.DETACH_AUDIO: {
       // Ctrl+Shift+S (CapCut): 1 clip de audio POR SEGMENTO de video atual,
       // na mesma posicao da timeline. Depois disso sao INDEPENDENTES do video.
@@ -901,6 +979,9 @@ export function reduce(state, action) {
         ...(typeof clip.anim_in_dur === 'number' ? { anim_in_dur: clip.anim_in_dur } : {}),
         ...(typeof clip.anim_out_dur === 'number' ? { anim_out_dur: clip.anim_out_dur } : {}),
         ...(typeof clip.anim_loop_dur === 'number' ? { anim_loop_dur: clip.anim_loop_dur } : {}),
+        // FUNDO REMOVIDO É PERMANENTE (user 15/08: "as mudanças tem que ficar
+        // permanente") — sobe junto; em camada a transparência mostra o de baixo
+        ...(clip.bg ? { bg: clip.bg } : {}),
       };
       return touch({
         ...state,
@@ -1244,6 +1325,8 @@ export function reduce(state, action) {
         ...(typeof ov.anim_in_dur === 'number' ? { anim_in_dur: ov.anim_in_dur } : {}),
         ...(typeof ov.anim_out_dur === 'number' ? { anim_out_dur: ov.anim_out_dur } : {}),
         ...(typeof ov.anim_loop_dur === 'number' ? { anim_loop_dur: ov.anim_loop_dur } : {}),
+        // fundo removido desce junto (permanência — user 15/08)
+        ...(ov.bg ? { bg: ov.bg } : {}),
         active: true,
       };
       const atT = Math.max(0, action.atT || ov.start || 0);

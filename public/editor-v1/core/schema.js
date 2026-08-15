@@ -4,6 +4,8 @@
 
 import { animValida } from './text-anim.js';
 import { normalizarKf } from './keyframes.js';
+import { vozValida } from './voz-mod.js';
+import { validarBg } from './fundo.js';
 
 /** Enum de tamanhos de texto — espelha sizePct() do railway-ffmpeg/server.js */
 export const TEXT_SIZES = ['small', 'medium', 'large', 'xlarge'];
@@ -176,6 +178,14 @@ export function normalizeLoadedState(raw) {
       ...(typeof c.anim_out_dur === 'number' ? { anim_out_dur: clamp(c.anim_out_dur, 0.1, 5) } : {}),
       ...(typeof c.anim_loop_dur === 'number' ? { anim_loop_dur: clamp(c.anim_loop_dur, 0.1, 5) } : {}),
       ...(c.muted ? { muted: true } : {}),  // áudio removido SÓ desta cena
+      // áudio da CENA estilo CapCut (15/08) — sem copiar, reabrir apagava
+      ...(typeof c.volume_db === 'number' && c.volume_db !== 0 ? { volume_db: clamp(c.volume_db, -60, 10) } : {}),
+      ...(typeof c.fade_in === 'number' && c.fade_in > 0 ? { fade_in: clamp(c.fade_in, 0, 5) } : {}),
+      ...(typeof c.fade_out === 'number' && c.fade_out > 0 ? { fade_out: clamp(c.fade_out, 0, 5) } : {}),
+      ...(c.canal === 'esq' || c.canal === 'dir' ? { canal: c.canal } : {}),
+      ...(vozValida(c.voz_mod) ? { voz_mod: vozValida(c.voz_mod) } : {}),
+      // remover fundo (15/08) — sem copiar, reabrir apagava o chroma/máscara
+      ...(validarBg(c.bg) ? { bg: validarBg(c.bg) } : {}),
       // máscara da cena (CapCut: círculo/retângulo + suavizar + cantos)
       ...(c.mask && ['circle', 'rect'].includes(c.mask.shape) ? { mask: {
         shape: c.mask.shape,
@@ -292,6 +302,8 @@ export function normalizeLoadedState(raw) {
       ...(typeof o.anim_loop_dur === 'number' ? { anim_loop_dur: clamp(o.anim_loop_dur, 0.1, 5) } : {}),
       // quadros-chave de movimento (14/08) — lista validada; vazia some
       ...(normalizarKf(o.kf).length ? { kf: normalizarKf(o.kf) } : {}),
+      // fundo removido na CAMADA (15/08) — permanência ao reabrir
+      ...(validarBg(o.bg) ? { bg: validarBg(o.bg) } : {}),
       start: Math.max(0, o.start || 0),
       x_pct: clamp01(o.x_pct ?? 0.5), y_pct: clamp01(o.y_pct ?? 0.5),
       scale: Math.min(2, Math.max(0.1, o.scale ?? 0.5)),
