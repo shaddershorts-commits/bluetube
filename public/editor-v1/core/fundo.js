@@ -34,7 +34,20 @@ export function validarBg(bg) {
   if (typeof bg.dupla_url !== 'string' || !bg.dupla_url) return null;
   const sIn = Math.max(0, Number(bg.src_in) || 0);
   const sOut = Number(bg.src_out) > sIn ? Number(bg.src_out) : sIn + 0.1;
-  return { modo: 'auto', dupla_url: bg.dupla_url, src_in: sIn, src_out: sOut };
+  const out = { modo: 'auto', dupla_url: bg.dupla_url, src_in: sIn, src_out: sOut };
+  // duração REAL da gravação (relógio de parede): o preview e o render
+  // compensam a régua esticada com fatorDoDuplo — sem isso, seeks em loop
+  if (Number(bg.dupla_dur) > 0) out.dupla_dur = Math.round(Number(bg.dupla_dur) * 1000) / 1000;
+  return out;
+}
+
+/** Fator régua-do-duplo ÷ régua-do-arquivo (1 = gravou em tempo exato).
+ *  tDuplo = (tArquivo - src_in) × fator — preview e render usam ESTA conta. */
+export function fatorDoDuplo(bg) {
+  const alvo = Math.max(0.1, (Number(bg?.src_out) || 0) - (Number(bg?.src_in) || 0));
+  const real = Number(bg?.dupla_dur) > 0 ? Number(bg.dupla_dur) : alvo;
+  const f = real / alvo;
+  return (f > 0.25 && f < 4) ? f : 1;   // fora da régua sã = confia no 1:1
 }
 
 /** Números PRONTOS pro chromakey do ffmpeg — o preview GL e o render usam

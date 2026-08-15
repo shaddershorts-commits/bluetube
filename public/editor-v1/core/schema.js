@@ -302,6 +302,8 @@ export function normalizeLoadedState(raw) {
       ...(typeof o.anim_loop_dur === 'number' ? { anim_loop_dur: clamp(o.anim_loop_dur, 0.1, 5) } : {}),
       // quadros-chave de movimento (14/08) — lista validada; vazia some
       ...(normalizarKf(o.kf).length ? { kf: normalizarKf(o.kf) } : {}),
+      // fundo removido na CAMADA (15/08) — permanência ao reabrir
+      ...(validarBg(o.bg) ? { bg: validarBg(o.bg) } : {}),
       start: Math.max(0, o.start || 0),
       x_pct: clamp01(o.x_pct ?? 0.5), y_pct: clamp01(o.y_pct ?? 0.5),
       scale: Math.min(2, Math.max(0.1, o.scale ?? 0.5)),

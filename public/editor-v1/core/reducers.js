@@ -808,6 +808,24 @@ export function reduce(state, action) {
       return touch({ ...state, clips });
     }
 
+    case A.SET_OVERLAY_BG: {
+      // fundo removido numa CAMADA: null desliga; patch validado religa
+      const idx = state.overlays.findIndex(o => o.id === action.overlayId);
+      if (idx < 0) return state;
+      const o = state.overlays[idx];
+      const overlays = state.overlays.slice();
+      if (action.patch === null) {
+        if (!o.bg) return state;
+        const { bg, ...resto } = o;
+        overlays[idx] = resto;
+        return touch({ ...state, overlays });
+      }
+      const novo = validarBg({ ...(o.bg || {}), ...action.patch });
+      if (!novo || JSON.stringify(novo) === JSON.stringify(o.bg)) return state;
+      overlays[idx] = { ...o, bg: novo };
+      return touch({ ...state, overlays });
+    }
+
     case A.DETACH_AUDIO: {
       // Ctrl+Shift+S (CapCut): 1 clip de audio POR SEGMENTO de video atual,
       // na mesma posicao da timeline. Depois disso sao INDEPENDENTES do video.
@@ -961,6 +979,9 @@ export function reduce(state, action) {
         ...(typeof clip.anim_in_dur === 'number' ? { anim_in_dur: clip.anim_in_dur } : {}),
         ...(typeof clip.anim_out_dur === 'number' ? { anim_out_dur: clip.anim_out_dur } : {}),
         ...(typeof clip.anim_loop_dur === 'number' ? { anim_loop_dur: clip.anim_loop_dur } : {}),
+        // FUNDO REMOVIDO É PERMANENTE (user 15/08: "as mudanças tem que ficar
+        // permanente") — sobe junto; em camada a transparência mostra o de baixo
+        ...(clip.bg ? { bg: clip.bg } : {}),
       };
       return touch({
         ...state,
@@ -1304,6 +1325,8 @@ export function reduce(state, action) {
         ...(typeof ov.anim_in_dur === 'number' ? { anim_in_dur: ov.anim_in_dur } : {}),
         ...(typeof ov.anim_out_dur === 'number' ? { anim_out_dur: ov.anim_out_dur } : {}),
         ...(typeof ov.anim_loop_dur === 'number' ? { anim_loop_dur: ov.anim_loop_dur } : {}),
+        // fundo removido desce junto (permanência — user 15/08)
+        ...(ov.bg ? { bg: ov.bg } : {}),
         active: true,
       };
       const atT = Math.max(0, action.atT || ov.start || 0);

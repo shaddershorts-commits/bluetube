@@ -39,6 +39,7 @@ export const A = {
   SET_CLIP_AUDIO: 'SET_CLIP_AUDIO',
   // Remover plano de fundo da cena (15/08): chroma / máscara / automático
   SET_CLIP_BG: 'SET_CLIP_BG',
+  SET_OVERLAY_BG: 'SET_OVERLAY_BG',
   // camadas (overlays)
   CONVERT_TO_OVERLAY: 'CONVERT_TO_OVERLAY',
   SET_ITEM_LANE: 'SET_ITEM_LANE',
@@ -134,6 +135,7 @@ export const UNDOABLE = {
   [A.SET_AUDIO_FX]: U,
   [A.SET_CLIP_AUDIO]: U,
   [A.SET_CLIP_BG]: U,
+  [A.SET_OVERLAY_BG]: U,
   [A.CONVERT_TO_OVERLAY]: U,
   [A.TRIM_OVERLAY]: U,
   [A.SPLIT_OVERLAY]: U,
@@ -219,6 +221,8 @@ export const setClipAudio = (clipId, patch) => ({ type: A.SET_CLIP_AUDIO, clipId
 // remover fundo da cena: patch faz merge (modo chroma aceita parcial:
 // {cor}/{intensidade}/…); null remove por inteiro. Ver core/fundo.js.
 export const setClipBg = (clipId, patch) => ({ type: A.SET_CLIP_BG, clipId, patch });
+// fundo removido numa CAMADA: null desliga (o liga/configura acontece na cena)
+export const setOverlayBg = (overlayId, patch) => ({ type: A.SET_OVERLAY_BG, overlayId, patch });
 export const selectAudioClip = (audioId) => ({ type: A.SELECT_AUDIO_CLIP, audioId });
 export const convertToOverlay = (clipId, atT, lane) => ({ type: A.CONVERT_TO_OVERLAY, clipId, atT, lane });
 // muda a camada (z) de um overlay/texto — arrasto vertical na timeline

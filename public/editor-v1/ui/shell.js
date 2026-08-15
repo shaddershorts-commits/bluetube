@@ -829,6 +829,8 @@ export function mountEditor(root, store, opts = {}) {
         $('#beOvMute').textContent = ov.muted ? '🔊 Devolver o som da camada' : '🔇 Remover o som da camada';
         // IMAGEM: velocidade não faz sentido (user 14/08) — some; título diz o tipo
         $('#beOvSpeedRow').style.display = ov.kind === 'image' ? 'none' : '';
+        // fundo removido na camada: botão de desligar só quando existe
+        $('#beOvBgOff').style.display = ov.bg ? '' : 'none';
         $('#beOvTitle').textContent = ov.kind === 'image' ? '🖼 Imagem' : '⧉ Camada';
         // Tamanho fora do filledOvId: o scroll no preview também escala e o
         // slider precisa acompanhar (não é campo que o user digita)
@@ -1749,6 +1751,13 @@ export function mountEditor(root, store, opts = {}) {
     store.dispatch({ ...act.setOverlayTransform(id, { scale: sc / 100 }), gestureId: 'ovscale-' + id });
   });
   $('#beOvScale').addEventListener('change', () => store.endGesture());
+  // desligar o fundo removido da camada (religar = pela cena, descendo-a)
+  $('#beOvBgOff').addEventListener('click', () => {
+    const id = store.getState().selected_overlay_id;
+    if (id == null) return;
+    store.dispatch(act.setOverlayBg(id, null));
+    toast('Remoção de fundo desligada nesta camada ✓');
+  });
 
   // ── QUADROS-CHAVE de movimento (user 14/08) ──────────────────────────────
   // ◇ = marca a posição efetiva no instante da agulha (vira ◆ quando a agulha
@@ -3465,6 +3474,8 @@ function buildTemplate() {
       <div class="be-dim">Botão direito na camada = Copiar/Cortar/frente-trás. Q/W cortam no cursor.</div>
       <!-- som embutido da camada (user 14/08): permanece a menos que remova -->
       <button id="beOvMute" class="be-tool-btn">🔇 Remover o som da camada</button>
+      <!-- fundo removido é PERMANENTE ao virar camada (15/08); aqui desliga -->
+      <button id="beOvBgOff" class="be-tool-btn" style="display:none">🪄 Fundo removido — ✕ desligar</button>
       <!-- ANIMAÇÃO DA CAMADA (user 14/08): só as anims com par REAL na
            composição do arquivo (fades, deslizes, balanço) — agora em IMAGEM
            também (fade = -loop no render; deslize/balanço = expressão) -->

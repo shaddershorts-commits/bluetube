@@ -2272,6 +2272,15 @@ function exprPiecewise(pts) {
   }
   return `if(lt(t,${pts[0].T.toFixed(3)}),${Math.round(pts[0].V)},${expr})`;
 }
+// fator régua-do-duplo ÷ régua-do-arquivo (espelho de core/fundo.js
+// fatorDoDuplo): 1 = gravou em tempo exato; fora da régua sã, confia no 1:1
+function fatorDoDuploSrv(bg) {
+  const alvo = Math.max(0.1, (Number(bg?.src_out) || 0) - (Number(bg?.src_in) || 0));
+  const real = Number(bg?.dupla_dur) > 0 ? Number(bg.dupla_dur) : alvo;
+  const f = real / alvo;
+  return (f > 0.25 && f < 4) ? f : 1;
+}
+
 // lista de kf validada (payload é externo: só números finitos entram)
 function kfValidos(o) {
   if (!Array.isArray(o.kf)) return [];
@@ -2695,13 +2704,18 @@ async function processEditV0(jobId, p) {
         if (c.bg.modo === 'auto') {
           const dupla = path.join(dir, `bgdupla_${i}.webm`);
           await downloadFile(c.bg.dupla_url, dupla);
-          // t=0 do duplo = bg.src_in no arquivo original
-          const off = Math.max(0, ssSrc - (Number(c.bg.src_in) || 0));
-          fcIn.push('-ss', String(off), '-t', String(lerSrc), '-i', dupla);
+          // FATOR DE RELÓGIO (15/08): a gravação corre em tempo de PAREDE — se
+          // a segmentação atrasou o playback, a régua do duplo esticou.
+          // dupla_dur/janela remapeia: lê fator× mais material e o setpts
+          // devolve o tempo real (era o "vídeo travando" no preview + dessinc).
+          const fator = fatorDoDuploSrv(c.bg);
+          // t=0 do duplo = bg.src_in no arquivo original (escala pelo fator)
+          const off = Math.max(0, (ssSrc - (Number(c.bg.src_in) || 0)) * fator);
+          fcIn.push('-ss', String(off), '-t', String(lerSrc * fator + 0.2), '-i', dupla);
           // format ANTES do split: sem isso a negociação de formato PROPAGA o
           // gray do ramo da máscara pro split inteiro e a cor vira luma
           // (azul→cinza 29 — pego na sonda 15/08)
-          fc.push('[0:v]fps=30,format=yuv420p,split[bd1][bd2]');
+          fc.push(`[0:v]setpts=PTS/${fator.toFixed(4)},fps=30,format=yuv420p,split[bd1][bd2]`);
           fc.push('[bd1]crop=iw/2:ih:0:0[bc]');
           fc.push('[bd2]crop=iw/2:ih:iw/2:0,format=gray[bm]');
           fc.push(`[bc][bm]alphamerge,${preStr}format=yuva420p[fg]`);
@@ -2939,12 +2953,30 @@ async function processEditV0(jobId, p) {
         continue;
       }
       const out = path.join(dir, `ov_${i}.mp4`);
-      await run('ffmpeg', [
+      // FUNDO REMOVIDO NA CAMADA (15/08, permanência): auto usa o vídeo DUPLO
+      // como fonte visual (com fator de relógio); custom baixa a máscara como
+      // input próprio. O áudio segue vindo do original (extração abaixo).
+      const bgOv = o.bg && ['chroma', 'custom', 'auto'].includes(o.bg.modo) ? o.bg : null;
+      const entry = { idx: inputIdx, o, file: out };
+      if (bgOv && bgOv.modo === 'auto') {
+        const dupOv = path.join(dir, `ovdupla_${i}.webm`);
+        try {
+          await downloadFile(bgOv.dupla_url, dupOv);
+          const fatorOv = fatorDoDuploSrv(bgOv);
+          const offD = Math.max(0, (o.source_in - (Number(bgOv.src_in) || 0)) * fatorOv);
+          await run('ffmpeg', [
+            '-y', '-ss', String(offD), '-t', String(dur * fatorOv + 0.2), '-i', dupOv,
+            '-vf', `setpts=PTS/${fatorOv.toFixed(4)},fps=30`,
+            '-c:v', 'libx264', '-preset', 'ultrafast', '-crf', '18', '-an', out,
+          ]);
+          entry.isDupla = true;
+        } catch (e) { console.log('[edit-v0] duplo da camada falhou, segue sem remoção:', e.message); }
+      }
+      if (!entry.isDupla) await run('ffmpeg', [
         '-y', '-ss', String(o.source_in), '-t', String(dur),
         '-i', srcFor(o),
         '-c:v', 'libx264', '-preset', 'ultrafast', '-crf', '20', '-an', out,
       ]);
-      const entry = { idx: inputIdx, o, file: out };
       // SOM EMBUTIDO DA CAMADA (user 14/08): o ov_{i}.mp4 nasce -an, então o
       // áudio sai num arquivo PRÓPRIO, mixado depois junto dos audio_clips.
       // Fonte sem trilha de áudio → a extração falha/não gera arquivo → o
@@ -2960,6 +2992,17 @@ async function processEditV0(jobId, p) {
       ovInputs.push(entry);
       args.push('-i', out);
       inputIdx++;
+      // máscara pintada da CAMADA: input próprio logo após o vídeo dela
+      if (bgOv && bgOv.modo === 'custom') {
+        const maskOv = path.join(dir, `ovmask_${i}.png`);
+        try {
+          await downloadFile(bgOv.mask_url, maskOv);
+          const tlDurOv = dur / (Number(o.speed) > 0 ? Number(o.speed) : 1);
+          args.push('-loop', '1', '-t', String(tlDurOv + 0.2), '-i', maskOv);
+          entry.maskIdx = inputIdx;
+          inputIdx++;
+        } catch (e) { console.log('[edit-v0] máscara da camada falhou, segue sem remoção:', e.message); }
+      }
     }
 
     // ── COMPOSIÇÃO POR LANE (v3, CapCut): overlays E textos entram na MESMA
@@ -3086,10 +3129,36 @@ async function processEditV0(jobId, p) {
             ? Math.max(2, Math.round(OH * Number(o.box_h_pct)))
             : Math.max(2, Math.round(scaleW * (OH / OW)));
           const spF = sp !== 1 ? `/${sp}` : '';
-          const alphaFx = fades.length ? ',format=yuva420p,' + fades.join(',') : '';
-          fc.push(`[${idx}:v]scale=${scaleW}:${scaleH}:force_original_aspect_ratio=increase,` +
-                  `crop=${scaleW}:${scaleH},setsar=1,` +
-                  `setpts=(PTS-STARTPTS)${spF}+${(o.start ?? 0).toFixed(3)}/TB${alphaFx}[${scaled}]`);
+          const boxFx = `scale=${scaleW}:${scaleH}:force_original_aspect_ratio=increase,` +
+                        `crop=${scaleW}:${scaleH},setsar=1`;
+          // ── FUNDO REMOVIDO NA CAMADA (15/08): alpha REAL — o que está atrás
+          // (a base já composta) aparece no lugar do fundo, igual ao preview.
+          const bgOv = o.bg && ['chroma', 'custom', 'auto'].includes(o.bg.modo) ? o.bg : null;
+          if (op.ov.isDupla) {
+            // o intermediário É o duplo [cor|máscara] já no tempo certo
+            fc.push(`[${idx}:v]format=yuv420p,split[od${k}a][od${k}b]`);
+            fc.push(`[od${k}a]crop=iw/2:ih:0:0[oc${k}]`);
+            fc.push(`[od${k}b]crop=iw/2:ih:iw/2:0,format=gray[om${k}]`);
+            fc.push(`[oc${k}][om${k}]alphamerge,${boxFx}[ob${k}]`);
+          } else if (bgOv && bgOv.modo === 'chroma') {
+            const corHexOv = /^#[0-9a-fA-F]{6}$/.test(bgOv.cor || '') ? bgOv.cor.slice(1) : '00d000';
+            const simOv = num(bgOv.similarity, 0.15, 0.01, 1);
+            const blendOv = num(bgOv.blend, 0.06, 0, 1);
+            const [rO, gO, bO] = [0, 2, 4].map(x => parseInt(corHexOv.slice(x, x + 2), 16));
+            const tipoO = gO >= rO && gO >= bO ? 'green' : (bO > rO ? 'blue' : null);
+            const mixO = num(bgOv.despill, 0, 0, 1);
+            const despO = mixO > 0.01 && tipoO ? `,despill=type=${tipoO}:mix=${mixO.toFixed(2)}` : '';
+            fc.push(`[${idx}:v]${boxFx},format=yuva420p,chromakey=0x${corHexOv}:${simOv.toFixed(3)}:${blendOv.toFixed(3)}${despO}[ob${k}]`);
+          } else if (bgOv && bgOv.modo === 'custom' && op.ov.maskIdx != null) {
+            fc.push(`[${op.ov.maskIdx}:v]fps=30,scale=${scaleW}:${scaleH},format=gray,negate[omk${k}]`);
+            fc.push(`[${idx}:v]${boxFx},format=yuv420p[ov0${k}]`);
+            fc.push(`[ov0${k}][omk${k}]alphamerge[ob${k}]`);
+          } else {
+            fc.push(`[${idx}:v]${boxFx}[ob${k}]`);
+          }
+          const precisaAlpha = (bgOv || op.ov.isDupla || fades.length) ? ',format=yuva420p' : '';
+          const alphaFx = fades.length ? ',' + fades.join(',') : '';
+          fc.push(`[ob${k}]setpts=(PTS-STARTPTS)${spF}+${(o.start ?? 0).toFixed(3)}/TB${precisaAlpha}${alphaFx}[${scaled}]`);
           fc.push(`[${vLabel}][${scaled}]overlay=x='${xE}':y='${yE}':enable='${enable}'[${nextL}]`);
         }
       } else {

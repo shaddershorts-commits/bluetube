@@ -618,6 +618,8 @@ export function exportPayload(state) {
       // por expressão em t — ver keyframes.js (t relativo ao início da camada)
       ...(Array.isArray(o.kf) && o.kf.length
         ? { kf: o.kf.map(k => ({ t: round3(k.t), x: round4(k.x), y: round4(k.y) })) } : {}),
+      // fundo removido na CAMADA: transparência REAL sobre o que está atrás
+      ...(o.bg ? { bg: bgParaPayload(o.bg) } : {}),
       lane: o.lane || 1, // ordem de composicao
       };
     }),
@@ -645,5 +647,8 @@ function bgParaPayload(bg) {
     return { modo: 'chroma', cor: bg.cor, ...chromaParaRender(bg) };
   }
   if (bg.modo === 'custom') return { modo: 'custom', mask_url: bg.mask_url };
-  return { modo: 'auto', dupla_url: bg.dupla_url, src_in: round3(bg.src_in), src_out: round3(bg.src_out) };
+  return {
+    modo: 'auto', dupla_url: bg.dupla_url, src_in: round3(bg.src_in), src_out: round3(bg.src_out),
+    ...(bg.dupla_dur > 0 ? { dupla_dur: round3(bg.dupla_dur) } : {}),
+  };
 }

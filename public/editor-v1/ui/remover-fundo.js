@@ -154,13 +154,21 @@ export function montarRemoverFundo({ root, store, player, videoEl, toast }) {
       const streamFps = 30;
       const stream = duplo.captureStream(streamFps);
       const mime = MediaRecorder.isTypeSupported('video/webm;codecs=vp9') ? 'video/webm;codecs=vp9' : 'video/webm;codecs=vp8';
-      const rec = new MediaRecorder(stream, { mimeType: mime, videoBitsPerSecond: 5_000_000 });
+      // 12 Mbps: bitrate baixo borrava o movimento (o "fantasma" do teste
+      // real 15/08 — rastros de frames antigos são artefato de compressão)
+      const rec = new MediaRecorder(stream, { mimeType: mime, videoBitsPerSecond: 12_000_000 });
       const pedacos = [];
       rec.ondataavailable = (e) => { if (e.data.size) pedacos.push(e.data); };
       const fim = new Promise((res) => { rec.onstop = res; });
       v.currentTime = srcIn;
       await new Promise((res) => { v.onseeked = res; });
       rec.start(250);
+      // relógio de PAREDE da gravação: o MediaRecorder carimba em tempo real —
+      // se a segmentação atrasar o playback, a régua do duplo ESTICA. Medimos
+      // a duração real e guardamos (dupla_dur) pro preview e o render
+      // compensarem com o fator — era o "vídeo travando" (tempestade de seeks
+      // atrás de um relógio que não batia).
+      const tRec0 = performance.now();
       v.play();
       status('Detectando a pessoa e removendo o fundo…');
       await new Promise((res, rej) => {
@@ -175,12 +183,18 @@ export function montarRemoverFundo({ root, store, player, videoEl, toast }) {
             const m = r?.confidenceMasks?.[0];
             dctx.drawImage(v, 0, 0, W, H);
             if (m) {
-              // máscara float 0..1 (pessoa) → metade direita em cinza
+              // máscara float 0..1 (pessoa) → metade direita em cinza.
+              // CURVA DE CORTE (teste real 15/08): a confiança "morna" nas
+              // bordas/movimento virava meia-transparência suja — abaixo de
+              // 0.35 é fundo CERTEZA (0), acima de 0.7 é pessoa CERTEZA (255),
+              // no meio uma rampa curta (borda limpa sem serrilhado).
               const dados = m.getAsFloat32Array();
               const mw = m.width, mh = m.height;
               const img = dctx.createImageData(mw, mh);
               for (let k = 0; k < dados.length; k++) {
-                const vg = Math.max(0, Math.min(255, Math.round(dados[k] * 255)));
+                const conf = dados[k];
+                const t2 = Math.max(0, Math.min(1, (conf - 0.35) / 0.35));
+                const vg = Math.round(t2 * t2 * (3 - 2 * t2) * 255);   // smoothstep
                 img.data[k * 4] = vg; img.data[k * 4 + 1] = vg; img.data[k * 4 + 2] = vg; img.data[k * 4 + 3] = 255;
               }
               // desenha a máscara redimensionada na metade direita
@@ -201,6 +215,7 @@ export function montarRemoverFundo({ root, store, player, videoEl, toast }) {
         requestAnimationFrame(passo);
       });
       v.pause();
+      const duplaDur = Math.max(0.1, (performance.now() - tRec0) / 1000);
       rec.stop();
       await fim;
       status('Enviando…');
@@ -209,7 +224,10 @@ export function montarRemoverFundo({ root, store, player, videoEl, toast }) {
       if (blob.size < 1000) throw new Error('gravação vazia');
       const file = new File([blob], `fundo_auto_${Date.now()}.webm`, { type: 'video/webm' });
       const up = await uploadMedia(file, 'video', (pct) => { barra.firstElementChild.style.width = pct + '%'; });
-      store.dispatch(act.setClipBg(c.id, { modo: 'auto', dupla_url: up.url, src_in: srcIn, src_out: srcOut }));
+      store.dispatch(act.setClipBg(c.id, {
+        modo: 'auto', dupla_url: up.url, src_in: srcIn, src_out: srcOut,
+        dupla_dur: Math.round(duplaDur * 1000) / 1000,
+      }));
       status('Fundo removido ✓ (pessoa detectada pelo modelo do Google)');
       toast('Remoção automática aplicada ✓');
     } catch (e) {
